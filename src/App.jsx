@@ -963,7 +963,7 @@ function POSApp() {
   };
 
   // ---------- Online ordering (Supabase) ----------
-  // Mirror the local product catalog to Supabase so the public storefront can read it.
+  // Push local products to Supabase (storefront + other devices read from here).
   useEffect(() => {
     if (loading || !supabase) return;
     const timer = setTimeout(async () => {
@@ -990,6 +990,29 @@ function POSApp() {
     }, 900);
     return () => clearTimeout(timer);
   }, [products, loading]);
+
+  // Push local users (admin/staff accounts) to Supabase so every device shares the same accounts.
+  useEffect(() => {
+    if (loading || !supabase || !users.length) return;
+    const timer = setTimeout(async () => {
+      try {
+        await supabase.from("users").delete().neq("id", "__none__");
+        await supabase.from("users").insert(
+          users.map((u) => ({
+            id: u.id,
+            username: u.username,
+            password: u.password,
+            name_km: u.name_km || "",
+            name_en: u.name_en || "",
+            role: u.role,
+          })),
+        );
+      } catch {
+        /* offline — local copy still safe */
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [users, loading]);
 
   const [onlineOrders, setOnlineOrders] = useState([]);
   const pendingOrderCount = onlineOrders.filter(
@@ -1101,13 +1124,65 @@ function POSApp() {
     }
   };
 
+  // ---- Pull products/users from Supabase so every device shares the same catalog + accounts ----
+  const fetchCloudProducts = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.from("products").select("*");
+      if (error) throw error;
+      if (data && data.length) {
+        setProducts(
+          data.map((r) => ({
+            id: r.id,
+            name_km: r.name_km,
+            name_en: r.name_en || "",
+            category: r.category,
+            price: r.price,
+            stock: r.stock,
+            unit_km: r.unit_km || "",
+            unit_en: r.unit_en || "",
+            image: r.image || null,
+          })),
+        );
+      }
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
+  const fetchCloudUsers = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.from("users").select("*");
+      if (error) throw error;
+      if (data && data.length) {
+        setUsers(
+          data.map((r) => ({
+            id: r.id,
+            username: r.username,
+            password: r.password,
+            name_km: r.name_km || "",
+            name_en: r.name_en || "",
+            role: r.role,
+          })),
+        );
+      }
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
   useEffect(() => {
     if (!supabase || loading) return;
     fetchCloudSales();
     fetchCloudCustomers();
+    fetchCloudProducts();
+    fetchCloudUsers();
     const poll = setInterval(() => {
       fetchCloudSales();
       fetchCloudCustomers();
+      fetchCloudProducts();
+      fetchCloudUsers();
     }, 15000);
     let channel;
     try {
@@ -1122,6 +1197,16 @@ function POSApp() {
           "postgres_changes",
           { event: "*", schema: "public", table: "customers" },
           fetchCloudCustomers,
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "products" },
+          fetchCloudProducts,
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "users" },
+          fetchCloudUsers,
         )
         .subscribe();
     } catch {
