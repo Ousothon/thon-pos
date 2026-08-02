@@ -453,8 +453,23 @@ const STRINGS = {
     en: "Fill in SUPABASE_URL and SUPABASE_ANON_KEY at the top of the code file and create the tables per the setup guide",
   },
   status_pending: { km: "កំពុងរង់ចាំ", en: "Pending" },
-  status_accepted: { km: "បានទទួល", en: "Accepted" },
+  status_accepted: {
+    km: "បានទទួល (មិនទាន់បង់ប្រាក់)",
+    en: "Accepted (unpaid)",
+  },
+  status_paid: { km: "បានបង់ប្រាក់", en: "Paid" },
   status_rejected: { km: "បានបដិសេធ", en: "Rejected" },
+  status_cancelled: { km: "បានលុបចោល", en: "Cancelled" },
+  markPaid: { km: "បានទទួលប្រាក់", en: "Mark as paid" },
+  cancelOrder: { km: "លុបចោល", en: "Cancel" },
+  toast_orderPaid: {
+    km: "បានកត់ត្រាការទូទាត់ និងបញ្ចូល Revenue",
+    en: "Payment recorded and added to revenue",
+  },
+  toast_orderCancelled: {
+    km: "បានលុបចោល និងស្តារស្តុកវិញ",
+    en: "Order cancelled and stock restored",
+  },
   accept: { km: "ទទួល", en: "Accept" },
   reject: { km: "បដិសេធ", en: "Reject" },
   noOnlineOrders: {
@@ -1022,7 +1037,7 @@ function POSApp() {
 
   const acceptOnlineOrder = async (order) => {
     try {
-      // deduct stock locally, same as a normal completed sale
+      // acknowledge + reserve stock only — revenue is NOT recorded yet since payment hasn't been collected
       const items = order.items || [];
       setProducts((prev) =>
         prev.map((p) => {
@@ -1030,12 +1045,29 @@ function POSApp() {
           return line ? { ...p, stock: Math.max(0, p.stock - line.qty) } : p;
         }),
       );
+      if (supabase)
+        await supabase
+          .from("online_orders")
+          .update({ status: "accepted" })
+          .eq("id", order.id);
+      setOnlineOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: "accepted" } : o)),
+      );
+      showToast(t("toast_orderAccepted"));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  const markOrderPaid = async (order) => {
+    try {
+      // customer has actually paid now — this is the point revenue gets recorded
       setSales((prev) => [
         ...prev,
         {
           id: genId(),
-          date: order.created_at || new Date().toISOString(),
-          items,
+          date: new Date().toISOString(),
+          items: order.items || [],
           subtotal: order.subtotal,
           discount: 0,
           total: order.subtotal,
@@ -1047,12 +1079,38 @@ function POSApp() {
       if (supabase)
         await supabase
           .from("online_orders")
-          .update({ status: "accepted" })
+          .update({ status: "paid" })
           .eq("id", order.id);
       setOnlineOrders((prev) =>
-        prev.map((o) => (o.id === order.id ? { ...o, status: "accepted" } : o)),
+        prev.map((o) => (o.id === order.id ? { ...o, status: "paid" } : o)),
       );
-      showToast(t("toast_orderAccepted"));
+      showToast(t("toast_orderPaid"));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  const cancelAcceptedOrder = async (order) => {
+    try {
+      // customer never paid / no-show — restore the reserved stock
+      const items = order.items || [];
+      setProducts((prev) =>
+        prev.map((p) => {
+          const line = items.find((i) => i.id === p.id);
+          return line ? { ...p, stock: p.stock + line.qty } : p;
+        }),
+      );
+      if (supabase)
+        await supabase
+          .from("online_orders")
+          .update({ status: "cancelled" })
+          .eq("id", order.id);
+      setOnlineOrders((prev) =>
+        prev.map((o) =>
+          o.id === order.id ? { ...o, status: "cancelled" } : o,
+        ),
+      );
+      showToast(t("toast_orderCancelled"));
     } catch {
       showToast(t("toast_supabaseError"), "error");
     }
@@ -1625,6 +1683,8 @@ function POSApp() {
                 supabaseStatus={supabaseStatus}
                 onAccept={acceptOnlineOrder}
                 onReject={rejectOnlineOrder}
+                onMarkPaid={markOrderPaid}
+                onCancel={cancelAcceptedOrder}
               />
             )}
           {activeTab === "users" && allowedTabs.includes("users") && (
@@ -3623,7 +3683,14 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
 
 // ================= Online Orders =================
 
-function OnlineOrdersTab({ orders, supabaseStatus, onAccept, onReject }) {
+function OnlineOrdersTab({
+  orders,
+  supabaseStatus,
+  onAccept,
+  onReject,
+  onMarkPaid,
+  onCancel,
+}) {
   const { t, lang } = useT();
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -3682,12 +3749,24 @@ function OnlineOrdersTab({ orders, supabaseStatus, onAccept, onReject }) {
       },
       accepted: {
         label: t("status_accepted"),
+        bg: "#e0a030",
+        fg: "#fff",
+        Icon: Clock3,
+      },
+      paid: {
+        label: t("status_paid"),
         bg: "var(--primary)",
         fg: "#fff",
         Icon: Check,
       },
       rejected: {
         label: t("status_rejected"),
+        bg: "var(--surface-alt)",
+        fg: "var(--text-muted)",
+        Icon: XCircle,
+      },
+      cancelled: {
+        label: t("status_cancelled"),
         bg: "var(--surface-alt)",
         fg: "var(--text-muted)",
         Icon: XCircle,
@@ -3973,6 +4052,35 @@ function OnlineOrdersTab({ orders, supabaseStatus, onAccept, onReject }) {
                     }}
                   >
                     <Check size={13} /> {t("accept")}
+                  </button>
+                </div>
+              )}
+              {o.status === "accepted" && (
+                <div style={{ display: "flex", gap: "7px" }}>
+                  <button
+                    onClick={() => onCancel(o)}
+                    style={{
+                      ...iconBtnStyle,
+                      color: "var(--danger)",
+                      width: "auto",
+                      padding: "6px 11px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      display: "flex",
+                      gap: "5px",
+                    }}
+                  >
+                    <X size={13} /> {t("cancelOrder")}
+                  </button>
+                  <button
+                    onClick={() => onMarkPaid(o)}
+                    style={{
+                      ...primaryBtnStyle,
+                      padding: "6px 12px",
+                      fontSize: "12px",
+                    }}
+                  >
+                    <Check size={13} /> {t("markPaid")}
                   </button>
                 </div>
               )}
