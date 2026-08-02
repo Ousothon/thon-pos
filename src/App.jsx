@@ -43,6 +43,7 @@ import {
   Check,
   Clock3,
   XCircle,
+  QrCode,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -472,6 +473,10 @@ const STRINGS = {
   storeLink: { km: "តំណភ្ជាប់ហាងអនឡាញ", en: "Online store link" },
   copyLink: { km: "ចម្លងតំណ", en: "Copy link" },
   toast_linkCopied: { km: "បានចម្លងតំណរួចរាល់", en: "Link copied" },
+  showQrCode: { km: "បង្ហាញ QR Code", en: "Show QR code" },
+  hideQrCode: { km: "លាក់ QR Code", en: "Hide QR code" },
+  downloadQr: { km: "ទាញយក QR", en: "Download QR" },
+  scanToOrder: { km: "ស្កេនដើម្បីកម្ម៉ង់", en: "Scan to order" },
   liveIndicator: { km: "កំពុងភ្ជាប់ផ្ទាល់", en: "Live" },
   offlineIndicator: { km: "មិនទាន់ភ្ជាប់", en: "Not connected" },
 
@@ -3621,11 +3626,15 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
 function OnlineOrdersTab({ orders, supabaseStatus, onAccept, onReject }) {
   const { t, lang } = useT();
   const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
 
   const storeUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}${window.location.pathname}?order=1`
       : "";
+
+  const qrImgUrl = (size) =>
+    `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&data=${encodeURIComponent(storeUrl)}`;
 
   const copyLink = () => {
     navigator.clipboard?.writeText(storeUrl).then(() => {
@@ -3765,6 +3774,20 @@ function OnlineOrdersTab({ orders, supabaseStatus, onAccept, onReject }) {
           </div>
         </div>
         <button
+          onClick={() => setShowQr(!showQr)}
+          style={{
+            ...primaryBtnStyle,
+            flexShrink: 0,
+            padding: "8px 14px",
+            fontSize: "12.5px",
+            background: showQr ? "var(--primary)" : "var(--surface-alt)",
+            color: showQr ? "#fff" : "var(--text)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <QrCode size={14} /> {showQr ? t("hideQrCode") : t("showQrCode")}
+        </button>
+        <button
           onClick={copyLink}
           style={{
             ...primaryBtnStyle,
@@ -3777,6 +3800,51 @@ function OnlineOrdersTab({ orders, supabaseStatus, onAccept, onReject }) {
           {copied ? t("toast_linkCopied") : t("copyLink")}
         </button>
       </div>
+
+      {showQr && (
+        <div
+          style={{
+            margin: "10px 26px 0",
+            padding: "20px",
+            borderRadius: "12px",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "10px",
+          }}
+        >
+          <img
+            src={qrImgUrl(220)}
+            alt="QR code"
+            width={220}
+            height={220}
+            style={{ borderRadius: "8px", background: "#fff", padding: "8px" }}
+          />
+          <div
+            style={{
+              fontSize: "13px",
+              fontWeight: 700,
+              color: "var(--text-muted)",
+            }}
+          >
+            {t("scanToOrder")}
+          </div>
+          <a
+            href={qrImgUrl(800)}
+            download="online-store-qr.png"
+            style={{
+              ...primaryBtnStyle,
+              textDecoration: "none",
+              padding: "8px 16px",
+              fontSize: "12.5px",
+            }}
+          >
+            <Download size={14} /> {t("downloadQr")}
+          </a>
+        </div>
+      )}
 
       <div
         style={{
