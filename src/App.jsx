@@ -992,6 +992,9 @@ function POSApp() {
   }, [products, loading]);
 
   const [onlineOrders, setOnlineOrders] = useState([]);
+  const pendingOrderCount = onlineOrders.filter(
+    (o) => o.status === "pending",
+  ).length;
   const [supabaseStatus, setSupabaseStatus] = useState(
     supabase ? "connecting" : "off",
   );
@@ -1485,6 +1488,23 @@ function POSApp() {
                       }}
                     >
                       {lowStock.length}
+                    </span>
+                  )}
+                  {n.id === "onlineOrders" && pendingOrderCount > 0 && (
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        background: active
+                          ? "rgba(255,255,255,.25)"
+                          : "var(--danger)",
+                        color: "#fff",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        borderRadius: "999px",
+                        padding: "1px 7px",
+                      }}
+                    >
+                      {pendingOrderCount}
                     </span>
                   )}
                 </button>
