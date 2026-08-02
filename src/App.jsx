@@ -999,6 +999,141 @@ function POSApp() {
     supabase ? "connecting" : "off",
   );
 
+  // merge helper: cloud copy wins on id conflicts, but keeps any local-only (not-yet-synced) rows
+  const mergeById = (local, remote) => {
+    const map = new Map();
+    local.forEach((item) => map.set(item.id, item));
+    remote.forEach((item) => map.set(item.id, item));
+    return Array.from(map.values());
+  };
+
+  // ---- Push local sales/customers to Supabase so other devices (e.g. your phone) see them ----
+  useEffect(() => {
+    if (loading || !supabase || !sales.length) return;
+    const timer = setTimeout(async () => {
+      try {
+        await supabase.from("sales").upsert(
+          sales.map((s) => ({
+            id: s.id,
+            date: s.date,
+            items: s.items,
+            subtotal: s.subtotal,
+            discount: s.discount,
+            total: s.total,
+            paid: s.paid,
+            change: s.change,
+            customer_name: s.customerName || null,
+          })),
+          { onConflict: "id" },
+        );
+      } catch {
+        /* offline — local copy still safe, will retry on next change */
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [sales, loading]);
+
+  useEffect(() => {
+    if (loading || !supabase) return;
+    const timer = setTimeout(async () => {
+      try {
+        await supabase.from("customers").delete().neq("id", "__none__");
+        if (customers.length) {
+          await supabase.from("customers").insert(
+            customers.map((c) => ({
+              id: c.id,
+              name: c.name,
+              phone: c.phone || "",
+              discount_percent: c.discount_percent || 0,
+              total_spent: c.totalSpent || 0,
+              visits: c.visits || 0,
+              points: c.points || 0,
+            })),
+          );
+        }
+      } catch {
+        /* offline — local copy still safe */
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [customers, loading]);
+
+  // ---- Pull sales/customers from Supabase so this device picks up what other devices recorded ----
+  const fetchCloudSales = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.from("sales").select("*");
+      if (error) throw error;
+      const mapped = (data || []).map((r) => ({
+        id: r.id,
+        date: r.date,
+        items: r.items,
+        subtotal: r.subtotal,
+        discount: r.discount,
+        total: r.total,
+        paid: r.paid,
+        change: r.change,
+        customerName: r.customer_name || "",
+      }));
+      setSales((prev) => mergeById(prev, mapped));
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
+  const fetchCloudCustomers = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.from("customers").select("*");
+      if (error) throw error;
+      const mapped = (data || []).map((r) => ({
+        id: r.id,
+        name: r.name,
+        phone: r.phone || "",
+        discount_percent: r.discount_percent || 0,
+        totalSpent: r.total_spent || 0,
+        visits: r.visits || 0,
+        points: r.points || 0,
+      }));
+      setCustomers(mapped);
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
+  useEffect(() => {
+    if (!supabase || loading) return;
+    fetchCloudSales();
+    fetchCloudCustomers();
+    const poll = setInterval(() => {
+      fetchCloudSales();
+      fetchCloudCustomers();
+    }, 15000);
+    let channel;
+    try {
+      channel = supabase
+        .channel("pos_data_changes")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "sales" },
+          fetchCloudSales,
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "customers" },
+          fetchCloudCustomers,
+        )
+        .subscribe();
+    } catch {
+      /* realtime unavailable, polling still covers it */
+    }
+    return () => {
+      clearInterval(poll);
+      if (channel) supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   const fetchOnlineOrders = async () => {
     if (!supabase) return;
     try {
