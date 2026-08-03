@@ -5252,6 +5252,7 @@ function StorefrontApp() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
+  const [cartExpanded, setCartExpanded] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -5639,169 +5640,202 @@ function StorefrontApp() {
                 ))}
               </div>
 
-              {/* floating cart panel */}
-              <div
-                style={{
-                  position: "fixed",
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: "var(--surface)",
-                  borderTop: "1px solid var(--border)",
-                  boxShadow: "0 -8px 30px rgba(0,0,0,.08)",
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                }}
-              >
+              {/* floating cart panel — collapsible so it never blocks product browsing */}
+              {cart.length > 0 && (
                 <div
                   style={{
-                    maxWidth: "900px",
-                    margin: "0 auto",
-                    padding: "14px 16px",
+                    position: "fixed",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: "var(--surface)",
+                    borderTop: "1px solid var(--border)",
+                    boxShadow: "0 -8px 30px rgba(0,0,0,.08)",
+                    zIndex: 30,
                   }}
                 >
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      fontSize: "14px",
-                      marginBottom: "8px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "7px",
-                    }}
-                  >
-                    <ShoppingCart size={16} color="var(--primary)" />{" "}
-                    {t("storefront_cartTitle")}{" "}
-                    {cart.length > 0 &&
-                      `(${cart.reduce((s, c) => s + c.qty, 0)})`}
-                  </div>
-                  {cart.length === 0 ? (
-                    <div
+                  <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+                    <button
+                      onClick={() => setCartExpanded(!cartExpanded)}
                       style={{
-                        fontSize: "13px",
-                        color: "var(--text-muted)",
-                        padding: "6px 0 12px",
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "14px 16px",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        textAlign: "left",
                       }}
                     >
-                      {t("storefront_emptyCart")}
-                    </div>
-                  ) : (
-                    <>
-                      {cart.map((c) => (
-                        <div
-                          key={c.id}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            padding: "6px 0",
-                          }}
-                        >
-                          <div style={{ flex: 1, fontSize: "13px" }}>
-                            {c.name}
-                          </div>
-                          <button
-                            onClick={() => changeQty(c.id, -1)}
-                            style={iconBtnStyle}
-                          >
-                            <Minus size={12} />
-                          </button>
-                          <span
-                            style={{
-                              fontFamily: "var(--font-mono)",
-                              fontSize: "13px",
-                              minWidth: "18px",
-                              textAlign: "center",
-                            }}
-                          >
-                            {c.qty}
-                          </span>
-                          <button
-                            onClick={() => changeQty(c.id, 1)}
-                            style={iconBtnStyle}
-                          >
-                            <Plus size={12} />
-                          </button>
-                          <span
-                            style={{
-                              fontFamily: "var(--font-mono)",
-                              fontSize: "13px",
-                              width: "56px",
-                              textAlign: "right",
-                            }}
-                          >
-                            {fmt(c.price * c.qty)}
-                          </span>
-                          <button
-                            onClick={() => removeFromCart(c.id)}
-                            style={{ ...iconBtnStyle, color: "var(--danger)" }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      ))}
                       <div
                         style={{
                           display: "flex",
-                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "8px",
                           fontWeight: 700,
-                          fontSize: "15px",
-                          borderTop: "1px dashed var(--border)",
-                          margin: "8px 0",
-                          paddingTop: "8px",
+                          fontSize: "14px",
                         }}
                       >
-                        <span>{t("total")}</span>
-                        <span style={{ fontFamily: "var(--font-mono)" }}>
-                          {fmt(subtotal)}
-                        </span>
+                        <ShoppingCart size={16} color="var(--primary)" />
+                        {t("storefront_cartTitle")}{" "}
+                        {`(${cart.reduce((s, c) => s + c.qty, 0)})`}
                       </div>
-                      <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder={t("storefront_yourName")}
-                        style={{ ...fieldInput, marginBottom: "8px" }}
-                      />
-                      <input
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder={t("storefront_yourPhone")}
-                        style={{ ...fieldInput, marginBottom: "8px" }}
-                      />
-                      <input
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        placeholder={t("storefront_note")}
-                        style={{ ...fieldInput, marginBottom: "4px" }}
-                      />
-                      {formError && (
-                        <div
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                        }}
+                      >
+                        <span
                           style={{
-                            color: "var(--danger)",
-                            fontSize: "12.5px",
-                            fontWeight: 600,
-                            marginBottom: "8px",
+                            fontFamily: "var(--font-mono)",
+                            fontWeight: 700,
+                            fontSize: "15px",
                           }}
                         >
-                          {formError}
-                        </div>
-                      )}
-                      <button
-                        onClick={submitOrder}
-                        disabled={submitting}
+                          {fmt(subtotal)}
+                        </span>
+                        <ChevronDown
+                          size={17}
+                          style={{
+                            transform: cartExpanded ? "rotate(180deg)" : "none",
+                            transition: "transform .2s ease",
+                            color: "var(--text-muted)",
+                          }}
+                        />
+                      </div>
+                    </button>
+
+                    {cartExpanded && (
+                      <div
                         style={{
-                          ...primaryBtnStyle,
-                          width: "100%",
-                          justifyContent: "center",
-                          opacity: submitting ? 0.6 : 1,
+                          maxHeight: "60vh",
+                          overflowY: "auto",
+                          padding: "0 16px 16px",
                         }}
                       >
-                        {t("storefront_submit")}
-                      </button>
-                    </>
-                  )}
+                        {cart.map((c) => (
+                          <div
+                            key={c.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              padding: "6px 0",
+                            }}
+                          >
+                            <div style={{ flex: 1, fontSize: "13px" }}>
+                              {c.name}
+                            </div>
+                            <button
+                              onClick={() => changeQty(c.id, -1)}
+                              style={iconBtnStyle}
+                            >
+                              <Minus size={12} />
+                            </button>
+                            <span
+                              style={{
+                                fontFamily: "var(--font-mono)",
+                                fontSize: "13px",
+                                minWidth: "18px",
+                                textAlign: "center",
+                              }}
+                            >
+                              {c.qty}
+                            </span>
+                            <button
+                              onClick={() => changeQty(c.id, 1)}
+                              style={iconBtnStyle}
+                            >
+                              <Plus size={12} />
+                            </button>
+                            <span
+                              style={{
+                                fontFamily: "var(--font-mono)",
+                                fontSize: "13px",
+                                width: "56px",
+                                textAlign: "right",
+                              }}
+                            >
+                              {fmt(c.price * c.qty)}
+                            </span>
+                            <button
+                              onClick={() => removeFromCart(c.id)}
+                              style={{
+                                ...iconBtnStyle,
+                                color: "var(--danger)",
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            fontWeight: 700,
+                            fontSize: "15px",
+                            borderTop: "1px dashed var(--border)",
+                            margin: "8px 0",
+                            paddingTop: "8px",
+                          }}
+                        >
+                          <span>{t("total")}</span>
+                          <span style={{ fontFamily: "var(--font-mono)" }}>
+                            {fmt(subtotal)}
+                          </span>
+                        </div>
+                        <input
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder={t("storefront_yourName")}
+                          style={{ ...fieldInput, marginBottom: "8px" }}
+                        />
+                        <input
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder={t("storefront_yourPhone")}
+                          style={{ ...fieldInput, marginBottom: "8px" }}
+                        />
+                        <input
+                          value={note}
+                          onChange={(e) => setNote(e.target.value)}
+                          placeholder={t("storefront_note")}
+                          style={{ ...fieldInput, marginBottom: "4px" }}
+                        />
+                        {formError && (
+                          <div
+                            style={{
+                              color: "var(--danger)",
+                              fontSize: "12.5px",
+                              fontWeight: 600,
+                              marginBottom: "8px",
+                            }}
+                          >
+                            {formError}
+                          </div>
+                        )}
+                        <button
+                          onClick={submitOrder}
+                          disabled={submitting}
+                          style={{
+                            ...primaryBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            opacity: submitting ? 0.6 : 1,
+                          }}
+                        >
+                          {t("storefront_submit")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
