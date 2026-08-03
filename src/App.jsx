@@ -733,22 +733,22 @@ function POSApp() {
       return;
     }
     if (form.id) {
-      setUsers(
-        users.map((u) =>
-          u.id === form.id
-            ? {
-                ...u,
-                ...form,
-                password: form.password ? form.password : u.password,
-                updatedAt: Date.now(),
-              }
-            : u,
-        ),
-      );
+      const updated = {
+        ...users.find((u) => u.id === form.id),
+        ...form,
+        password: form.password
+          ? form.password
+          : users.find((u) => u.id === form.id).password,
+        updatedAt: Date.now(),
+      };
+      setUsers(users.map((u) => (u.id === form.id ? updated : u)));
       showToast(t("toast_userUpdated"));
+      pushUserRow(updated);
     } else {
-      setUsers([...users, { ...form, id: genId(), updatedAt: Date.now() }]);
+      const created = { ...form, id: genId(), updatedAt: Date.now() };
+      setUsers([...users, created]);
       showToast(t("toast_userAdded"));
+      pushUserRow(created);
     }
     setUserModal(null);
   };
@@ -768,6 +768,7 @@ function POSApp() {
     }
     setUsers(users.filter((u) => u.id !== id));
     showToast(t("toast_userDeleted"));
+    deleteUserRow(id);
   };
 
   // ---------- POS ----------
@@ -906,28 +907,29 @@ function POSApp() {
       customerName: customer ? customer.name : null,
     };
     setSales([sale, ...sales]);
-    setProducts(
-      products.map((p) => {
-        const item = cart.find((c) => c.id === p.id);
-        return item
-          ? { ...p, stock: p.stock - item.qty, updatedAt: Date.now() }
-          : p;
-      }),
-    );
+    const updatedProducts = products.map((p) => {
+      const item = cart.find((c) => c.id === p.id);
+      return item
+        ? { ...p, stock: p.stock - item.qty, updatedAt: Date.now() }
+        : p;
+    });
+    setProducts(updatedProducts);
+    cart.forEach((c) => {
+      const p = updatedProducts.find((x) => x.id === c.id);
+      if (p) pushProductRow(p);
+    });
     if (customer) {
+      const updatedCustomer = {
+        ...customer,
+        totalSpent: (customer.totalSpent || 0) + total,
+        visits: (customer.visits || 0) + 1,
+        points: (customer.points || 0) + Math.floor(total),
+        updatedAt: Date.now(),
+      };
       setCustomers(
-        customers.map((c) =>
-          c.id === customer.id
-            ? {
-                ...c,
-                totalSpent: (c.totalSpent || 0) + total,
-                visits: (c.visits || 0) + 1,
-                points: (c.points || 0) + Math.floor(total),
-                updatedAt: Date.now(),
-              }
-            : c,
-        ),
+        customers.map((c) => (c.id === customer.id ? updatedCustomer : c)),
       );
+      pushCustomerRow(updatedCustomer);
     }
     setReceipt(sale);
     clearSale();
@@ -950,32 +952,27 @@ function POSApp() {
       return;
     }
     if (form.id) {
-      setProducts(
-        products.map((p) =>
-          p.id === form.id
-            ? {
-                ...p,
-                ...form,
-                price: Number(form.price),
-                stock: Number(form.stock) || 0,
-                updatedAt: Date.now(),
-              }
-            : p,
-        ),
-      );
+      const updated = {
+        ...products.find((p) => p.id === form.id),
+        ...form,
+        price: Number(form.price),
+        stock: Number(form.stock) || 0,
+        updatedAt: Date.now(),
+      };
+      setProducts(products.map((p) => (p.id === form.id ? updated : p)));
       showToast(t("toast_productUpdated"));
+      pushProductRow(updated);
     } else {
-      setProducts([
-        ...products,
-        {
-          ...form,
-          id: genId(),
-          price: Number(form.price),
-          stock: Number(form.stock) || 0,
-          updatedAt: Date.now(),
-        },
-      ]);
+      const created = {
+        ...form,
+        id: genId(),
+        price: Number(form.price),
+        stock: Number(form.stock) || 0,
+        updatedAt: Date.now(),
+      };
+      setProducts([...products, created]);
       showToast(t("toast_productAdded"));
+      pushProductRow(created);
     }
     setProductModal(null);
   };
@@ -983,104 +980,100 @@ function POSApp() {
   const deleteProduct = (id) => {
     setProducts(products.filter((p) => p.id !== id));
     showToast(t("toast_productDeleted"));
+    deleteProductRow(id);
   };
 
   // ---------- Online ordering (Supabase) ----------
-  // "pending sync" flags: while a local edit is still being pushed to Supabase,
-  // any cloud read (poll / realtime) must NOT overwrite local state, or the
-  // edit you just made can appear to "disappear" (the cloud copy is still stale).
-  const productsSyncPending = useRef(false);
-  const usersSyncPending = useRef(false);
-  const customersSyncPending = useRef(false);
-  // set right before a setState that came FROM Supabase, so the push effect
-  // below knows to skip — otherwise fetch -> push -> realtime event -> fetch
-  // becomes an endless loop hammering Supabase every cycle.
-  const productsFromCloud = useRef(false);
-  const usersFromCloud = useRef(false);
-  const customersFromCloud = useRef(false);
-
-  // Push local products to Supabase (storefront + other devices read from here).
-  useEffect(() => {
-    if (loading || !supabase) return;
-    if (productsFromCloud.current) {
-      productsFromCloud.current = false;
-      return;
+  // Push only the ONE row that actually changed, right when it changed —
+  // no debounce, no full-table SELECT diff. This is far lighter than
+  // re-syncing the whole array on every keystroke-triggered state change,
+  // and (combined with the updatedAt-based merge above) still converges
+  // correctly across devices even if a push is briefly in flight.
+  const pushProductRow = async (p) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("products").upsert(
+        {
+          id: p.id,
+          name_km: p.name_km,
+          name_en: p.name_en || "",
+          category: p.category,
+          price: p.price,
+          stock: p.stock,
+          unit_km: p.unit_km || "",
+          unit_en: p.unit_en || "",
+          image: p.image || null,
+          updated_at: p.updatedAt || Date.now(),
+        },
+        { onConflict: "id" },
+      );
+    } catch {
+      /* offline — local copy still safe, will retry on next change */
     }
-    productsSyncPending.current = true;
-    const timer = setTimeout(async () => {
-      try {
-        const localIds = products.map((p) => p.id);
-        const { data: existing } = await supabase.from("products").select("id");
-        const staleIds = (existing || [])
-          .map((r) => r.id)
-          .filter((id) => !localIds.includes(id));
-        if (staleIds.length) {
-          await supabase.from("products").delete().in("id", staleIds);
-        }
-        if (products.length) {
-          await supabase.from("products").upsert(
-            products.map((p) => ({
-              id: p.id,
-              name_km: p.name_km,
-              name_en: p.name_en || "",
-              category: p.category,
-              price: p.price,
-              stock: p.stock,
-              unit_km: p.unit_km || "",
-              unit_en: p.unit_en || "",
-              image: p.image || null,
-              updated_at: p.updatedAt || 0,
-            })),
-            { onConflict: "id" },
-          );
-        }
-      } catch {
-        /* Supabase not reachable — ignore, local POS keeps working */
-      } finally {
-        productsSyncPending.current = false;
-      }
-    }, 900);
-    return () => clearTimeout(timer);
-  }, [products, loading]);
-
-  // Push local users (admin/staff accounts) to Supabase so every device shares the same accounts.
-  useEffect(() => {
-    if (loading || !supabase || !users.length) return;
-    if (usersFromCloud.current) {
-      usersFromCloud.current = false;
-      return;
+  };
+  const deleteProductRow = async (id) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("products").delete().eq("id", id);
+    } catch {
+      /* offline */
     }
-    usersSyncPending.current = true;
-    const timer = setTimeout(async () => {
-      try {
-        const localIds = users.map((u) => u.id);
-        const { data: existing } = await supabase.from("users").select("id");
-        const staleIds = (existing || [])
-          .map((r) => r.id)
-          .filter((id) => !localIds.includes(id));
-        if (staleIds.length) {
-          await supabase.from("users").delete().in("id", staleIds);
-        }
-        await supabase.from("users").upsert(
-          users.map((u) => ({
-            id: u.id,
-            username: u.username,
-            password: u.password,
-            name_km: u.name_km || "",
-            name_en: u.name_en || "",
-            role: u.role,
-            updated_at: u.updatedAt || 0,
-          })),
-          { onConflict: "id" },
-        );
-      } catch {
-        /* offline — local copy still safe */
-      } finally {
-        usersSyncPending.current = false;
-      }
-    }, 900);
-    return () => clearTimeout(timer);
-  }, [users, loading]);
+  };
+  const pushUserRow = async (u) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("users").upsert(
+        {
+          id: u.id,
+          username: u.username,
+          password: u.password,
+          name_km: u.name_km || "",
+          name_en: u.name_en || "",
+          role: u.role,
+          updated_at: u.updatedAt || Date.now(),
+        },
+        { onConflict: "id" },
+      );
+    } catch {
+      /* offline */
+    }
+  };
+  const deleteUserRow = async (id) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("users").delete().eq("id", id);
+    } catch {
+      /* offline */
+    }
+  };
+  const pushCustomerRow = async (c) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("customers").upsert(
+        {
+          id: c.id,
+          name: c.name,
+          phone: c.phone || "",
+          discount_percent: c.discount_percent || 0,
+          total_spent: c.totalSpent || 0,
+          visits: c.visits || 0,
+          points: c.points || 0,
+          updated_at: c.updatedAt || Date.now(),
+        },
+        { onConflict: "id" },
+      );
+    } catch {
+      /* offline */
+    }
+  };
+  const deleteCustomerRow = async (id) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("customers").delete().eq("id", id);
+    } catch {
+      /* offline */
+    }
+  };
 
   const [onlineOrders, setOnlineOrders] = useState([]);
   const pendingOrderCount = onlineOrders.filter(
@@ -1112,7 +1105,7 @@ function POSApp() {
     return Array.from(map.values());
   };
 
-  // ---- Push local sales/customers to Supabase so other devices (e.g. your phone) see them ----
+  // ---- Push local sales to Supabase so other devices (e.g. your phone) see them ----
   useEffect(() => {
     if (loading || !supabase || !sales.length) return;
     const timer = setTimeout(async () => {
@@ -1138,49 +1131,6 @@ function POSApp() {
     return () => clearTimeout(timer);
   }, [sales, loading]);
 
-  useEffect(() => {
-    if (loading || !supabase) return;
-    if (customersFromCloud.current) {
-      customersFromCloud.current = false;
-      return;
-    }
-    customersSyncPending.current = true;
-    const timer = setTimeout(async () => {
-      try {
-        const localIds = customers.map((c) => c.id);
-        const { data: existing } = await supabase
-          .from("customers")
-          .select("id");
-        const staleIds = (existing || [])
-          .map((r) => r.id)
-          .filter((id) => !localIds.includes(id));
-        if (staleIds.length) {
-          await supabase.from("customers").delete().in("id", staleIds);
-        }
-        if (customers.length) {
-          await supabase.from("customers").upsert(
-            customers.map((c) => ({
-              id: c.id,
-              name: c.name,
-              phone: c.phone || "",
-              discount_percent: c.discount_percent || 0,
-              total_spent: c.totalSpent || 0,
-              visits: c.visits || 0,
-              points: c.points || 0,
-              updated_at: c.updatedAt || 0,
-            })),
-            { onConflict: "id" },
-          );
-        }
-      } catch {
-        /* offline — local copy still safe */
-      } finally {
-        customersSyncPending.current = false;
-      }
-    }, 900);
-    return () => clearTimeout(timer);
-  }, [customers, loading]);
-
   // ---- Pull sales/customers from Supabase so this device picks up what other devices recorded ----
   const fetchCloudSales = async () => {
     if (!supabase) return;
@@ -1205,7 +1155,7 @@ function POSApp() {
   };
 
   const fetchCloudCustomers = async () => {
-    if (!supabase || customersSyncPending.current) return;
+    if (!supabase) return;
     try {
       const { data, error } = await supabase.from("customers").select("*");
       if (error) throw error;
@@ -1219,10 +1169,7 @@ function POSApp() {
         points: r.points || 0,
         updatedAt: r.updated_at || 0,
       }));
-      setCustomers((prev) => {
-        customersFromCloud.current = true;
-        return mergeById(prev, mapped);
-      });
+      setCustomers((prev) => mergeById(prev, mapped));
     } catch {
       /* ignore, local cache still works */
     }
@@ -1230,7 +1177,7 @@ function POSApp() {
 
   // ---- Pull products/users from Supabase so every device shares the same catalog + accounts ----
   const fetchCloudProducts = async () => {
-    if (!supabase || productsSyncPending.current) return;
+    if (!supabase) return;
     try {
       const { data, error } = await supabase.from("products").select("*");
       if (error) throw error;
@@ -1247,10 +1194,7 @@ function POSApp() {
           image: r.image || null,
           updatedAt: r.updated_at || 0,
         }));
-        setProducts((prev) => {
-          productsFromCloud.current = true;
-          return mergeById(prev, mapped);
-        });
+        setProducts((prev) => mergeById(prev, mapped));
       }
     } catch {
       /* ignore, local cache still works */
@@ -1258,7 +1202,7 @@ function POSApp() {
   };
 
   const fetchCloudUsers = async () => {
-    if (!supabase || usersSyncPending.current) return;
+    if (!supabase) return;
     try {
       const { data, error } = await supabase.from("users").select("*");
       if (error) throw error;
@@ -1272,10 +1216,7 @@ function POSApp() {
           role: r.role,
           updatedAt: r.updated_at || 0,
         }));
-        setUsers((prev) => {
-          usersFromCloud.current = true;
-          return mergeById(prev, mapped);
-        });
+        setUsers((prev) => mergeById(prev, mapped));
       }
     } catch {
       /* ignore, local cache still works */
@@ -1479,31 +1420,33 @@ function POSApp() {
       ),
     };
     if (clean.id) {
-      setCustomers(
-        customers.map((c) =>
-          c.id === clean.id ? { ...c, ...clean, updatedAt: Date.now() } : c,
-        ),
-      );
+      const updated = {
+        ...customers.find((c) => c.id === clean.id),
+        ...clean,
+        updatedAt: Date.now(),
+      };
+      setCustomers(customers.map((c) => (c.id === clean.id ? updated : c)));
       showToast(t("toast_customerUpdated"));
+      pushCustomerRow(updated);
     } else {
-      setCustomers([
-        ...customers,
-        {
-          ...clean,
-          id: genId(),
-          totalSpent: 0,
-          visits: 0,
-          points: 0,
-          updatedAt: Date.now(),
-        },
-      ]);
+      const created = {
+        ...clean,
+        id: genId(),
+        totalSpent: 0,
+        visits: 0,
+        points: 0,
+        updatedAt: Date.now(),
+      };
+      setCustomers([...customers, created]);
       showToast(t("toast_customerAdded"));
+      pushCustomerRow(created);
     }
     setCustomerModal(null);
   };
   const deleteCustomer = (id) => {
     setCustomers(customers.filter((c) => c.id !== id));
     showToast(t("toast_customerDeleted"));
+    deleteCustomerRow(id);
   };
 
   // ---------- Reports ----------
