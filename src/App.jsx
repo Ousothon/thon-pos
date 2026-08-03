@@ -1087,20 +1087,34 @@ function POSApp() {
   // (compares updatedAt), so two devices editing the same item converge on the
   // real latest change instead of one device's edits always winning.
   // Rows without updatedAt (e.g. old local data, sales) are treated as local wins.
+  // A local row missing from the cloud fetch is either (a) brand new and not
+  // synced yet, or (b) deleted on another device — if it's older than 20s
+  // (well past a normal sync round-trip) we assume (b) and drop it locally too.
   const mergeById = (local, remote) => {
     const map = new Map();
     remote.forEach((item) => map.set(item.id, item));
     local.forEach((item) => {
       const existing = map.get(item.id);
-      if (
-        existing &&
-        typeof existing.updatedAt === "number" &&
-        typeof item.updatedAt === "number" &&
-        existing.updatedAt > item.updatedAt
-      ) {
-        return; // remote copy is newer — keep it
+      if (existing) {
+        if (
+          typeof existing.updatedAt === "number" &&
+          typeof item.updatedAt === "number" &&
+          existing.updatedAt > item.updatedAt
+        ) {
+          return; // remote copy is newer — keep it
+        }
+        map.set(item.id, item);
+        return;
       }
-      map.set(item.id, item);
+      if (typeof item.updatedAt !== "number") {
+        map.set(item.id, item); // no timestamp (e.g. sales) — always keep local-only rows
+        return;
+      }
+      const age = Date.now() - item.updatedAt;
+      if (age < 20000) {
+        map.set(item.id, item); // probably just created, not synced yet — keep
+      }
+      // else: assume deleted on another device, drop it
     });
     return Array.from(map.values());
   };
