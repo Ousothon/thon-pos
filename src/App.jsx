@@ -44,6 +44,9 @@ import {
   Clock3,
   XCircle,
   QrCode,
+  Menu,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -232,6 +235,8 @@ const STRINGS = {
   tagline: { km: "ប្រព័ន្ធគ្រប់គ្រងលក់", en: "Sales management system" },
   todaySales: { km: "ថ្ងៃនេះលក់បាន", en: "Today's sales" },
   loading: { km: "កំពុងផ្ទុកទិន្នន័យ...", en: "Loading data..." },
+  darkMode: { km: "ម៉ូតងងឹត", en: "Dark mode" },
+  lightMode: { km: "ម៉ូតភ្លឺ", en: "Light mode" },
 
   nav_pos: { km: "លក់ទំនិញ", en: "Checkout" },
   nav_dashboard: { km: "ទិដ្ឋភាពទូទៅ", en: "Dashboard" },
@@ -599,6 +604,18 @@ function POSApp() {
   const [reportRange, setReportRange] = useState("today");
   const [expandedSale, setExpandedSale] = useState(null);
   const [editingShopName, setEditingShopName] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("shop-theme") || "light",
+  );
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem("shop-theme", theme);
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
 
   const t = (key, vars) => {
     const entry = STRINGS[key];
@@ -1578,6 +1595,8 @@ function POSApp() {
           onLogin={login}
           error={loginError}
           clearError={() => setLoginError("")}
+          theme={theme}
+          setTheme={setTheme}
         />
       </LangContext.Provider>
     );
@@ -1598,7 +1617,22 @@ function POSApp() {
       >
         <FontStyles />
 
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
+        </button>
+        {mobileNavOpen && (
+          <div
+            className="sidebar-backdrop"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
+
         <div
+          className={"app-sidebar" + (mobileNavOpen ? " open" : "")}
           style={{
             width: "220px",
             flexShrink: 0,
@@ -1673,7 +1707,11 @@ function POSApp() {
               return (
                 <button
                   key={n.id}
-                  onClick={() => setActiveTab(n.id)}
+                  className={"nav-item" + (active ? " active" : "")}
+                  onClick={() => {
+                    setActiveTab(n.id);
+                    setMobileNavOpen(false);
+                  }}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -1733,11 +1771,11 @@ function POSApp() {
           </nav>
 
           <div style={{ marginTop: "auto" }}>
-            <div style={{ padding: "10px 14px" }}>
+            <div style={{ padding: "10px 14px", display: "flex", gap: "7px" }}>
               <button
                 onClick={() => setLang(lang === "km" ? "en" : "km")}
                 style={{
-                  width: "100%",
+                  flex: 1,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -1753,6 +1791,13 @@ function POSApp() {
                 }}
               >
                 <Globe size={15} /> {lang === "km" ? "English" : "ភាសាខ្មែរ"}
+              </button>
+              <button
+                className="theme-toggle-btn"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                title={theme === "dark" ? t("lightMode") : t("darkMode")}
+              >
+                {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
               </button>
             </div>
             <div
@@ -1831,6 +1876,7 @@ function POSApp() {
         </div>
 
         <div
+          className="app-main"
           style={{
             flex: 1,
             minWidth: 0,
@@ -2000,12 +2046,110 @@ function FontStyles() {
         --font-body: 'Noto Sans Khmer', 'Inter', sans-serif;
         --font-mono: 'JetBrains Mono', monospace;
       }
+      [data-theme="dark"] {
+        --bg: #14201C; --surface: #1B2723; --surface-alt: #24322D; --border: #35443D;
+        --text: #EDF1EE; --text-muted: #93A29A; --primary: #35B695; --primary-dark: #2A9179;
+        --accent: #E9B45C; --danger: #E06B62;
+      }
+      [data-theme="dark"] img { filter: brightness(.92); }
+      body { background: var(--bg); transition: background .2s ease, color .2s ease; }
+      * { transition: background-color .18s ease, border-color .18s ease, color .18s ease; }
       * { box-sizing: border-box; }
       input, select { font-family: var(--font-body); outline: none; }
       input:focus, select:focus { border-color: var(--primary) !important; }
       ::-webkit-scrollbar { width: 9px; height: 9px; }
       ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
-      button { font-family: var(--font-body); }
+      button { font-family: var(--font-body); color: inherit; }
+
+      /* ---- Universal button hover/press feedback ---- */
+      button {
+        transition: filter .15s ease, transform .1s ease, opacity .15s ease, box-shadow .15s ease;
+      }
+      button:hover:not(:disabled) {
+        filter: brightness(1.08);
+      }
+      button:active:not(:disabled) {
+        transform: scale(0.97);
+        filter: brightness(0.94);
+      }
+      button:disabled {
+        cursor: not-allowed;
+      }
+      a, .clickable { transition: filter .15s ease, opacity .15s ease; }
+
+      .nav-item {
+        transition: background-color .15s ease, color .15s ease !important;
+      }
+      .nav-item:hover:not(.active) {
+        background: var(--surface-alt) !important;
+      }
+      .nav-item:hover, .nav-item:active {
+        filter: none !important;
+        transform: none !important;
+      }
+      .theme-toggle-btn {
+        display: flex; align-items: center; justify-content: center;
+        width: 38px; height: 38px; border-radius: 8px;
+        border: 1px solid var(--border); background: var(--surface-alt);
+        color: var(--text); cursor: pointer; flex-shrink: 0;
+      }
+
+      /* ---- Mobile hamburger + sidebar drawer (hidden on desktop) ---- */
+      .mobile-menu-btn {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 9px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        cursor: pointer;
+      }
+      .sidebar-backdrop { display: none; }
+
+      @media (max-width: 900px) {
+        .mobile-menu-btn {
+          display: flex;
+          position: fixed;
+          top: 12px;
+          left: 12px;
+          z-index: 45;
+          box-shadow: 0 4px 14px rgba(0,0,0,.12);
+        }
+        .app-sidebar {
+          position: fixed !important;
+          top: 0;
+          left: 0;
+          height: 100vh;
+          z-index: 44;
+          transform: translateX(-100%);
+          transition: transform .25s ease;
+          box-shadow: 10px 0 30px rgba(0,0,0,.18);
+        }
+        .app-sidebar.open { transform: translateX(0); }
+        .sidebar-backdrop {
+          display: block;
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 25, 22, .4);
+          z-index: 42;
+        }
+        .app-main { padding-top: 54px; }
+
+        .pos-layout { flex-direction: column; overflow-y: auto; }
+        .pos-products { border-right: none !important; border-bottom: 1px solid var(--border); }
+        .pos-invoice { width: 100% !important; }
+
+        .responsive-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+        .responsive-grid-2 { grid-template-columns: 1fr !important; }
+      }
+
+      @media (max-width: 520px) {
+        .responsive-grid-4 { grid-template-columns: 1fr !important; }
+      }
+
       @media print {
         body * { visibility: hidden; }
         #receipt-print-area, #receipt-print-area * { visibility: visible; }
@@ -2016,7 +2160,16 @@ function FontStyles() {
   );
 }
 
-function LoginScreen({ shopName, lang, setLang, onLogin, error, clearError }) {
+function LoginScreen({
+  shopName,
+  lang,
+  setLang,
+  onLogin,
+  error,
+  clearError,
+  theme,
+  setTheme,
+}) {
   const { t } = useT();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -2041,27 +2194,41 @@ function LoginScreen({ shopName, lang, setLang, onLogin, error, clearError }) {
       }}
     >
       <FontStyles />
-      <button
-        onClick={() => setLang(lang === "km" ? "en" : "km")}
+      <div
         style={{
           position: "absolute",
           top: "20px",
           right: "20px",
           display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          padding: "8px 12px",
-          borderRadius: "8px",
-          border: "1px solid var(--border)",
-          background: "var(--surface)",
-          cursor: "pointer",
-          fontSize: "12.5px",
-          fontWeight: 700,
-          color: "var(--text)",
+          gap: "8px",
         }}
       >
-        <Globe size={14} /> {lang === "km" ? "English" : "ភាសាខ្មែរ"}
-      </button>
+        <button
+          onClick={() => setLang(lang === "km" ? "en" : "km")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "8px 12px",
+            borderRadius: "8px",
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            cursor: "pointer",
+            fontSize: "12.5px",
+            fontWeight: 700,
+            color: "var(--text)",
+          }}
+        >
+          <Globe size={14} /> {lang === "km" ? "English" : "ភាសាខ្មែរ"}
+        </button>
+        <button
+          className="theme-toggle-btn"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          title={theme === "dark" ? t("lightMode") : t("darkMode")}
+        >
+          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+        </button>
+      </div>
       <form
         onSubmit={submit}
         style={{
@@ -2401,8 +2568,12 @@ function POSTab(props) {
   } = props;
 
   return (
-    <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+    <div
+      className="pos-layout"
+      style={{ flex: 1, display: "flex", minHeight: 0 }}
+    >
       <div
+        className="pos-products"
         style={{
           flex: 1.4,
           display: "flex",
@@ -2464,7 +2635,7 @@ function POSTab(props) {
             overflowY: "auto",
             padding: "16px 22px",
             display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
+            gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
             gap: "12px",
             alignContent: "start",
           }}
@@ -2578,6 +2749,7 @@ function POSTab(props) {
       </div>
 
       <div
+        className="pos-invoice"
         style={{
           width: "340px",
           flexShrink: 0,
@@ -2949,6 +3121,7 @@ function DashboardTab({
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar title={t("dash_title")} subtitle={t("dash_subtitle")} />
       <div
+        className="responsive-grid-4"
         style={{
           padding: "20px 26px",
           display: "grid",
@@ -2975,6 +3148,7 @@ function DashboardTab({
       </div>
 
       <div
+        className="responsive-grid-2"
         style={{
           padding: "4px 26px 26px",
           display: "grid",
@@ -3245,10 +3419,11 @@ function InventoryTab({
         </select>
       </div>
 
-      <div style={{ padding: "16px 26px 26px" }}>
+      <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
         <table
           style={{
             width: "100%",
+            minWidth: "560px",
             borderCollapse: "collapse",
             fontSize: "14px",
           }}
@@ -3494,6 +3669,7 @@ function ReportsTab({
         }
       />
       <div
+        className="responsive-grid-4"
         style={{
           padding: "20px 26px 0",
           display: "grid",
@@ -3549,6 +3725,7 @@ function ReportsTab({
       </div>
 
       <div
+        className="responsive-grid-2"
         style={{
           padding: "16px 26px",
           display: "grid",
@@ -3783,7 +3960,7 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
         style={{
           padding: "18px 26px",
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
           gap: "14px",
         }}
       >
@@ -4347,10 +4524,11 @@ function UsersTab({ users, currentUser, openAdd, openEdit, deleteUser }) {
           </button>
         }
       />
-      <div style={{ padding: "16px 26px 26px" }}>
+      <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
         <table
           style={{
             width: "100%",
+            minWidth: "560px",
             borderCollapse: "collapse",
             fontSize: "14px",
           }}
@@ -5038,6 +5216,17 @@ function ReceiptModal({ sale, shopName, onClose }) {
 
 function StorefrontApp() {
   const [lang, setLang] = useState("km");
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("shop-theme") || "light",
+  );
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem("shop-theme", theme);
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
   const t = (key, vars) => {
     let str = (STRINGS[key] && STRINGS[key][lang]) || key;
     if (vars)
@@ -5193,24 +5382,33 @@ function StorefrontApp() {
                 {t("storefront_title")}
               </div>
             </div>
-            <button
-              onClick={() => setLang(lang === "km" ? "en" : "km")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "7px 11px",
-                borderRadius: "8px",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                cursor: "pointer",
-                fontSize: "12.5px",
-                fontWeight: 700,
-                color: "var(--text)",
-              }}
-            >
-              <Globe size={14} /> {lang === "km" ? "English" : "ភាសាខ្មែរ"}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                onClick={() => setLang(lang === "km" ? "en" : "km")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "7px 11px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  cursor: "pointer",
+                  fontSize: "12.5px",
+                  fontWeight: 700,
+                  color: "var(--text)",
+                }}
+              >
+                <Globe size={14} /> {lang === "km" ? "English" : "ភាសាខ្មែរ"}
+              </button>
+              <button
+                className="theme-toggle-btn"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                title={theme === "dark" ? t("lightMode") : t("darkMode")}
+              >
+                {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+              </button>
+            </div>
           </div>
 
           {status === "unconfigured" && (
