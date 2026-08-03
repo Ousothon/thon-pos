@@ -740,13 +740,14 @@ function POSApp() {
                 ...u,
                 ...form,
                 password: form.password ? form.password : u.password,
+                updatedAt: Date.now(),
               }
             : u,
         ),
       );
       showToast(t("toast_userUpdated"));
     } else {
-      setUsers([...users, { ...form, id: genId() }]);
+      setUsers([...users, { ...form, id: genId(), updatedAt: Date.now() }]);
       showToast(t("toast_userAdded"));
     }
     setUserModal(null);
@@ -908,7 +909,9 @@ function POSApp() {
     setProducts(
       products.map((p) => {
         const item = cart.find((c) => c.id === p.id);
-        return item ? { ...p, stock: p.stock - item.qty } : p;
+        return item
+          ? { ...p, stock: p.stock - item.qty, updatedAt: Date.now() }
+          : p;
       }),
     );
     if (customer) {
@@ -920,6 +923,7 @@ function POSApp() {
                 totalSpent: (c.totalSpent || 0) + total,
                 visits: (c.visits || 0) + 1,
                 points: (c.points || 0) + Math.floor(total),
+                updatedAt: Date.now(),
               }
             : c,
         ),
@@ -954,6 +958,7 @@ function POSApp() {
                 ...form,
                 price: Number(form.price),
                 stock: Number(form.stock) || 0,
+                updatedAt: Date.now(),
               }
             : p,
         ),
@@ -967,6 +972,7 @@ function POSApp() {
           id: genId(),
           price: Number(form.price),
           stock: Number(form.stock) || 0,
+          updatedAt: Date.now(),
         },
       ]);
       showToast(t("toast_productAdded"));
@@ -1023,6 +1029,7 @@ function POSApp() {
               unit_km: p.unit_km || "",
               unit_en: p.unit_en || "",
               image: p.image || null,
+              updated_at: p.updatedAt || 0,
             })),
             { onConflict: "id" },
           );
@@ -1062,6 +1069,7 @@ function POSApp() {
             name_km: u.name_km || "",
             name_en: u.name_en || "",
             role: u.role,
+            updated_at: u.updatedAt || 0,
           })),
           { onConflict: "id" },
         );
@@ -1082,12 +1090,25 @@ function POSApp() {
     supabase ? "connecting" : "off",
   );
 
-  // merge helper: LOCAL copy wins on id conflicts (so a local edit is never
-  // silently reverted by a stale/failed cloud sync), remote-only rows are added in.
+  // merge helper: whichever copy was edited MORE RECENTLY wins on id conflicts
+  // (compares updatedAt), so two devices editing the same item converge on the
+  // real latest change instead of one device's edits always winning.
+  // Rows without updatedAt (e.g. old local data, sales) are treated as local wins.
   const mergeById = (local, remote) => {
     const map = new Map();
     remote.forEach((item) => map.set(item.id, item));
-    local.forEach((item) => map.set(item.id, item));
+    local.forEach((item) => {
+      const existing = map.get(item.id);
+      if (
+        existing &&
+        typeof existing.updatedAt === "number" &&
+        typeof item.updatedAt === "number" &&
+        existing.updatedAt > item.updatedAt
+      ) {
+        return; // remote copy is newer — keep it
+      }
+      map.set(item.id, item);
+    });
     return Array.from(map.values());
   };
 
@@ -1146,6 +1167,7 @@ function POSApp() {
               total_spent: c.totalSpent || 0,
               visits: c.visits || 0,
               points: c.points || 0,
+              updated_at: c.updatedAt || 0,
             })),
             { onConflict: "id" },
           );
@@ -1195,6 +1217,7 @@ function POSApp() {
         totalSpent: r.total_spent || 0,
         visits: r.visits || 0,
         points: r.points || 0,
+        updatedAt: r.updated_at || 0,
       }));
       setCustomers((prev) => {
         customersFromCloud.current = true;
@@ -1222,6 +1245,7 @@ function POSApp() {
           unit_km: r.unit_km || "",
           unit_en: r.unit_en || "",
           image: r.image || null,
+          updatedAt: r.updated_at || 0,
         }));
         setProducts((prev) => {
           productsFromCloud.current = true;
@@ -1246,6 +1270,7 @@ function POSApp() {
           name_km: r.name_km || "",
           name_en: r.name_en || "",
           role: r.role,
+          updatedAt: r.updated_at || 0,
         }));
         setUsers((prev) => {
           usersFromCloud.current = true;
@@ -1455,13 +1480,22 @@ function POSApp() {
     };
     if (clean.id) {
       setCustomers(
-        customers.map((c) => (c.id === clean.id ? { ...c, ...clean } : c)),
+        customers.map((c) =>
+          c.id === clean.id ? { ...c, ...clean, updatedAt: Date.now() } : c,
+        ),
       );
       showToast(t("toast_customerUpdated"));
     } else {
       setCustomers([
         ...customers,
-        { ...clean, id: genId(), totalSpent: 0, visits: 0, points: 0 },
+        {
+          ...clean,
+          id: genId(),
+          totalSpent: 0,
+          visits: 0,
+          points: 0,
+          updatedAt: Date.now(),
+        },
       ]);
       showToast(t("toast_customerAdded"));
     }
