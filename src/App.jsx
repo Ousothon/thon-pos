@@ -986,10 +986,20 @@ function POSApp() {
   const productsSyncPending = useRef(false);
   const usersSyncPending = useRef(false);
   const customersSyncPending = useRef(false);
+  // set right before a setState that came FROM Supabase, so the push effect
+  // below knows to skip — otherwise fetch -> push -> realtime event -> fetch
+  // becomes an endless loop hammering Supabase every cycle.
+  const productsFromCloud = useRef(false);
+  const usersFromCloud = useRef(false);
+  const customersFromCloud = useRef(false);
 
   // Push local products to Supabase (storefront + other devices read from here).
   useEffect(() => {
     if (loading || !supabase) return;
+    if (productsFromCloud.current) {
+      productsFromCloud.current = false;
+      return;
+    }
     productsSyncPending.current = true;
     const timer = setTimeout(async () => {
       try {
@@ -1029,6 +1039,10 @@ function POSApp() {
   // Push local users (admin/staff accounts) to Supabase so every device shares the same accounts.
   useEffect(() => {
     if (loading || !supabase || !users.length) return;
+    if (usersFromCloud.current) {
+      usersFromCloud.current = false;
+      return;
+    }
     usersSyncPending.current = true;
     const timer = setTimeout(async () => {
       try {
@@ -1068,11 +1082,12 @@ function POSApp() {
     supabase ? "connecting" : "off",
   );
 
-  // merge helper: cloud copy wins on id conflicts, but keeps any local-only (not-yet-synced) rows
+  // merge helper: LOCAL copy wins on id conflicts (so a local edit is never
+  // silently reverted by a stale/failed cloud sync), remote-only rows are added in.
   const mergeById = (local, remote) => {
     const map = new Map();
-    local.forEach((item) => map.set(item.id, item));
     remote.forEach((item) => map.set(item.id, item));
+    local.forEach((item) => map.set(item.id, item));
     return Array.from(map.values());
   };
 
@@ -1104,6 +1119,10 @@ function POSApp() {
 
   useEffect(() => {
     if (loading || !supabase) return;
+    if (customersFromCloud.current) {
+      customersFromCloud.current = false;
+      return;
+    }
     customersSyncPending.current = true;
     const timer = setTimeout(async () => {
       try {
@@ -1177,7 +1196,10 @@ function POSApp() {
         visits: r.visits || 0,
         points: r.points || 0,
       }));
-      setCustomers((prev) => mergeById(prev, mapped));
+      setCustomers((prev) => {
+        customersFromCloud.current = true;
+        return mergeById(prev, mapped);
+      });
     } catch {
       /* ignore, local cache still works */
     }
@@ -1201,7 +1223,10 @@ function POSApp() {
           unit_en: r.unit_en || "",
           image: r.image || null,
         }));
-        setProducts((prev) => mergeById(prev, mapped));
+        setProducts((prev) => {
+          productsFromCloud.current = true;
+          return mergeById(prev, mapped);
+        });
       }
     } catch {
       /* ignore, local cache still works */
@@ -1222,7 +1247,10 @@ function POSApp() {
           name_en: r.name_en || "",
           role: r.role,
         }));
-        setUsers((prev) => mergeById(prev, mapped));
+        setUsers((prev) => {
+          usersFromCloud.current = true;
+          return mergeById(prev, mapped);
+        });
       }
     } catch {
       /* ignore, local cache still works */
