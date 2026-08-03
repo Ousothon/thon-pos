@@ -1096,11 +1096,14 @@ function POSApp() {
     local.forEach((item) => {
       const existing = map.get(item.id);
       if (existing) {
-        if (
-          typeof existing.updatedAt === "number" &&
-          typeof item.updatedAt === "number" &&
-          existing.updatedAt > item.updatedAt
-        ) {
+        // Treat a missing timestamp as the oldest possible value (0) instead of
+        // an automatic local win — otherwise legacy/local-only rows (e.g. seed
+        // products with no updatedAt) would always overwrite newer remote data.
+        const localTime =
+          typeof item.updatedAt === "number" ? item.updatedAt : 0;
+        const remoteTime =
+          typeof existing.updatedAt === "number" ? existing.updatedAt : 0;
+        if (remoteTime > localTime) {
           return; // remote copy is newer — keep it
         }
         map.set(item.id, item);
