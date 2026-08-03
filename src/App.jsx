@@ -980,14 +980,29 @@ function POSApp() {
   };
 
   // ---------- Online ordering (Supabase) ----------
+  // "pending sync" flags: while a local edit is still being pushed to Supabase,
+  // any cloud read (poll / realtime) must NOT overwrite local state, or the
+  // edit you just made can appear to "disappear" (the cloud copy is still stale).
+  const productsSyncPending = useRef(false);
+  const usersSyncPending = useRef(false);
+  const customersSyncPending = useRef(false);
+
   // Push local products to Supabase (storefront + other devices read from here).
   useEffect(() => {
     if (loading || !supabase) return;
+    productsSyncPending.current = true;
     const timer = setTimeout(async () => {
       try {
-        await supabase.from("products").delete().neq("id", "__none__");
+        const localIds = products.map((p) => p.id);
+        const { data: existing } = await supabase.from("products").select("id");
+        const staleIds = (existing || [])
+          .map((r) => r.id)
+          .filter((id) => !localIds.includes(id));
+        if (staleIds.length) {
+          await supabase.from("products").delete().in("id", staleIds);
+        }
         if (products.length) {
-          await supabase.from("products").insert(
+          await supabase.from("products").upsert(
             products.map((p) => ({
               id: p.id,
               name_km: p.name_km,
@@ -999,10 +1014,13 @@ function POSApp() {
               unit_en: p.unit_en || "",
               image: p.image || null,
             })),
+            { onConflict: "id" },
           );
         }
       } catch {
         /* Supabase not reachable — ignore, local POS keeps working */
+      } finally {
+        productsSyncPending.current = false;
       }
     }, 900);
     return () => clearTimeout(timer);
@@ -1011,10 +1029,18 @@ function POSApp() {
   // Push local users (admin/staff accounts) to Supabase so every device shares the same accounts.
   useEffect(() => {
     if (loading || !supabase || !users.length) return;
+    usersSyncPending.current = true;
     const timer = setTimeout(async () => {
       try {
-        await supabase.from("users").delete().neq("id", "__none__");
-        await supabase.from("users").insert(
+        const localIds = users.map((u) => u.id);
+        const { data: existing } = await supabase.from("users").select("id");
+        const staleIds = (existing || [])
+          .map((r) => r.id)
+          .filter((id) => !localIds.includes(id));
+        if (staleIds.length) {
+          await supabase.from("users").delete().in("id", staleIds);
+        }
+        await supabase.from("users").upsert(
           users.map((u) => ({
             id: u.id,
             username: u.username,
@@ -1023,9 +1049,12 @@ function POSApp() {
             name_en: u.name_en || "",
             role: u.role,
           })),
+          { onConflict: "id" },
         );
       } catch {
         /* offline — local copy still safe */
+      } finally {
+        usersSyncPending.current = false;
       }
     }, 900);
     return () => clearTimeout(timer);
@@ -1075,11 +1104,21 @@ function POSApp() {
 
   useEffect(() => {
     if (loading || !supabase) return;
+    customersSyncPending.current = true;
     const timer = setTimeout(async () => {
       try {
-        await supabase.from("customers").delete().neq("id", "__none__");
+        const localIds = customers.map((c) => c.id);
+        const { data: existing } = await supabase
+          .from("customers")
+          .select("id");
+        const staleIds = (existing || [])
+          .map((r) => r.id)
+          .filter((id) => !localIds.includes(id));
+        if (staleIds.length) {
+          await supabase.from("customers").delete().in("id", staleIds);
+        }
         if (customers.length) {
-          await supabase.from("customers").insert(
+          await supabase.from("customers").upsert(
             customers.map((c) => ({
               id: c.id,
               name: c.name,
@@ -1089,10 +1128,13 @@ function POSApp() {
               visits: c.visits || 0,
               points: c.points || 0,
             })),
+            { onConflict: "id" },
           );
         }
       } catch {
         /* offline — local copy still safe */
+      } finally {
+        customersSyncPending.current = false;
       }
     }, 900);
     return () => clearTimeout(timer);
@@ -1122,7 +1164,7 @@ function POSApp() {
   };
 
   const fetchCloudCustomers = async () => {
-    if (!supabase) return;
+    if (!supabase || customersSyncPending.current) return;
     try {
       const { data, error } = await supabase.from("customers").select("*");
       if (error) throw error;
@@ -1135,7 +1177,7 @@ function POSApp() {
         visits: r.visits || 0,
         points: r.points || 0,
       }));
-      setCustomers(mapped);
+      setCustomers((prev) => mergeById(prev, mapped));
     } catch {
       /* ignore, local cache still works */
     }
@@ -1143,24 +1185,23 @@ function POSApp() {
 
   // ---- Pull products/users from Supabase so every device shares the same catalog + accounts ----
   const fetchCloudProducts = async () => {
-    if (!supabase) return;
+    if (!supabase || productsSyncPending.current) return;
     try {
       const { data, error } = await supabase.from("products").select("*");
       if (error) throw error;
       if (data && data.length) {
-        setProducts(
-          data.map((r) => ({
-            id: r.id,
-            name_km: r.name_km,
-            name_en: r.name_en || "",
-            category: r.category,
-            price: r.price,
-            stock: r.stock,
-            unit_km: r.unit_km || "",
-            unit_en: r.unit_en || "",
-            image: r.image || null,
-          })),
-        );
+        const mapped = data.map((r) => ({
+          id: r.id,
+          name_km: r.name_km,
+          name_en: r.name_en || "",
+          category: r.category,
+          price: r.price,
+          stock: r.stock,
+          unit_km: r.unit_km || "",
+          unit_en: r.unit_en || "",
+          image: r.image || null,
+        }));
+        setProducts((prev) => mergeById(prev, mapped));
       }
     } catch {
       /* ignore, local cache still works */
@@ -1168,21 +1209,20 @@ function POSApp() {
   };
 
   const fetchCloudUsers = async () => {
-    if (!supabase) return;
+    if (!supabase || usersSyncPending.current) return;
     try {
       const { data, error } = await supabase.from("users").select("*");
       if (error) throw error;
       if (data && data.length) {
-        setUsers(
-          data.map((r) => ({
-            id: r.id,
-            username: r.username,
-            password: r.password,
-            name_km: r.name_km || "",
-            name_en: r.name_en || "",
-            role: r.role,
-          })),
-        );
+        const mapped = data.map((r) => ({
+          id: r.id,
+          username: r.username,
+          password: r.password,
+          name_km: r.name_km || "",
+          name_en: r.name_en || "",
+          role: r.role,
+        }));
+        setUsers((prev) => mergeById(prev, mapped));
       }
     } catch {
       /* ignore, local cache still works */
