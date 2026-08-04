@@ -1128,7 +1128,8 @@ function POSApp() {
         // Treat a missing timestamp as the oldest possible value (0) instead of
         // an automatic local win — otherwise legacy/local-only rows (e.g. seed
         // products with no updatedAt) would always overwrite newer remote data.
-        const localTime = typeof item.updatedAt === "number" ? item.updatedAt : 0;
+        const localTime =
+          typeof item.updatedAt === "number" ? item.updatedAt : 0;
         const remoteTime =
           typeof existing.updatedAt === "number" ? existing.updatedAt : 0;
         if (remoteTime > localTime) {
@@ -1931,33 +1932,8 @@ function POSApp() {
 
           <div style={{ marginTop: "auto" }}>
             <div style={{ padding: "10px 14px", display: "flex", gap: "7px" }}>
-              <button
-                onClick={() => setLang(lang === "km" ? "en" : "km")}
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "7px",
-                  padding: "9px 10px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-alt)",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: "var(--text)",
-                }}
-              >
-                <Globe size={15} /> {lang === "km" ? "English" : "ភាសាខ្មែរ"}
-              </button>
-              <button
-                className="theme-toggle-btn"
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                title={theme === "dark" ? t("lightMode") : t("darkMode")}
-              >
-                {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-              </button>
+              <LangSwitch lang={lang} setLang={setLang} style={{ flex: 1 }} />
+              <ThemeSwitch theme={theme} setTheme={setTheme} t={t} />
             </div>
             <div
               style={{
@@ -2313,12 +2289,115 @@ function FontStyles() {
       }
 
       @media print {
+        @page { margin: 8mm; }
         body * { visibility: hidden; }
         #receipt-print-area, #receipt-print-area * { visibility: visible; }
-        #receipt-print-area { position: absolute; left: 0; top: 0; width: 320px; box-shadow: none !important; border-radius: 0 !important; }
+        #receipt-print-area {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 300px;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          background: #fff !important;
+          color: #111 !important;
+        }
+        #receipt-print-area * {
+          background: transparent !important;
+          color: #111 !important;
+          border-color: #999 !important;
+        }
+        #receipt-print-area .receipt-row span:last-child {
+          font-variant-numeric: tabular-nums;
+        }
         #receipt-print-actions { display: none !important; }
       }
     `}</style>
+  );
+}
+
+function LangSwitch({ lang, setLang, style }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        background: "var(--surface-alt)",
+        border: "1px solid var(--border)",
+        borderRadius: "999px",
+        padding: "3px",
+        ...style,
+      }}
+    >
+      {["km", "en"].map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => setLang(l)}
+          style={{
+            flex: 1,
+            padding: "6px 12px",
+            borderRadius: "999px",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "12.5px",
+            fontWeight: 700,
+            background: lang === l ? "var(--primary)" : "transparent",
+            color: lang === l ? "#fff" : "var(--text-muted)",
+            transition: "background .15s, color .15s",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {l === "km" ? "ខ្មែរ" : "EN"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ThemeSwitch({ theme, setTheme, t }) {
+  const isDark = theme === "dark";
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      title={isDark ? t("lightMode") : t("darkMode")}
+      aria-label={isDark ? t("lightMode") : t("darkMode")}
+      style={{
+        width: "44px",
+        height: "26px",
+        borderRadius: "999px",
+        border: "1px solid var(--border)",
+        background: isDark ? "var(--primary)" : "var(--surface-alt)",
+        position: "relative",
+        cursor: "pointer",
+        flexShrink: 0,
+        padding: 0,
+        transition: "background .15s",
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: "2px",
+          left: isDark ? "20px" : "2px",
+          width: "20px",
+          height: "20px",
+          borderRadius: "50%",
+          background: "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "left .15s",
+          boxShadow: "0 1px 3px rgba(0,0,0,.3)",
+        }}
+      >
+        {isDark ? (
+          <Moon size={12} color="var(--primary)" />
+        ) : (
+          <Sun size={12} color="#f5a623" />
+        )}
+      </span>
+    </button>
   );
 }
 
@@ -2365,31 +2444,8 @@ function LoginScreen({
           gap: "8px",
         }}
       >
-        <button
-          onClick={() => setLang(lang === "km" ? "en" : "km")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "8px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border)",
-            background: "var(--surface)",
-            cursor: "pointer",
-            fontSize: "12.5px",
-            fontWeight: 700,
-            color: "var(--text)",
-          }}
-        >
-          <Globe size={14} /> {lang === "km" ? "English" : "ភាសាខ្មែរ"}
-        </button>
-        <button
-          className="theme-toggle-btn"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          title={theme === "dark" ? t("lightMode") : t("darkMode")}
-        >
-          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-        </button>
+        <LangSwitch lang={lang} setLang={setLang} />
+        <ThemeSwitch theme={theme} setTheme={setTheme} t={t} />
       </div>
       <form
         onSubmit={submit}
@@ -5385,16 +5441,29 @@ function ReceiptModal({ sale, shopName, onClose }) {
           {sale.items.map((it, i) => (
             <div
               key={i}
+              className="receipt-row"
               style={{
                 display: "flex",
                 justifyContent: "space-between",
+                gap: "10px",
                 padding: "3px 0",
               }}
             >
-              <span>
+              <span
+                style={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {it.name} ×{it.qty}
               </span>
-              <span>{fmt(it.price * it.qty)}</span>
+              <span
+                style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}
+              >
+                {fmt(it.price * it.qty)}
+              </span>
             </div>
           ))}
           <div
@@ -5406,12 +5475,16 @@ function ReceiptModal({ sale, shopName, onClose }) {
           >
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>{t("subtotal")}</span>
-              <span>{fmt(sale.subtotal)}</span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                {fmt(sale.subtotal)}
+              </span>
             </div>
             {sale.discount > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>{STRINGS.discountAmount[lang].replace(" ($)", "")}</span>
-                <span>-{fmt(sale.discount)}</span>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                  -{fmt(sale.discount)}
+                </span>
               </div>
             )}
             <div
@@ -5424,7 +5497,9 @@ function ReceiptModal({ sale, shopName, onClose }) {
               }}
             >
               <span>{t("total")}</span>
-              <span>{fmt(sale.total)}</span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                {fmt(sale.total)}
+              </span>
             </div>
             <div
               style={{
@@ -5435,7 +5510,9 @@ function ReceiptModal({ sale, shopName, onClose }) {
               }}
             >
               <span>{t("paymentReceived")}</span>
-              <span>{fmt(sale.paid)}</span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                {fmt(sale.paid)}
+              </span>
             </div>
             <div
               style={{
@@ -5445,7 +5522,9 @@ function ReceiptModal({ sale, shopName, onClose }) {
               }}
             >
               <span>{t("changeDue")}</span>
-              <span>{fmt(sale.change)}</span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                {fmt(sale.change)}
+              </span>
             </div>
           </div>
         </div>
@@ -5650,31 +5729,8 @@ function StorefrontApp() {
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <button
-                onClick={() => setLang(lang === "km" ? "en" : "km")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "7px 11px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  cursor: "pointer",
-                  fontSize: "12.5px",
-                  fontWeight: 700,
-                  color: "var(--text)",
-                }}
-              >
-                <Globe size={14} /> {lang === "km" ? "English" : "ភាសាខ្មែរ"}
-              </button>
-              <button
-                className="theme-toggle-btn"
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                title={theme === "dark" ? t("lightMode") : t("darkMode")}
-              >
-                {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-              </button>
+              <LangSwitch lang={lang} setLang={setLang} />
+              <ThemeSwitch theme={theme} setTheme={setTheme} t={t} />
             </div>
           </div>
 
