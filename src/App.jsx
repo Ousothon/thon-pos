@@ -47,6 +47,7 @@ import {
   Menu,
   Sun,
   Moon,
+  History,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -219,6 +220,7 @@ const ROLE_PERMS = {
     "customers",
     "users",
     "onlineOrders",
+    "auditLog",
   ],
   staff: ["pos", "customers", "onlineOrders"],
 };
@@ -410,6 +412,25 @@ const STRINGS = {
   loggedInAs: { km: "កំពុងប្រើប្រាស់ដោយ", en: "Signed in as" },
 
   nav_users: { km: "អ្នកប្រើប្រាស់", en: "Users" },
+  nav_auditLog: { km: "កំណត់ត្រាសកម្មភាព", en: "Audit Log" },
+  auditLog_subtitle: {
+    km: "{count} កំណត់ត្រា",
+    en: "{count} entries",
+  },
+  auditLog_empty: {
+    km: "មិនទាន់មានកំណត់ត្រាសកម្មភាពនៅឡើយ",
+    en: "No activity recorded yet",
+  },
+  auditLog_col_time: { km: "ពេលវេលា", en: "Time" },
+  auditLog_col_user: { km: "អ្នកប្រើប្រាស់", en: "User" },
+  auditLog_col_action: { km: "សកម្មភាព", en: "Action" },
+  auditLog_col_item: { km: "ធាតុ", en: "Item" },
+  audit_action_add: { km: "បន្ថែម", en: "Added" },
+  audit_action_edit: { km: "កែប្រែ", en: "Updated" },
+  audit_action_delete: { km: "លុប", en: "Deleted" },
+  audit_entity_product: { km: "ទំនិញ", en: "Product" },
+  audit_entity_customer: { km: "អតិថិជន", en: "Customer" },
+  audit_entity_user: { km: "អ្នកប្រើប្រាស់", en: "User" },
   users_subtitle: { km: "{count} គណនី", en: "{count} accounts" },
   addUser: { km: "បន្ថែមអ្នកប្រើប្រាស់", en: "Add user" },
   editUser: { km: "កែប្រែអ្នកប្រើប្រាស់", en: "Edit user" },
@@ -570,6 +591,7 @@ const NAV = [
   { id: "customers", key: "nav_customers", icon: Users },
   { id: "onlineOrders", key: "nav_onlineOrders", icon: Store },
   { id: "users", key: "nav_users", icon: UserCog },
+  { id: "auditLog", key: "nav_auditLog", icon: History },
 ];
 
 function POSApp() {
@@ -744,11 +766,13 @@ function POSApp() {
       setUsers(users.map((u) => (u.id === form.id ? updated : u)));
       showToast(t("toast_userUpdated"));
       pushUserRow(updated);
+      logAudit("edit", "user", updated.name_km || updated.username);
     } else {
       const created = { ...form, id: genId(), updatedAt: Date.now() };
       setUsers([...users, created]);
       showToast(t("toast_userAdded"));
       pushUserRow(created);
+      logAudit("add", "user", created.name_km || created.username);
     }
     setUserModal(null);
   };
@@ -769,6 +793,7 @@ function POSApp() {
     setUsers(users.filter((u) => u.id !== id));
     showToast(t("toast_userDeleted"));
     deleteUserRow(id);
+    logAudit("delete", "user", target ? target.name_km || target.username : id);
   };
 
   // ---------- POS ----------
@@ -962,6 +987,7 @@ function POSApp() {
       setProducts(products.map((p) => (p.id === form.id ? updated : p)));
       showToast(t("toast_productUpdated"));
       pushProductRow(updated);
+      logAudit("edit", "product", prodName(updated));
     } else {
       const created = {
         ...form,
@@ -973,14 +999,17 @@ function POSApp() {
       setProducts([...products, created]);
       showToast(t("toast_productAdded"));
       pushProductRow(created);
+      logAudit("add", "product", prodName(created));
     }
     setProductModal(null);
   };
 
   const deleteProduct = (id) => {
+    const target = products.find((p) => p.id === id);
     setProducts(products.filter((p) => p.id !== id));
     showToast(t("toast_productDeleted"));
     deleteProductRow(id);
+    logAudit("delete", "product", target ? prodName(target) : id);
   };
 
   // ---------- Online ordering (Supabase) ----------
@@ -1099,8 +1128,7 @@ function POSApp() {
         // Treat a missing timestamp as the oldest possible value (0) instead of
         // an automatic local win — otherwise legacy/local-only rows (e.g. seed
         // products with no updatedAt) would always overwrite newer remote data.
-        const localTime =
-          typeof item.updatedAt === "number" ? item.updatedAt : 0;
+        const localTime = typeof item.updatedAt === "number" ? item.updatedAt : 0;
         const remoteTime =
           typeof existing.updatedAt === "number" ? existing.updatedAt : 0;
         if (remoteTime > localTime) {
@@ -1326,6 +1354,71 @@ function POSApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
+  // ---------- Audit log (who added/edited/deleted what) ----------
+  const [auditLog, setAuditLog] = useState([]);
+  const fetchAuditLog = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from("audit_log")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(300);
+      if (error) throw error;
+      setAuditLog(data || []);
+    } catch {
+      /* table may not exist yet — ignore */
+    }
+  };
+
+  useEffect(() => {
+    if (!supabase || loading || !allowedTabs.includes("auditLog")) return;
+    fetchAuditLog();
+    const poll = setInterval(fetchAuditLog, 15000);
+    let channel;
+    try {
+      channel = supabase
+        .channel("audit_log_changes")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "audit_log" },
+          fetchAuditLog,
+        )
+        .subscribe();
+    } catch {
+      /* realtime unavailable, polling still covers it */
+    }
+    return () => {
+      clearInterval(poll);
+      if (channel) supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, currentUser && currentUser.id]);
+
+  // Records who did what, for accountability. Best-effort: if it fails (e.g.
+  // offline, or the audit_log table doesn't exist yet) it never blocks the
+  // actual add/edit/delete action.
+  const logAudit = async (action, entityType, entityLabel) => {
+    const entry = {
+      id: genId(),
+      user_id: currentUser ? currentUser.id : null,
+      username: currentUser
+        ? currentUser.name_km || currentUser.name_en || currentUser.username
+        : "—",
+      action, // "add" | "edit" | "delete"
+      entity_type: entityType, // "product" | "customer" | "user"
+      entity_label: entityLabel,
+      created_at: new Date().toISOString(),
+    };
+    setAuditLog((prev) => [entry, ...prev]);
+    if (!supabase) return;
+    try {
+      await supabase.from("audit_log").insert(entry);
+    } catch {
+      /* offline or table missing — local list above still shows it this session */
+    }
+  };
+
   const acceptOnlineOrder = async (order) => {
     try {
       // acknowledge + reserve stock only — revenue is NOT recorded yet since payment hasn't been collected
@@ -1445,6 +1538,7 @@ function POSApp() {
       setCustomers(customers.map((c) => (c.id === clean.id ? updated : c)));
       showToast(t("toast_customerUpdated"));
       pushCustomerRow(updated);
+      logAudit("edit", "customer", updated.name);
     } else {
       const created = {
         ...clean,
@@ -1457,13 +1551,16 @@ function POSApp() {
       setCustomers([...customers, created]);
       showToast(t("toast_customerAdded"));
       pushCustomerRow(created);
+      logAudit("add", "customer", created.name);
     }
     setCustomerModal(null);
   };
   const deleteCustomer = (id) => {
+    const target = customers.find((c) => c.id === id);
     setCustomers(customers.filter((c) => c.id !== id));
     showToast(t("toast_customerDeleted"));
     deleteCustomerRow(id);
+    logAudit("delete", "customer", target ? target.name : id);
   };
 
   // ---------- Reports ----------
@@ -2043,6 +2140,9 @@ function POSApp() {
               openEdit={(u) => setUserModal({ mode: "edit", user: u })}
               deleteUser={deleteUser}
             />
+          )}
+          {activeTab === "auditLog" && allowedTabs.includes("auditLog") && (
+            <AuditLogTab auditLog={auditLog} />
           )}
           {!allowedTabs.includes(activeTab) && (
             <div
@@ -4697,6 +4797,110 @@ function UsersTab({ users, currentUser, openAdd, openEdit, deleteUser }) {
             }}
           >
             {t("noUsersYet")}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AuditLogTab({ auditLog }) {
+  const { t, lang } = useT();
+  const actionColor = {
+    add: "var(--success, #16a34a)",
+    edit: "var(--primary)",
+    delete: "var(--danger)",
+  };
+  const fmtTime = (iso) => {
+    try {
+      return new Date(iso).toLocaleString(lang === "en" ? "en-US" : "km-KH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    } catch {
+      return iso;
+    }
+  };
+  return (
+    <div style={{ flex: 1, overflowY: "auto" }}>
+      <TopBar
+        title={t("nav_auditLog")}
+        subtitle={t("auditLog_subtitle", { count: auditLog.length })}
+      />
+      <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
+        <table
+          style={{
+            width: "100%",
+            minWidth: "560px",
+            borderCollapse: "collapse",
+            fontSize: "14px",
+          }}
+        >
+          <thead>
+            <tr
+              style={{
+                textAlign: "left",
+                color: "var(--text-muted)",
+                fontSize: "12.5px",
+              }}
+            >
+              <th style={thStyle}>{t("auditLog_col_time")}</th>
+              <th style={thStyle}>{t("auditLog_col_user")}</th>
+              <th style={thStyle}>{t("auditLog_col_action")}</th>
+              <th style={thStyle}>{t("auditLog_col_item")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {auditLog.map((entry) => (
+              <tr
+                key={entry.id}
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
+                <td
+                  style={{
+                    ...tdStyle,
+                    color: "var(--text-muted)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {fmtTime(entry.created_at)}
+                </td>
+                <td style={{ ...tdStyle, fontWeight: 600 }}>
+                  {entry.username || "—"}
+                </td>
+                <td style={tdStyle}>
+                  <span
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: "999px",
+                      fontSize: "11.5px",
+                      fontWeight: 700,
+                      color: "#fff",
+                      background:
+                        actionColor[entry.action] || "var(--surface-alt)",
+                    }}
+                  >
+                    {t("audit_action_" + entry.action)}
+                  </span>
+                </td>
+                <td style={tdStyle}>
+                  {t("audit_entity_" + entry.entity_type)} —{" "}
+                  {entry.entity_label}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {auditLog.length === 0 && (
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "14px",
+              textAlign: "center",
+              padding: "34px 0",
+            }}
+          >
+            {t("auditLog_empty")}
           </div>
         )}
       </div>
