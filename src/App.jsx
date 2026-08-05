@@ -427,6 +427,19 @@ const STRINGS = {
     km: "នាំចូលបរាជ័យ — file មិនត្រឹមត្រូវ",
     en: "Import failed — invalid file",
   },
+  archive_finishedBtn: {
+    km: "Archive ការបញ្ជាទិញរួចរាល់",
+    en: "Archive finished orders",
+  },
+  archive_ordersSubtitle: {
+    km: "{count} ការបញ្ជាទិញត្រូវបានទុកក្រៅបញ្ជីសកម្ម — មិនត្រូវបានលុបទេ",
+    en: "{count} kept out of the active list — not deleted",
+  },
+  archive_ordersEmpty: {
+    km: "មិនទាន់មានការបញ្ជាទិញក្នុង Archive ទេ",
+    en: "No archived orders yet",
+  },
+  archive_single: { km: "Archive", en: "Archive" },
 
   cust_subtitle: { km: "{count} នាក់", en: "{count} customers" },
   addCustomer: { km: "បន្ថែមអតិថិជន", en: "Add customer" },
@@ -1159,8 +1172,10 @@ function POSApp() {
 
   const [onlineOrders, setOnlineOrders] = useState([]);
   const pendingOrderCount = onlineOrders.filter(
-    (o) => o.status === "pending",
+    (o) => o.status === "pending" && !o.archived,
   ).length;
+  const activeOnlineOrders = onlineOrders.filter((o) => !o.archived);
+  const archivedOnlineOrders = onlineOrders.filter((o) => o.archived);
   const [supabaseStatus, setSupabaseStatus] = useState(
     supabase ? "connecting" : "off",
   );
@@ -1568,6 +1583,83 @@ function POSApp() {
         prev.map((o) => (o.id === order.id ? { ...o, status: "rejected" } : o)),
       );
       showToast(t("toast_orderRejected"));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  // ---------- Archive for finished online orders (paid/rejected/cancelled) ----------
+  const archiveOrder = async (order) => {
+    try {
+      if (supabase)
+        await supabase
+          .from("online_orders")
+          .update({ archived: true })
+          .eq("id", order.id);
+      setOnlineOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, archived: true } : o)),
+      );
+      showToast(t("toast_archived", { count: 1 }));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  const restoreOrder = async (order) => {
+    try {
+      if (supabase)
+        await supabase
+          .from("online_orders")
+          .update({ archived: false })
+          .eq("id", order.id);
+      setOnlineOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, archived: false } : o)),
+      );
+      showToast(t("toast_restored"));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  const archiveFinishedOrders = async () => {
+    const finished = onlineOrders.filter(
+      (o) =>
+        !o.archived && ["paid", "rejected", "cancelled"].includes(o.status),
+    );
+    if (finished.length === 0) {
+      showToast(t("toast_nothingToArchive"), "error");
+      return;
+    }
+    const ids = finished.map((o) => o.id);
+    try {
+      if (supabase)
+        await supabase
+          .from("online_orders")
+          .update({ archived: true })
+          .in("id", ids);
+      setOnlineOrders((prev) =>
+        prev.map((o) => (ids.includes(o.id) ? { ...o, archived: true } : o)),
+      );
+      showToast(t("toast_archived", { count: ids.length }));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  const restoreAllOrders = async () => {
+    const archived = onlineOrders.filter((o) => o.archived);
+    if (archived.length === 0) return;
+    const ids = archived.map((o) => o.id);
+    try {
+      if (supabase)
+        await supabase
+          .from("online_orders")
+          .update({ archived: false })
+          .in("id", ids);
+      setOnlineOrders((prev) =>
+        prev.map((o) => (ids.includes(o.id) ? { ...o, archived: false } : o)),
+      );
+      showToast(t("toast_restoredAll"));
     } catch {
       showToast(t("toast_supabaseError"), "error");
     }
@@ -2245,12 +2337,17 @@ function POSApp() {
           {activeTab === "onlineOrders" &&
             allowedTabs.includes("onlineOrders") && (
               <OnlineOrdersTab
-                orders={onlineOrders}
+                orders={activeOnlineOrders}
+                archivedOrders={archivedOnlineOrders}
                 supabaseStatus={supabaseStatus}
                 onAccept={acceptOnlineOrder}
                 onReject={rejectOnlineOrder}
                 onMarkPaid={markOrderPaid}
                 onCancel={cancelAcceptedOrder}
+                onArchiveOrder={archiveOrder}
+                onArchiveFinished={archiveFinishedOrders}
+                onRestoreOrder={restoreOrder}
+                onRestoreAllOrders={restoreAllOrders}
               />
             )}
           {activeTab === "users" && allowedTabs.includes("users") && (
@@ -4676,15 +4773,22 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
 
 function OnlineOrdersTab({
   orders,
+  archivedOrders,
   supabaseStatus,
   onAccept,
   onReject,
   onMarkPaid,
   onCancel,
+  onArchiveOrder,
+  onArchiveFinished,
+  onRestoreOrder,
+  onRestoreAllOrders,
 }) {
   const { t, lang } = useT();
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [archiveView, setArchiveView] = useState("active"); // 'active' | 'archived'
+  const visibleOrders = archiveView === "archived" ? archivedOrders : orders;
 
   const storeUrl =
     typeof window !== "undefined"
@@ -4793,26 +4897,103 @@ function OnlineOrdersTab({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "6px",
-              fontSize: "12px",
-              fontWeight: 700,
-              color:
-                supabaseStatus === "live"
-                  ? "var(--primary)"
-                  : "var(--text-muted)",
+              gap: "10px",
+              flexWrap: "wrap",
             }}
           >
-            {supabaseStatus === "live" ? (
-              <Wifi size={14} />
+            <button
+              onClick={() =>
+                setArchiveView(
+                  archiveView === "archived" ? "active" : "archived",
+                )
+              }
+              style={{
+                ...iconBtnStyle,
+                width: "auto",
+                padding: "8px 12px",
+                gap: "6px",
+                display: "flex",
+                fontSize: "13px",
+                fontWeight: 600,
+                color:
+                  archiveView === "archived" ? "var(--primary)" : undefined,
+              }}
+            >
+              <History size={14} />{" "}
+              {archiveView === "archived"
+                ? t("archive_backToActive")
+                : t("archive_viewBtn", { count: archivedOrders.length })}
+            </button>
+            {archiveView === "active" ? (
+              <button
+                onClick={onArchiveFinished}
+                style={{
+                  ...iconBtnStyle,
+                  width: "auto",
+                  padding: "8px 12px",
+                  gap: "6px",
+                  display: "flex",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                {t("archive_finishedBtn")}
+              </button>
             ) : (
-              <WifiOff size={14} />
+              <button
+                onClick={onRestoreAllOrders}
+                disabled={archivedOrders.length === 0}
+                style={{
+                  ...iconBtnStyle,
+                  width: "auto",
+                  padding: "8px 12px",
+                  gap: "6px",
+                  display: "flex",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  opacity: archivedOrders.length === 0 ? 0.5 : 1,
+                }}
+              >
+                {t("archive_restoreAll")}
+              </button>
             )}
-            {supabaseStatus === "live"
-              ? t("liveIndicator")
-              : t("offlineIndicator")}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                fontWeight: 700,
+                color:
+                  supabaseStatus === "live"
+                    ? "var(--primary)"
+                    : "var(--text-muted)",
+              }}
+            >
+              {supabaseStatus === "live" ? (
+                <Wifi size={14} />
+              ) : (
+                <WifiOff size={14} />
+              )}
+              {supabaseStatus === "live"
+                ? t("liveIndicator")
+                : t("offlineIndicator")}
+            </div>
           </div>
         }
       />
+
+      {archiveView === "archived" && (
+        <div
+          style={{
+            margin: "4px 26px 0",
+            fontSize: "12.5px",
+            color: "var(--text-muted)",
+          }}
+        >
+          {t("archive_ordersSubtitle", { count: archivedOrders.length })}
+        </div>
+      )}
 
       <div
         style={{
@@ -4924,12 +5105,14 @@ function OnlineOrdersTab({
           gap: "14px",
         }}
       >
-        {orders.length === 0 && (
+        {visibleOrders.length === 0 && (
           <div style={{ color: "var(--text-muted)", fontSize: "14px" }}>
-            {t("noOnlineOrders")}
+            {archiveView === "archived"
+              ? t("archive_ordersEmpty")
+              : t("noOnlineOrders")}
           </div>
         )}
-        {orders.map((o) => (
+        {visibleOrders.map((o) => (
           <div
             key={o.id}
             style={{
@@ -5017,7 +5200,41 @@ function OnlineOrdersTab({
               <span style={{ fontWeight: 700, fontFamily: "var(--font-mono)" }}>
                 {fmt(o.subtotal)}
               </span>
-              {o.status === "pending" && (
+              {archiveView === "archived" && (
+                <button
+                  onClick={() => onRestoreOrder(o)}
+                  style={{
+                    ...iconBtnStyle,
+                    width: "auto",
+                    padding: "6px 11px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    display: "flex",
+                    gap: "5px",
+                    color: "var(--primary)",
+                  }}
+                >
+                  <History size={13} /> {t("archive_restore")}
+                </button>
+              )}
+              {archiveView === "active" &&
+                ["paid", "rejected", "cancelled"].includes(o.status) && (
+                  <button
+                    onClick={() => onArchiveOrder(o)}
+                    style={{
+                      ...iconBtnStyle,
+                      width: "auto",
+                      padding: "6px 11px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      display: "flex",
+                      gap: "5px",
+                    }}
+                  >
+                    <History size={13} /> {t("archive_single")}
+                  </button>
+                )}
+              {archiveView === "active" && o.status === "pending" && (
                 <div style={{ display: "flex", gap: "7px" }}>
                   <button
                     onClick={() => onReject(o)}
