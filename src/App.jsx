@@ -376,6 +376,58 @@ const STRINGS = {
   noTransactions: { km: "មិនមានប្រតិបត្តិការ", en: "No transactions" },
   exportCsv: { km: "នាំចេញ Excel (CSV)", en: "Export Excel (CSV)" },
 
+  archive_manageBtn: { km: "គ្រប់គ្រង Archive", en: "Manage archive" },
+  archive_title: {
+    km: "ប្រតិបត្តិការចាស់ (Archive)",
+    en: "Archived transactions",
+  },
+  archive_subtitle: {
+    km: "{count} ប្រតិបត្តិការត្រូវបានទុកក្រៅរបាយការណ៍សកម្ម — មិនត្រូវបានលុបទេ",
+    en: "{count} kept out of active reports — not deleted",
+  },
+  archive_cutoffLabel: {
+    km: "Archive ទិន្នន័យលក់ដែលចាស់ជាង៖",
+    en: "Archive sales older than:",
+  },
+  archive_3m: { km: "៣ខែ", en: "3 months" },
+  archive_6m: { km: "៦ខែ", en: "6 months" },
+  archive_12m: { km: "១ឆ្នាំ", en: "12 months" },
+  archive_runBtn: { km: "ចាប់ផ្តើម Archive", en: "Archive now" },
+  archive_empty: {
+    km: "មិនទាន់មានទិន្នន័យក្នុង Archive ទេ",
+    en: "No archived data yet",
+  },
+  archive_restore: { km: "Restore", en: "Restore" },
+  archive_restoreAll: { km: "Restore ទាំងអស់", en: "Restore all" },
+  archive_export: { km: "នាំចេញ Archive (file)", en: "Export archive (file)" },
+  archive_import: { km: "នាំចូល Archive ពី file", en: "Import archive file" },
+  archive_backToActive: { km: "ត្រឡប់ទៅសកម្ម", en: "Back to active" },
+  archive_viewBtn: {
+    km: "មើល Archive ({count})",
+    en: "View archive ({count})",
+  },
+  toast_archived: {
+    km: "បាន Archive {count} ប្រតិបត្តិការ",
+    en: "Archived {count} transactions",
+  },
+  toast_restored: { km: "បាន Restore ទិន្នន័យត្រឡប់មកវិញ", en: "Restored" },
+  toast_restoredAll: {
+    km: "បាន Restore ទិន្នន័យទាំងអស់ត្រឡប់មកវិញ",
+    en: "Restored all archived data",
+  },
+  toast_nothingToArchive: {
+    km: "គ្មានទិន្នន័យត្រូវ Archive ទេ",
+    en: "Nothing to archive",
+  },
+  toast_imported: {
+    km: "បាននាំចូល {count} កំណត់ត្រា",
+    en: "Imported {count} records",
+  },
+  toast_importFailed: {
+    km: "នាំចូលបរាជ័យ — file មិនត្រឹមត្រូវ",
+    en: "Import failed — invalid file",
+  },
+
   cust_subtitle: { km: "{count} នាក់", en: "{count} customers" },
   addCustomer: { km: "បន្ថែមអតិថិជន", en: "Add customer" },
   noCustomersYet: { km: "មិនទាន់មានអតិថិជនទេ", en: "No customers yet" },
@@ -930,6 +982,7 @@ function POSApp() {
       change,
       customerId: customer ? customer.id : null,
       customerName: customer ? customer.name : null,
+      archived: false,
     };
     setSales([sale, ...sales]);
     const updatedProducts = products.map((p) => {
@@ -1167,6 +1220,7 @@ function POSApp() {
             paid: s.paid,
             change: s.change,
             customer_name: s.customerName || null,
+            archived: !!s.archived,
           })),
           { onConflict: "id" },
         );
@@ -1193,6 +1247,7 @@ function POSApp() {
         paid: r.paid,
         change: r.change,
         customerName: r.customer_name || "",
+        archived: !!r.archived,
       }));
       setSales((prev) => mergeById(prev, mapped));
     } catch {
@@ -1459,6 +1514,7 @@ function POSApp() {
           paid: order.subtotal,
           change: 0,
           customerName: order.customer_name || "",
+          archived: false,
         },
       ]);
       if (supabase)
@@ -1568,6 +1624,7 @@ function POSApp() {
   const rangedSales = useMemo(() => {
     const now = new Date();
     return sales.filter((s) => {
+      if (s.archived) return false;
       const d = new Date(s.date);
       if (reportRange === "today")
         return d.toDateString() === now.toDateString();
@@ -1584,6 +1641,88 @@ function POSApp() {
       return true;
     });
   }, [sales, reportRange]);
+
+  // ---------- Archive (keep old sales out of active reports without deleting them) ----------
+  const archivedSales = useMemo(
+    () =>
+      sales
+        .filter((s) => s.archived)
+        .sort((a, b) => new Date(b.date) - new Date(a.date)),
+    [sales],
+  );
+
+  const archiveOldSales = (cutoffMonths) => {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - cutoffMonths);
+    const idsToArchive = sales
+      .filter((s) => !s.archived && new Date(s.date) < cutoff)
+      .map((s) => s.id);
+    if (idsToArchive.length === 0) {
+      showToast(t("toast_nothingToArchive"), "error");
+      return;
+    }
+    const idSet = new Set(idsToArchive);
+    setSales((prev) =>
+      prev.map((s) =>
+        idSet.has(s.id)
+          ? { ...s, archived: true, archivedAt: new Date().toISOString() }
+          : s,
+      ),
+    );
+    showToast(t("toast_archived", { count: idsToArchive.length }));
+  };
+
+  const restoreSale = (id) => {
+    setSales((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, archived: false, archivedAt: null } : s,
+      ),
+    );
+    showToast(t("toast_restored"));
+  };
+
+  const restoreAllSales = () => {
+    if (archivedSales.length === 0) return;
+    setSales((prev) =>
+      prev.map((s) =>
+        s.archived ? { ...s, archived: false, archivedAt: null } : s,
+      ),
+    );
+    showToast(t("toast_restoredAll"));
+  };
+
+  const exportArchiveJson = () => {
+    if (archivedSales.length === 0) {
+      showToast(t("toast_nothingToArchive"), "error");
+      return;
+    }
+    const blob = new Blob([JSON.stringify(archivedSales, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sales-archive-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importArchiveJson = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!Array.isArray(data)) throw new Error("invalid format");
+        const existingIds = new Set(sales.map((s) => s.id));
+        const toAdd = data.filter((s) => s && s.id && !existingIds.has(s.id));
+        setSales((prev) => [...prev, ...toAdd]);
+        showToast(t("toast_imported", { count: toAdd.length }));
+      } catch {
+        showToast(t("toast_importFailed"), "error");
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const reportSummary = useMemo(() => {
     const revenue = rangedSales.reduce((s, sale) => s + sale.total, 0);
@@ -2087,6 +2226,12 @@ function POSApp() {
               setExpandedSale={setExpandedSale}
               exportCsv={exportCsv}
               onReprint={setReceipt}
+              archivedSales={archivedSales}
+              onArchiveOld={archiveOldSales}
+              onRestore={restoreSale}
+              onRestoreAll={restoreAllSales}
+              onExportArchive={exportArchiveJson}
+              onImportArchive={importArchiveJson}
             />
           )}
           {activeTab === "customers" && (
@@ -3846,14 +3991,25 @@ function ReportsTab({
   setExpandedSale,
   exportCsv,
   onReprint,
+  archivedSales,
+  onArchiveOld,
+  onRestore,
+  onRestoreAll,
+  onExportArchive,
+  onImportArchive,
 }) {
   const { t, lang } = useT();
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveView, setArchiveView] = useState("active"); // 'active' | 'archived'
+  const [cutoffMonths, setCutoffMonths] = useState(6);
+  const importInputRef = useRef(null);
   const ranges = [
     { id: "today", key: "range_today" },
     { id: "week", key: "range_week" },
     { id: "month", key: "range_month" },
     { id: "all", key: "range_all" },
   ];
+  const visibleSales = archiveView === "archived" ? archivedSales : sales;
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
@@ -3883,9 +4039,182 @@ function ReportsTab({
             >
               <Download size={14} /> {t("exportCsv")}
             </button>
+            <button
+              onClick={() => setArchiveOpen(!archiveOpen)}
+              style={{
+                ...iconBtnStyle,
+                width: "auto",
+                padding: "8px 12px",
+                gap: "6px",
+                display: "flex",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: archiveOpen ? "var(--primary)" : undefined,
+              }}
+            >
+              <History size={14} /> {t("archive_manageBtn")}
+            </button>
           </div>
         }
       />
+
+      {archiveOpen && (
+        <div style={{ padding: "16px 26px 0" }}>
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "14px",
+              padding: "18px",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: "14.5px",
+                marginBottom: "4px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <History size={16} color="var(--primary)" /> {t("archive_title")}
+            </div>
+            <div
+              style={{
+                fontSize: "12.5px",
+                color: "var(--text-muted)",
+                marginBottom: "14px",
+              }}
+            >
+              {t("archive_subtitle", { count: archivedSales.length })}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "10px",
+                marginBottom: "12px",
+              }}
+            >
+              <span style={{ fontSize: "13px", fontWeight: 600 }}>
+                {t("archive_cutoffLabel")}
+              </span>
+              {[
+                { m: 3, key: "archive_3m" },
+                { m: 6, key: "archive_6m" },
+                { m: 12, key: "archive_12m" },
+              ].map((c) => (
+                <CategoryPill
+                  key={c.m}
+                  active={cutoffMonths === c.m}
+                  onClick={() => setCutoffMonths(c.m)}
+                  label={t(c.key)}
+                />
+              ))}
+              <button
+                onClick={() => onArchiveOld(cutoffMonths)}
+                style={{
+                  ...primaryBtnStyle,
+                  padding: "8px 14px",
+                  fontSize: "13px",
+                }}
+              >
+                {t("archive_runBtn")}
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "10px",
+                borderTop: "1px dashed var(--border)",
+                paddingTop: "12px",
+              }}
+            >
+              <button
+                onClick={() =>
+                  setArchiveView(
+                    archiveView === "archived" ? "active" : "archived",
+                  )
+                }
+                style={{
+                  ...iconBtnStyle,
+                  width: "auto",
+                  padding: "8px 12px",
+                  gap: "6px",
+                  display: "flex",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                {archiveView === "archived"
+                  ? t("archive_backToActive")
+                  : t("archive_viewBtn", { count: archivedSales.length })}
+              </button>
+              <button
+                onClick={onRestoreAll}
+                disabled={archivedSales.length === 0}
+                style={{
+                  ...iconBtnStyle,
+                  width: "auto",
+                  padding: "8px 12px",
+                  gap: "6px",
+                  display: "flex",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  opacity: archivedSales.length === 0 ? 0.5 : 1,
+                }}
+              >
+                {t("archive_restoreAll")}
+              </button>
+              <button
+                onClick={onExportArchive}
+                style={{
+                  ...iconBtnStyle,
+                  width: "auto",
+                  padding: "8px 12px",
+                  gap: "6px",
+                  display: "flex",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                <Download size={14} /> {t("archive_export")}
+              </button>
+              <button
+                onClick={() => importInputRef.current?.click()}
+                style={{
+                  ...iconBtnStyle,
+                  width: "auto",
+                  padding: "8px 12px",
+                  gap: "6px",
+                  display: "flex",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                {t("archive_import")}
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files && e.target.files[0];
+                  if (file) onImportArchive(file);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
       <div
         className="responsive-grid-4"
         style={{
@@ -4032,14 +4361,18 @@ function ReportsTab({
               marginBottom: "12px",
             }}
           >
-            {t("transactions", { count: sales.length })}
+            {archiveView === "archived"
+              ? t("archive_title")
+              : t("transactions", { count: visibleSales.length })}
           </div>
-          {sales.length === 0 && (
+          {visibleSales.length === 0 && (
             <div style={{ fontSize: "13.5px", color: "var(--text-muted)" }}>
-              {t("noTransactions")}
+              {archiveView === "archived"
+                ? t("archive_empty")
+                : t("noTransactions")}
             </div>
           )}
-          {sales.map((s) => (
+          {visibleSales.map((s) => (
             <div key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
               <button
                 onClick={() =>
@@ -4104,9 +4437,32 @@ function ReportsTab({
                 style={{
                   display: "flex",
                   justifyContent: "flex-end",
+                  gap: "16px",
                   padding: "0 0 6px 23px",
                 }}
               >
+                {archiveView === "archived" && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRestore(s.id);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      background: "none",
+                      border: "none",
+                      color: "var(--primary)",
+                      fontSize: "11.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    <History size={12} /> {t("archive_restore")}
+                  </button>
+                )}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
