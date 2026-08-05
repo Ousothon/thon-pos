@@ -5120,6 +5120,9 @@ function OnlineOrdersTab({
               border: "1px solid var(--border)",
               borderRadius: "14px",
               padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
             }}
           >
             <div
@@ -5195,6 +5198,7 @@ function OnlineOrdersTab({
                 alignItems: "center",
                 borderTop: "1px dashed var(--border)",
                 paddingTop: "9px",
+                marginTop: "auto",
               }}
             >
               <span style={{ fontWeight: 700, fontFamily: "var(--font-mono)" }}>
