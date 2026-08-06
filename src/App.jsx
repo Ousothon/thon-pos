@@ -5923,7 +5923,7 @@ function OnlineOrdersTab({
         style={{
           padding: "16px 26px 26px",
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
           gap: "14px",
         }}
       >
@@ -6061,23 +6061,20 @@ function OnlineOrdersTab({
                   </button>
                 )}
               {archiveView === "active" && o.status === "pending" && (
-                <div style={{ display: "flex", gap: "7px" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
                   <button
                     onClick={() => onReject(o)}
                     style={{
                       ...iconBtnStyle,
                       width: "auto",
-                      minWidth: 0,
                       color: "var(--danger)",
-                      flex: 1,
+                      flex: "1 1 100px",
                       padding: "6px 8px",
                       fontSize: "12px",
                       fontWeight: 700,
                       display: "flex",
                       justifyContent: "center",
                       whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
                       gap: "5px",
                     }}
                   >
@@ -6087,12 +6084,9 @@ function OnlineOrdersTab({
                     onClick={() => onAccept(o)}
                     style={{
                       ...primaryBtnStyle,
-                      minWidth: 0,
-                      flex: 1,
+                      flex: "1 1 100px",
                       justifyContent: "center",
                       whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
                       padding: "6px 8px",
                       fontSize: "12px",
                     }}
@@ -6102,23 +6096,20 @@ function OnlineOrdersTab({
                 </div>
               )}
               {o.status === "accepted" && (
-                <div style={{ display: "flex", gap: "7px" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
                   <button
                     onClick={() => onCancel(o)}
                     style={{
                       ...iconBtnStyle,
                       width: "auto",
-                      minWidth: 0,
                       color: "var(--danger)",
-                      flex: 1,
+                      flex: "1 1 100px",
                       padding: "6px 8px",
                       fontSize: "12px",
                       fontWeight: 700,
                       display: "flex",
                       justifyContent: "center",
                       whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
                       gap: "5px",
                     }}
                   >
@@ -6128,12 +6119,9 @@ function OnlineOrdersTab({
                     onClick={() => onMarkPaid(o)}
                     style={{
                       ...primaryBtnStyle,
-                      minWidth: 0,
-                      flex: 1,
+                      flex: "1 1 120px",
                       justifyContent: "center",
                       whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
                       padding: "6px 8px",
                       fontSize: "12px",
                     }}
