@@ -50,6 +50,7 @@ import {
   History,
   Settings as SettingsIcon,
   Wallet,
+  Loader2,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -511,6 +512,7 @@ const STRINGS = {
   fieldUsername: { km: "ឈ្មោះគណនី", en: "Username" },
   fieldPassword: { km: "លេខសម្ងាត់", en: "Password" },
   loginBtn: { km: "ចូលប្រើប្រព័ន្ធ", en: "Sign in" },
+  loginBtnLoading: { km: "កំពុងចូល...", en: "Signing in..." },
   toast_loginFailed: {
     km: "ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវ",
     en: "Incorrect username or password",
@@ -2979,6 +2981,54 @@ function FontStyles() {
         color: var(--text); cursor: pointer; flex-shrink: 0;
       }
 
+      /* ---- Login screen polish ---- */
+      @keyframes loginCardIn {
+        from { opacity: 0; transform: translateY(14px) scale(.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes loginLogoPop {
+        0% { opacity: 0; transform: scale(.6) rotate(-8deg); }
+        60% { opacity: 1; transform: scale(1.08) rotate(2deg); }
+        100% { opacity: 1; transform: scale(1) rotate(0deg); }
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes shake {
+        10%, 90% { transform: translateX(-1px); }
+        20%, 80% { transform: translateX(2px); }
+        30%, 50%, 70% { transform: translateX(-4px); }
+        40%, 60% { transform: translateX(4px); }
+      }
+      .login-card {
+        animation: loginCardIn .5s cubic-bezier(.22,1,.36,1);
+      }
+      .login-logo {
+        animation: loginLogoPop .6s cubic-bezier(.22,1,.36,1);
+      }
+      .login-error {
+        animation: shake .4s cubic-bezier(.36,.07,.19,.97);
+      }
+      .login-field input {
+        transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+      }
+      .login-field input:focus {
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+      }
+      .login-submit-btn {
+        position: relative;
+        overflow: hidden;
+        transition: filter .15s ease, transform .12s ease, box-shadow .2s ease, opacity .15s ease;
+      }
+      .login-submit-btn:hover:not(:disabled) {
+        box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 35%, transparent);
+        transform: translateY(-1px);
+      }
+      .login-submit-btn:active:not(:disabled) {
+        transform: translateY(0) scale(.98);
+      }
+      .spin-icon {
+        animation: spin .8s linear infinite;
+      }
+
       /* ---- Mobile hamburger + sidebar drawer (hidden on desktop) ---- */
       .mobile-menu-btn {
         display: none;
@@ -3162,11 +3212,24 @@ function LoginScreen({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
 
   const submit = (e) => {
     e.preventDefault();
-    onLogin(username, password);
+    if (submitting) return;
+    setSubmitting(true);
+    // small delay so the loading state is visible and the transition feels
+    // deliberate rather than an instant flash
+    setTimeout(() => {
+      onLogin(username, password);
+      setSubmitting(false);
+    }, 450);
   };
+
+  useEffect(() => {
+    if (error) setShakeKey((k) => k + 1);
+  }, [error]);
 
   return (
     <div
@@ -3196,6 +3259,7 @@ function LoginScreen({
       </div>
       <form
         onSubmit={submit}
+        className="login-card"
         style={{
           width: "340px",
           background: "var(--surface)",
@@ -3214,6 +3278,7 @@ function LoginScreen({
           }}
         >
           <div
+            className="login-logo"
             style={{
               width: "52px",
               height: "52px",
@@ -3249,7 +3314,10 @@ function LoginScreen({
         </div>
 
         <label style={fieldLabel}>{t("fieldUsername")}</label>
-        <div style={{ position: "relative", marginBottom: "14px" }}>
+        <div
+          className="login-field"
+          style={{ position: "relative", marginBottom: "14px" }}
+        >
           <UserIcon
             size={15}
             style={{
@@ -3262,18 +3330,27 @@ function LoginScreen({
           />
           <input
             autoFocus
+            disabled={submitting}
             value={username}
             onChange={(e) => {
               setUsername(e.target.value);
               clearError();
             }}
-            style={{ ...fieldInput, marginBottom: 0, paddingLeft: "36px" }}
+            style={{
+              ...fieldInput,
+              marginBottom: 0,
+              paddingLeft: "36px",
+              opacity: submitting ? 0.6 : 1,
+            }}
             placeholder="admin"
           />
         </div>
 
         <label style={fieldLabel}>{t("fieldPassword")}</label>
-        <div style={{ position: "relative", marginBottom: "6px" }}>
+        <div
+          className="login-field"
+          style={{ position: "relative", marginBottom: "6px" }}
+        >
           <Lock
             size={15}
             style={{
@@ -3286,6 +3363,7 @@ function LoginScreen({
           />
           <input
             type={showPw ? "text" : "password"}
+            disabled={submitting}
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
@@ -3296,11 +3374,13 @@ function LoginScreen({
               marginBottom: 0,
               paddingLeft: "36px",
               paddingRight: "36px",
+              opacity: submitting ? 0.6 : 1,
             }}
             placeholder="••••••••"
           />
           <button
             type="button"
+            disabled={submitting}
             onClick={() => setShowPw(!showPw)}
             style={{
               position: "absolute",
@@ -3309,7 +3389,7 @@ function LoginScreen({
               transform: "translateY(-50%)",
               background: "none",
               border: "none",
-              cursor: "pointer",
+              cursor: submitting ? "default" : "pointer",
               color: "var(--text-muted)",
               display: "flex",
             }}
@@ -3320,6 +3400,8 @@ function LoginScreen({
 
         {error && (
           <div
+            key={shakeKey}
+            className="login-error"
             style={{
               color: "var(--danger)",
               fontSize: "12.5px",
@@ -3333,14 +3415,24 @@ function LoginScreen({
 
         <button
           type="submit"
+          disabled={submitting}
+          className="login-submit-btn"
           style={{
             ...primaryBtnStyle,
             width: "100%",
             justifyContent: "center",
             marginTop: "10px",
+            opacity: submitting ? 0.9 : 1,
           }}
         >
-          {t("loginBtn")}
+          {submitting ? (
+            <>
+              <Loader2 size={16} className="spin-icon" />
+              {t("loginBtnLoading") || t("loginBtn")}
+            </>
+          ) : (
+            t("loginBtn")
+          )}
         </button>
       </form>
     </div>
