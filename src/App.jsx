@@ -230,6 +230,16 @@ const SESSION_KEY = "shop-session";
 const genId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const fmt = (n) => "$" + (Number(n) || 0).toFixed(2);
+// Riel exchange rate — change this single number to update the shop-wide rate.
+const KHR_PER_USD = 4100;
+const fmtKhr = (usd) => {
+  // Cambodia's smallest common note is 100 riel, so round to the nearest 100.
+  const riel = Math.round(((Number(usd) || 0) * KHR_PER_USD) / 100) * 100;
+  return riel.toLocaleString("en-US") + "៛";
+};
+// Loyalty points redemption rate — how many points equal $1 of discount.
+// Change this single number to adjust the rate shop-wide.
+const POINTS_PER_DOLLAR = 100;
 
 // ---------------- i18n ----------------
 const STRINGS = {
@@ -679,6 +689,7 @@ function POSApp() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [discount, setDiscount] = useState("");
   const [discountMode, setDiscountMode] = useState("amount"); // 'amount' ($) or 'percent' (%)
+  const [redeemPoints, setRedeemPoints] = useState("");
   const [payment, setPayment] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [receipt, setReceipt] = useState(null);
@@ -930,15 +941,28 @@ function POSApp() {
     discountMode === "percent"
       ? Math.min((subtotal * (Number(discount) || 0)) / 100, subtotal)
       : Math.min(Number(discount) || 0, subtotal);
-  const total = subtotal - discountAmt;
-  const paymentNum = Number(payment) || 0;
-  const change = paymentNum - total;
 
   const selectedCustomer =
     customers.find((c) => c.id === selectedCustomerId) || null;
   const customerDiscountPercent = selectedCustomer
     ? Number(selectedCustomer.discount_percent) || 0
     : 0;
+  const availablePoints = selectedCustomer
+    ? Math.floor(selectedCustomer.points || 0)
+    : 0;
+  const afterDiscount = Math.max(subtotal - discountAmt, 0);
+  const maxRedeemablePoints = Math.min(
+    availablePoints,
+    Math.floor(afterDiscount * POINTS_PER_DOLLAR),
+  );
+  const redeemPointsNum = Math.max(
+    0,
+    Math.min(Math.floor(Number(redeemPoints) || 0), maxRedeemablePoints),
+  );
+  const pointsDiscount = redeemPointsNum / POINTS_PER_DOLLAR;
+  const total = afterDiscount - pointsDiscount;
+  const paymentNum = Number(payment) || 0;
+  const change = paymentNum - total;
 
   // when a member customer with a discount % is selected, switch the field to percent mode
   // and prefill their rate — since it's a %, it stays correct even as the cart changes
@@ -950,6 +974,7 @@ function POSApp() {
       setDiscount("");
       setDiscountMode("amount");
     }
+    setRedeemPoints("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomerId]);
 
@@ -964,6 +989,7 @@ function POSApp() {
     setCart([]);
     setDiscount("");
     setDiscountMode("amount");
+    setRedeemPoints("");
     setPayment("");
     setSelectedCustomerId("");
   };
@@ -3471,7 +3497,13 @@ function POSTab(props) {
               }}
             />
           </div>
-          <Row label={t("total")} value={fmt(total)} bold big />
+          <Row
+            label={t("total")}
+            value={fmt(total)}
+            subValue={fmtKhr(total)}
+            bold
+            big
+          />
           <div
             style={{
               display: "flex",
@@ -3501,7 +3533,12 @@ function POSTab(props) {
               }}
             />
           </div>
-          <Row label={t("changeDue")} value={fmt(Math.max(change, 0))} accent />
+          <Row
+            label={t("changeDue")}
+            value={fmt(Math.max(change, 0))}
+            subValue={fmtKhr(Math.max(change, 0))}
+            accent
+          />
           <button
             onClick={completeSale}
             style={{
@@ -3529,13 +3566,13 @@ function POSTab(props) {
   );
 }
 
-function Row({ label, value, bold, big, accent }) {
+function Row({ label, value, subValue, bold, big, accent }) {
   return (
     <div
       style={{
         display: "flex",
         justifyContent: "space-between",
-        alignItems: "center",
+        alignItems: subValue ? "flex-start" : "center",
         padding: "3px 0",
       }}
     >
@@ -3548,16 +3585,36 @@ function Row({ label, value, bold, big, accent }) {
       >
         {label}
       </span>
-      <span
+      <div
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: big ? "19px" : "14px",
-          fontWeight: bold ? 800 : 700,
-          color: accent ? "var(--accent)" : "var(--text)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-end",
         }}
       >
-        {value}
-      </span>
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: big ? "19px" : "14px",
+            fontWeight: bold ? 800 : 700,
+            color: accent ? "var(--accent)" : "var(--text)",
+          }}
+        >
+          {value}
+        </span>
+        {subValue && (
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+              fontWeight: 600,
+              color: "var(--text-muted)",
+            }}
+          >
+            {subValue}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -6081,6 +6138,19 @@ function ReceiptModal({ sale, shopName, onClose }) {
             <div
               style={{
                 display: "flex",
+                justifyContent: "flex-end",
+                fontSize: "11.5px",
+                color: "var(--text-muted)",
+                marginTop: "1px",
+              }}
+            >
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                ≈ {fmtKhr(sale.total)}
+              </span>
+            </div>
+            <div
+              style={{
+                display: "flex",
                 justifyContent: "space-between",
                 color: "var(--text-muted)",
                 marginTop: "5px",
@@ -6103,6 +6173,20 @@ function ReceiptModal({ sale, shopName, onClose }) {
                 {fmt(sale.change)}
               </span>
             </div>
+            {sale.change > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  fontSize: "11.5px",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                  ≈ {fmtKhr(sale.change)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
         <div
