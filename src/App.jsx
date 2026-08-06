@@ -48,6 +48,7 @@ import {
   Sun,
   Moon,
   History,
+  Settings as SettingsIcon,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -221,6 +222,7 @@ const ROLE_PERMS = {
     "users",
     "onlineOrders",
     "auditLog",
+    "settings",
   ],
   staff: ["pos", "customers", "onlineOrders"],
 };
@@ -230,11 +232,12 @@ const SESSION_KEY = "shop-session";
 const genId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const fmt = (n) => "$" + (Number(n) || 0).toFixed(2);
-// Riel exchange rate — change this single number to update the shop-wide rate.
-const KHR_PER_USD = 4100;
-const fmtKhr = (usd) => {
+// Riel exchange rate — the shop-wide default; editable live from Settings.
+const KHR_PER_USD_DEFAULT = 4100;
+const fmtKhr = (usd, rate = KHR_PER_USD_DEFAULT) => {
   // Cambodia's smallest common note is 100 riel, so round to the nearest 100.
-  const riel = Math.round(((Number(usd) || 0) * KHR_PER_USD) / 100) * 100;
+  const riel =
+    Math.round(((Number(usd) || 0) * (Number(rate) || 0)) / 100) * 100;
   return riel.toLocaleString("en-US") + "៛";
 };
 // Loyalty points redemption rate — how many points equal $1 of discount.
@@ -488,6 +491,25 @@ const STRINGS = {
 
   nav_users: { km: "អ្នកប្រើប្រាស់", en: "Users" },
   nav_auditLog: { km: "កំណត់ត្រាសកម្មភាព", en: "Audit Log" },
+  nav_settings: { km: "ការកំណត់", en: "Settings" },
+  settings_subtitle: {
+    km: "កំណត់ការកំណត់ទូទៅរបស់ហាង",
+    en: "Configure general shop settings",
+  },
+  settings_khrTitle: {
+    km: "អត្រាប្តូរប្រាក់រៀល (KHR)",
+    en: "Riel exchange rate (KHR)",
+  },
+  settings_khrSubtitle: {
+    km: "ប្រើសម្រាប់បង្ហាញតម្លៃជារៀលនៅ Checkout និងលើវិក្កយបត្រ",
+    en: "Used to show riel amounts at checkout and on receipts",
+  },
+  settings_saveBtn: { km: "រក្សាទុក", en: "Save" },
+  settings_saved: { km: "បានរក្សាទុករួចរាល់", en: "Saved" },
+  settings_khrPreview: {
+    km: "ឧទាហរណ៍៖ $1 = {amount}",
+    en: "Example: $1 = {amount}",
+  },
   auditLog_subtitle: {
     km: "{count} កំណត់ត្រា",
     en: "{count} entries",
@@ -667,6 +689,7 @@ const NAV = [
   { id: "onlineOrders", key: "nav_onlineOrders", icon: Store },
   { id: "users", key: "nav_users", icon: UserCog },
   { id: "auditLog", key: "nav_auditLog", icon: History },
+  { id: "settings", key: "nav_settings", icon: SettingsIcon },
 ];
 
 function POSApp() {
@@ -675,6 +698,7 @@ function POSApp() {
   const [sales, setSales] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [shopName, setShopName] = useState("");
+  const [khrRate, setKhrRate] = useState(KHR_PER_USD_DEFAULT);
   const [lang, setLang] = useState("km");
   const [activeTab, setActiveTab] = useState("pos");
   const [toast, setToast] = useState(null);
@@ -738,6 +762,7 @@ function POSApp() {
         setSales(parsed.sales || []);
         setCustomers(parsed.customers || []);
         setShopName(parsed.shopName || "");
+        setKhrRate(parsed.khrRate || KHR_PER_USD_DEFAULT);
         setLang(parsed.lang || "km");
         setUsers(
           parsed.users && parsed.users.length ? parsed.users : seedUsers,
@@ -761,7 +786,15 @@ function POSApp() {
       try {
         localStorage.setItem(
           STORAGE_KEY,
-          JSON.stringify({ products, sales, customers, shopName, lang, users }),
+          JSON.stringify({
+            products,
+            sales,
+            customers,
+            shopName,
+            khrRate,
+            lang,
+            users,
+          }),
         );
       } catch {
         showToast(t("toast_saveFailed"), "error");
@@ -769,7 +802,7 @@ function POSApp() {
     }, 250);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, sales, customers, shopName, lang, users, loading]);
+  }, [products, sales, customers, shopName, khrRate, lang, users, loading]);
 
   useEffect(() => {
     try {
@@ -2305,6 +2338,7 @@ function POSApp() {
               resetCustomerDiscount={resetCustomerDiscount}
               discountMode={discountMode}
               setDiscountMode={setDiscountMode}
+              khrRate={khrRate}
             />
           )}
           {activeTab === "dashboard" && (
@@ -2388,6 +2422,9 @@ function POSApp() {
           {activeTab === "auditLog" && allowedTabs.includes("auditLog") && (
             <AuditLogTab auditLog={auditLog} />
           )}
+          {activeTab === "settings" && allowedTabs.includes("settings") && (
+            <SettingsTab khrRate={khrRate} setKhrRate={setKhrRate} />
+          )}
           {!allowedTabs.includes(activeTab) && (
             <div
               style={{
@@ -2429,6 +2466,7 @@ function POSApp() {
           <ReceiptModal
             sale={receipt}
             shopName={shopName || t("shopNameDefault")}
+            khrRate={khrRate}
             onClose={() => setReceipt(null)}
           />
         )}
@@ -3051,6 +3089,7 @@ function POSTab(props) {
     resetCustomerDiscount,
     discountMode,
     setDiscountMode,
+    khrRate,
   } = props;
 
   return (
@@ -3500,7 +3539,7 @@ function POSTab(props) {
           <Row
             label={t("total")}
             value={fmt(total)}
-            subValue={fmtKhr(total)}
+            subValue={fmtKhr(total, khrRate)}
             bold
             big
           />
@@ -3536,7 +3575,7 @@ function POSTab(props) {
           <Row
             label={t("changeDue")}
             value={fmt(Math.max(change, 0))}
-            subValue={fmtKhr(Math.max(change, 0))}
+            subValue={fmtKhr(Math.max(change, 0), khrRate)}
             accent
           />
           <button
@@ -5598,6 +5637,111 @@ function AuditLogTab({ auditLog }) {
   );
 }
 
+// ================= Settings =================
+
+function SettingsTab({ khrRate, setKhrRate }) {
+  const { t } = useT();
+  const [draft, setDraft] = useState(String(khrRate));
+  const [saved, setSaved] = useState(false);
+
+  const save = () => {
+    const n = Number(draft);
+    if (!n || n <= 0) return;
+    setKhrRate(n);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  };
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto" }}>
+      <TopBar title={t("nav_settings")} subtitle={t("settings_subtitle")} />
+      <div style={{ padding: "16px 26px 26px" }}>
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "14px",
+            padding: "18px",
+            maxWidth: "440px",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: "14.5px",
+              marginBottom: "4px",
+            }}
+          >
+            {t("settings_khrTitle")}
+          </div>
+          <div
+            style={{
+              fontSize: "12.5px",
+              color: "var(--text-muted)",
+              marginBottom: "14px",
+            }}
+          >
+            {t("settings_khrSubtitle")}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "13px", fontWeight: 600 }}>1$ =</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              style={{
+                width: "120px",
+                padding: "8px 10px",
+                borderRadius: "8px",
+                border: "1px solid var(--border)",
+                fontFamily: "var(--font-mono)",
+                fontSize: "14px",
+                fontWeight: 700,
+              }}
+            />
+            <span style={{ fontSize: "13px", fontWeight: 600 }}>៛</span>
+            <button
+              onClick={save}
+              style={{
+                ...primaryBtnStyle,
+                padding: "8px 16px",
+                fontSize: "13px",
+              }}
+            >
+              {t("settings_saveBtn")}
+            </button>
+          </div>
+          {saved && (
+            <div
+              style={{
+                marginTop: "10px",
+                fontSize: "12.5px",
+                color: "var(--primary)",
+                fontWeight: 600,
+              }}
+            >
+              {t("settings_saved")}
+            </div>
+          )}
+          <div
+            style={{
+              marginTop: "14px",
+              fontSize: "12px",
+              color: "var(--text-muted)",
+            }}
+          >
+            {t("settings_khrPreview", {
+              amount: fmtKhr(1, Number(draft) || khrRate),
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ================= Modals =================
 
 function ModalShell({ title, onClose, children, width = "380px" }) {
@@ -6000,7 +6144,7 @@ function UserModal({ data, onClose, onSave }) {
   );
 }
 
-function ReceiptModal({ sale, shopName, onClose }) {
+function ReceiptModal({ sale, shopName, khrRate, onClose }) {
   const { t, lang } = useT();
   return (
     <div
@@ -6145,7 +6289,7 @@ function ReceiptModal({ sale, shopName, onClose }) {
               }}
             >
               <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                ≈ {fmtKhr(sale.total)}
+                ≈ {fmtKhr(sale.total, khrRate)}
               </span>
             </div>
             <div
@@ -6183,7 +6327,7 @@ function ReceiptModal({ sale, shopName, onClose }) {
                 }}
               >
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                  ≈ {fmtKhr(sale.change)}
+                  ≈ {fmtKhr(sale.change, khrRate)}
                 </span>
               </div>
             )}
