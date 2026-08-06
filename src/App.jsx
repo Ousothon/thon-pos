@@ -49,6 +49,7 @@ import {
   Moon,
   History,
   Settings as SettingsIcon,
+  Wallet,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -223,6 +224,7 @@ const ROLE_PERMS = {
     "onlineOrders",
     "auditLog",
     "settings",
+    "expenses",
   ],
   staff: ["pos", "customers", "onlineOrders"],
 };
@@ -385,7 +387,8 @@ const STRINGS = {
   stat_transactions: { km: "ប្រតិបត្តិការ", en: "Transactions" },
   stat_avgTx: { km: "មធ្យមភាគ/ប្រតិបត្តិការ", en: "Avg. per sale" },
   stat_itemsSold: { km: "ចំនួនទំនិញលក់បាន", en: "Items sold" },
-  stat_profit: { km: "ចំណេញសុទ្ធ", en: "Net profit" },
+  stat_profit: { km: "ចំណេញដុល", en: "Gross profit" },
+  stat_netProfit: { km: "ចំណេញសុទ្ធ", en: "Net profit" },
   topProducts: { km: "ទំនិញលក់ដាច់បំផុត", en: "Best-selling products" },
   noData: { km: "មិនមានទិន្នន័យ", en: "No data yet" },
   transactions: { km: "ប្រតិបត្តិការ ({count})", en: "Transactions ({count})" },
@@ -495,6 +498,44 @@ const STRINGS = {
   nav_users: { km: "អ្នកប្រើប្រាស់", en: "Users" },
   nav_auditLog: { km: "កំណត់ត្រាសកម្មភាព", en: "Audit Log" },
   nav_settings: { km: "ការកំណត់", en: "Settings" },
+  nav_expenses: { km: "ចំណាយ", en: "Expenses" },
+
+  exp_title: { km: "តាមដានចំណាយ", en: "Expense tracking" },
+  exp_subtitle: {
+    km: "កត់ត្រាចំណាយប្រតិបត្តិការប្រចាំថ្ងៃរបស់ហាង",
+    en: "Track your shop's day-to-day operating costs",
+  },
+  exp_addBtn: { km: "បន្ថែមចំណាយ", en: "Add expense" },
+  exp_editTitle: { km: "កែប្រែចំណាយ", en: "Edit expense" },
+  exp_addTitle: { km: "បន្ថែមចំណាយថ្មី", en: "Add new expense" },
+  exp_date: { km: "កាលបរិច្ឆេទ", en: "Date" },
+  exp_category: { km: "ប្រភេទ", en: "Category" },
+  exp_amount: { km: "ចំនួនទឹកប្រាក់ ($)", en: "Amount ($)" },
+  exp_note: { km: "កំណត់ចំណាំ", en: "Note" },
+  exp_addedBy: { km: "កត់ត្រាដោយ", en: "Logged by" },
+  exp_cat_electricity: { km: "ថ្លៃភ្លើង", en: "Electricity" },
+  exp_cat_water: { km: "ថ្លៃទឹក", en: "Water" },
+  exp_cat_rent: { km: "ថ្លៃជួលហាង", en: "Rent" },
+  exp_cat_salary: { km: "ប្រាក់បៀវត្សន៍", en: "Salary" },
+  exp_cat_transport: { km: "ថ្លៃដឹកជញ្ជូន", en: "Transport" },
+  exp_cat_supplies: { km: "សម្ភារៈប្រើប្រាស់", en: "Supplies" },
+  exp_cat_other: { km: "ផ្សេងៗ", en: "Other" },
+  exp_empty: {
+    km: "មិនទាន់មានចំណាយត្រូវបានកត់ត្រាទេ",
+    en: "No expenses logged yet",
+  },
+  exp_deleteConfirm: {
+    km: "តើអ្នកចង់លុបចំណាយនេះមែនទេ?",
+    en: "Delete this expense?",
+  },
+  exp_totalThisMonth: {
+    km: "ចំណាយសរុបខែនេះ",
+    en: "Total expenses this month",
+  },
+  toast_expenseAdded: { km: "បានបន្ថែមចំណាយ", en: "Expense added" },
+  toast_expenseUpdated: { km: "បានកែប្រែចំណាយ", en: "Expense updated" },
+  toast_expenseDeleted: { km: "បានលុបចំណាយ", en: "Expense deleted" },
+  stat_expenses: { km: "ចំណាយប្រតិបត្តិការ", en: "Operating expenses" },
   settings_subtitle: {
     km: "កំណត់ការកំណត់ទូទៅរបស់ហាង",
     en: "Configure general shop settings",
@@ -690,6 +731,7 @@ const NAV = [
   { id: "reports", key: "nav_reports", icon: BarChart3 },
   { id: "customers", key: "nav_customers", icon: Users },
   { id: "onlineOrders", key: "nav_onlineOrders", icon: Store },
+  { id: "expenses", key: "nav_expenses", icon: Wallet },
   { id: "users", key: "nav_users", icon: UserCog },
   { id: "auditLog", key: "nav_auditLog", icon: History },
   { id: "settings", key: "nav_settings", icon: SettingsIcon },
@@ -700,6 +742,7 @@ function POSApp() {
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [expenses, setExpenses] = useState([]);
   const [shopName, setShopName] = useState("");
   const [khrRate, setKhrRate] = useState(KHR_PER_USD_DEFAULT);
   const [lang, setLang] = useState("km");
@@ -725,6 +768,7 @@ function POSApp() {
   const [invCategory, setInvCategory] = useState("all");
   const [productModal, setProductModal] = useState(null);
   const [customerModal, setCustomerModal] = useState(null);
+  const [expenseModal, setExpenseModal] = useState(null);
 
   const [reportRange, setReportRange] = useState("today");
   const [expandedSale, setExpandedSale] = useState(null);
@@ -764,6 +808,7 @@ function POSApp() {
         setProducts(parsed.products || []);
         setSales(parsed.sales || []);
         setCustomers(parsed.customers || []);
+        setExpenses(parsed.expenses || []);
         setShopName(parsed.shopName || "");
         setKhrRate(parsed.khrRate || KHR_PER_USD_DEFAULT);
         setLang(parsed.lang || "km");
@@ -793,6 +838,7 @@ function POSApp() {
             products,
             sales,
             customers,
+            expenses,
             shopName,
             khrRate,
             lang,
@@ -805,7 +851,17 @@ function POSApp() {
     }, 250);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, sales, customers, shopName, khrRate, lang, users, loading]);
+  }, [
+    products,
+    sales,
+    customers,
+    expenses,
+    shopName,
+    khrRate,
+    lang,
+    users,
+    loading,
+  ]);
 
   useEffect(() => {
     try {
@@ -1235,6 +1291,34 @@ function POSApp() {
       /* offline */
     }
   };
+  const pushExpenseRow = async (e) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("expenses").upsert(
+        {
+          id: e.id,
+          date: e.date,
+          category: e.category,
+          amount: e.amount,
+          note: e.note || "",
+          user_id: e.userId || null,
+          username: e.username || "",
+          updated_at: e.updatedAt || Date.now(),
+        },
+        { onConflict: "id" },
+      );
+    } catch {
+      /* offline */
+    }
+  };
+  const deleteExpenseRow = async (id) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("expenses").delete().eq("id", id);
+    } catch {
+      /* offline */
+    }
+  };
 
   const [onlineOrders, setOnlineOrders] = useState([]);
   const pendingOrderCount = onlineOrders.filter(
@@ -1357,6 +1441,27 @@ function POSApp() {
     }
   };
 
+  const fetchCloudExpenses = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.from("expenses").select("*");
+      if (error) throw error;
+      const mapped = (data || []).map((r) => ({
+        id: r.id,
+        date: r.date,
+        category: r.category,
+        amount: r.amount,
+        note: r.note || "",
+        userId: r.user_id || null,
+        username: r.username || "",
+        updatedAt: r.updated_at || 0,
+      }));
+      setExpenses((prev) => mergeById(prev, mapped));
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
   // ---- Pull products/users from Supabase so every device shares the same catalog + accounts ----
   const fetchCloudProducts = async () => {
     if (!supabase) return;
@@ -1443,12 +1548,14 @@ function POSApp() {
     fetchCloudProducts();
     fetchCloudUsers();
     fetchCloudSettings();
+    fetchCloudExpenses();
     const poll = setInterval(() => {
       fetchCloudSales();
       fetchCloudCustomers();
       fetchCloudProducts();
       fetchCloudUsers();
       fetchCloudSettings();
+      fetchCloudExpenses();
     }, 15000);
     let channel;
     try {
@@ -1478,6 +1585,11 @@ function POSApp() {
           "postgres_changes",
           { event: "*", schema: "public", table: "shop_settings" },
           fetchCloudSettings,
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "expenses" },
+          fetchCloudExpenses,
         )
         .subscribe();
     } catch {
@@ -1816,6 +1928,59 @@ function POSApp() {
     logAudit("delete", "customer", target ? target.name : id);
   };
 
+  const saveExpense = (form) => {
+    if (!form.category || !form.amount || Number(form.amount) <= 0) {
+      showToast(t("toast_customerRequired"), "error");
+      return;
+    }
+    const clean = {
+      category: form.category,
+      amount: Number(form.amount) || 0,
+      note: form.note || "",
+      date: form.date || new Date().toISOString().slice(0, 10),
+    };
+    const label = `${t("exp_cat_" + clean.category)} — ${fmt(clean.amount)}`;
+    if (form.id) {
+      const updated = {
+        ...expenses.find((e) => e.id === form.id),
+        ...clean,
+        updatedAt: Date.now(),
+      };
+      setExpenses(expenses.map((e) => (e.id === form.id ? updated : e)));
+      showToast(t("toast_expenseUpdated"));
+      pushExpenseRow(updated);
+      logAudit("edit", "expense", label);
+    } else {
+      const created = {
+        ...clean,
+        id: genId(),
+        userId: currentUser ? currentUser.id : null,
+        username: currentUser
+          ? currentUser.name_km || currentUser.name_en || currentUser.username
+          : "",
+        updatedAt: Date.now(),
+      };
+      setExpenses([created, ...expenses]);
+      showToast(t("toast_expenseAdded"));
+      pushExpenseRow(created);
+      logAudit("add", "expense", label);
+    }
+    setExpenseModal(null);
+  };
+  const deleteExpense = (id) => {
+    const target = expenses.find((e) => e.id === id);
+    setExpenses(expenses.filter((e) => e.id !== id));
+    showToast(t("toast_expenseDeleted"));
+    deleteExpenseRow(id);
+    logAudit(
+      "delete",
+      "expense",
+      target
+        ? `${t("exp_cat_" + target.category)} — ${fmt(target.amount)}`
+        : id,
+    );
+  };
+
   // ---------- Reports ----------
   const rangedSales = useMemo(() => {
     const now = new Date();
@@ -1837,6 +2002,26 @@ function POSApp() {
       return true;
     });
   }, [sales, reportRange]);
+
+  const rangedExpenses = useMemo(() => {
+    const now = new Date();
+    return expenses.filter((e) => {
+      const d = new Date(e.date);
+      if (reportRange === "today")
+        return d.toDateString() === now.toDateString();
+      if (reportRange === "week") {
+        const w = new Date(now);
+        w.setDate(now.getDate() - 7);
+        return d >= w;
+      }
+      if (reportRange === "month")
+        return (
+          d.getMonth() === now.getMonth() &&
+          d.getFullYear() === now.getFullYear()
+        );
+      return true;
+    });
+  }, [expenses, reportRange]);
 
   // ---------- Archive (keep old sales out of active reports without deleting them) ----------
   const archivedSales = useMemo(
@@ -1944,8 +2129,22 @@ function POSApp() {
     const topProducts = Object.entries(productMap)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
-    return { revenue, itemsSold, txCount, avg, profit, topProducts };
-  }, [rangedSales]);
+    const expensesTotal = rangedExpenses.reduce(
+      (s, e) => s + (Number(e.amount) || 0),
+      0,
+    );
+    const netProfit = profit - expensesTotal;
+    return {
+      revenue,
+      itemsSold,
+      txCount,
+      avg,
+      profit,
+      expensesTotal,
+      netProfit,
+      topProducts,
+    };
+  }, [rangedSales, rangedExpenses]);
 
   const chartData = useMemo(() => {
     const now = new Date();
@@ -2446,6 +2645,14 @@ function POSApp() {
               deleteCustomer={deleteCustomer}
             />
           )}
+          {activeTab === "expenses" && allowedTabs.includes("expenses") && (
+            <ExpensesTab
+              expenses={expenses}
+              openAdd={() => setExpenseModal({ mode: "add" })}
+              openEdit={(e) => setExpenseModal({ mode: "edit", expense: e })}
+              deleteExpense={deleteExpense}
+            />
+          )}
           {activeTab === "onlineOrders" &&
             allowedTabs.includes("onlineOrders") && (
               <OnlineOrdersTab
@@ -2509,6 +2716,13 @@ function POSApp() {
             data={customerModal}
             onClose={() => setCustomerModal(null)}
             onSave={saveCustomer}
+          />
+        )}
+        {expenseModal && (
+          <ExpenseModal
+            data={expenseModal}
+            onClose={() => setExpenseModal(null)}
+            onSave={saveExpense}
           />
         )}
         {userModal && (
@@ -4521,6 +4735,16 @@ function ReportsTab({
           value={fmt(summary.profit)}
           icon={TrendingUp}
         />
+        <StatCard
+          label={t("stat_expenses")}
+          value={fmt(summary.expensesTotal)}
+          icon={Wallet}
+        />
+        <StatCard
+          label={t("stat_netProfit")}
+          value={fmt(summary.netProfit)}
+          icon={TrendingUp}
+        />
       </div>
 
       <div style={{ padding: "16px 26px 0" }}>
@@ -4944,6 +5168,143 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ================= Expenses =================
+
+function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
+  const { t } = useT();
+  const now = new Date();
+  const thisMonthTotal = expenses
+    .filter((e) => {
+      const d = new Date(e.date);
+      return (
+        d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      );
+    })
+    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const sorted = [...expenses].sort(
+    (a, b) => new Date(b.date) - new Date(a.date),
+  );
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto" }}>
+      <TopBar
+        title={t("nav_expenses")}
+        subtitle={t("exp_subtitle")}
+        action={
+          <button onClick={openAdd} style={primaryBtnStyle}>
+            <Plus size={16} /> {t("exp_addBtn")}
+          </button>
+        }
+      />
+      <div style={{ padding: "18px 26px 0" }}>
+        <StatCard
+          label={t("exp_totalThisMonth")}
+          value={fmt(thisMonthTotal)}
+          icon={Wallet}
+        />
+      </div>
+      <div style={{ padding: "18px 26px" }}>
+        {sorted.length === 0 && (
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "14px",
+              textAlign: "center",
+              padding: "34px 0",
+            }}
+          >
+            {t("exp_empty")}
+          </div>
+        )}
+        {sorted.length > 0 && (
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "14px",
+              overflow: "hidden",
+            }}
+          >
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr
+                  style={{
+                    textAlign: "start",
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <th style={thStyle}>{t("exp_date")}</th>
+                  <th style={thStyle}>{t("exp_category")}</th>
+                  <th style={thStyle}>{t("exp_note")}</th>
+                  <th style={thStyle}>{t("exp_addedBy")}</th>
+                  <th style={{ ...thStyle, textAlign: "end" }}>
+                    {t("exp_amount")}
+                  </th>
+                  <th style={thStyle}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((e) => (
+                  <tr
+                    key={e.id}
+                    style={{ borderBottom: "1px solid var(--border)" }}
+                  >
+                    <td style={tdStyle}>{e.date}</td>
+                    <td style={tdStyle}>{t("exp_cat_" + e.category)}</td>
+                    <td style={{ ...tdStyle, color: "var(--text-muted)" }}>
+                      {e.note || "—"}
+                    </td>
+                    <td style={{ ...tdStyle, color: "var(--text-muted)" }}>
+                      {e.username || "—"}
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        textAlign: "end",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {fmt(e.amount)}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "end" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "5px",
+                          justifyContent: "flex-end",
+                        }}
+                      >
+                        <button
+                          onClick={() => openEdit(e)}
+                          style={iconBtnStyle}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(t("exp_deleteConfirm"))) {
+                              deleteExpense(e.id);
+                            }
+                          }}
+                          style={{ ...iconBtnStyle, color: "var(--danger)" }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6140,6 +6501,78 @@ function CustomerModal({ data, onClose, onSave }) {
         value={form.discount_percent ?? 0}
         onChange={(e) => setForm({ ...form, discount_percent: e.target.value })}
         placeholder="0"
+      />
+      <button
+        onClick={() => onSave(form)}
+        style={{ ...primaryBtnStyle, width: "100%", justifyContent: "center" }}
+      >
+        {t("save")}
+      </button>
+    </ModalShell>
+  );
+}
+
+function ExpenseModal({ data, onClose, onSave }) {
+  const { t } = useT();
+  const editing = data.mode === "edit";
+  const EXP_CATS = [
+    "electricity",
+    "water",
+    "rent",
+    "salary",
+    "transport",
+    "supplies",
+    "other",
+  ];
+  const e = editing
+    ? data.expense
+    : {
+        category: "electricity",
+        amount: "",
+        note: "",
+        date: new Date().toISOString().slice(0, 10),
+      };
+  const [form, setForm] = useState(e);
+
+  return (
+    <ModalShell
+      title={editing ? t("exp_editTitle") : t("exp_addTitle")}
+      onClose={onClose}
+    >
+      <label style={fieldLabel}>{t("exp_date")}</label>
+      <input
+        type="date"
+        style={fieldInput}
+        value={form.date}
+        onChange={(ev) => setForm({ ...form, date: ev.target.value })}
+      />
+      <label style={fieldLabel}>{t("exp_category")}</label>
+      <select
+        style={fieldInput}
+        value={form.category}
+        onChange={(ev) => setForm({ ...form, category: ev.target.value })}
+      >
+        {EXP_CATS.map((cat) => (
+          <option key={cat} value={cat}>
+            {t("exp_cat_" + cat)}
+          </option>
+        ))}
+      </select>
+      <label style={fieldLabel}>{t("exp_amount")}</label>
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        style={fieldInput}
+        value={form.amount}
+        onChange={(ev) => setForm({ ...form, amount: ev.target.value })}
+        placeholder="0.00"
+      />
+      <label style={fieldLabel}>{t("exp_note")}</label>
+      <input
+        style={fieldInput}
+        value={form.note || ""}
+        onChange={(ev) => setForm({ ...form, note: ev.target.value })}
       />
       <button
         onClick={() => onSave(form)}
