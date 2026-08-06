@@ -352,6 +352,7 @@ const STRINGS = {
   th_product: { km: "ឈ្មោះទំនិញ", en: "Product" },
   th_category: { km: "ប្រភេទ", en: "Category" },
   th_price: { km: "តម្លៃ", en: "Price" },
+  th_margin: { km: "ចំណេញ/ឯកតា", en: "Margin/unit" },
   th_stock: { km: "ស្តុក", en: "Stock" },
   noProducts: { km: "មិនមានទំនិញ", en: "No products" },
 
@@ -361,6 +362,7 @@ const STRINGS = {
   fieldNamePlaceholder: { km: "ឧ. ទឹកសុទ្ធ 500ml", en: "e.g. Water 500ml" },
   fieldCategory: { km: "ប្រភេទ", en: "Category" },
   fieldPrice: { km: "តម្លៃ ($)", en: "Price ($)" },
+  fieldCost: { km: "តម្លៃដើម ($)", en: "Cost ($)" },
   fieldStock: { km: "ស្តុក", en: "Stock" },
   fieldUnit: { km: "ឯកតា", en: "Unit" },
   fieldUnitPlaceholder: {
@@ -383,6 +385,7 @@ const STRINGS = {
   stat_transactions: { km: "ប្រតិបត្តិការ", en: "Transactions" },
   stat_avgTx: { km: "មធ្យមភាគ/ប្រតិបត្តិការ", en: "Avg. per sale" },
   stat_itemsSold: { km: "ចំនួនទំនិញលក់បាន", en: "Items sold" },
+  stat_profit: { km: "ចំណេញសុទ្ធ", en: "Net profit" },
   topProducts: { km: "ទំនិញលក់ដាច់បំផុត", en: "Best-selling products" },
   noData: { km: "មិនមានទិន្នន័យ", en: "No data yet" },
   transactions: { km: "ប្រតិបត្តិការ ({count})", en: "Transactions ({count})" },
@@ -939,6 +942,7 @@ function POSApp() {
           id: product.id,
           name: prodName(product),
           price: product.price,
+          cost: product.cost || 0,
           unit: prodUnit(product),
           qty: 1,
           image: product.image,
@@ -1106,6 +1110,7 @@ function POSApp() {
         ...products.find((p) => p.id === form.id),
         ...form,
         price: Number(form.price),
+        cost: Number(form.cost) || 0,
         stock: Number(form.stock) || 0,
         updatedAt: Date.now(),
       };
@@ -1118,6 +1123,7 @@ function POSApp() {
         ...form,
         id: genId(),
         price: Number(form.price),
+        cost: Number(form.cost) || 0,
         stock: Number(form.stock) || 0,
         updatedAt: Date.now(),
       };
@@ -1153,6 +1159,7 @@ function POSApp() {
           name_en: p.name_en || "",
           category: p.category,
           price: p.price,
+          cost: p.cost || 0,
           stock: p.stock,
           unit_km: p.unit_km || "",
           unit_en: p.unit_en || "",
@@ -1363,6 +1370,7 @@ function POSApp() {
           name_en: r.name_en || "",
           category: r.category,
           price: r.price,
+          cost: r.cost || 0,
           stock: r.stock,
           unit_km: r.unit_km || "",
           unit_en: r.unit_en || "",
@@ -1918,6 +1926,13 @@ function POSApp() {
       (s, sale) => s + sale.items.reduce((a, i) => a + i.qty, 0),
       0,
     );
+    const profit = rangedSales.reduce((s, sale) => {
+      const itemProfit = sale.items.reduce(
+        (a, i) => a + i.qty * (i.price - (i.cost || 0)),
+        0,
+      );
+      return s + itemProfit - (sale.discount || 0);
+    }, 0);
     const txCount = rangedSales.length;
     const avg = txCount ? revenue / txCount : 0;
     const productMap = {};
@@ -1929,7 +1944,7 @@ function POSApp() {
     const topProducts = Object.entries(productMap)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
-    return { revenue, itemsSold, txCount, avg, topProducts };
+    return { revenue, itemsSold, txCount, avg, profit, topProducts };
   }, [rangedSales]);
 
   const chartData = useMemo(() => {
@@ -4037,6 +4052,7 @@ function InventoryTab({
               <th style={thStyle}>{t("th_product")}</th>
               <th style={thStyle}>{t("th_category")}</th>
               <th style={thStyle}>{t("th_price")}</th>
+              <th style={thStyle}>{t("th_margin")}</th>
               <th style={thStyle}>{t("th_stock")}</th>
               <th style={thStyle}></th>
             </tr>
@@ -4059,6 +4075,28 @@ function InventoryTab({
                   }}
                 >
                   {fmt(p.price)}
+                </td>
+                <td
+                  style={{
+                    ...tdStyle,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  {p.cost > 0 ? (
+                    <>
+                      {fmt(p.price - p.cost)}
+                      <span style={{ fontSize: "11px", marginLeft: "3px" }}>
+                        (
+                        {p.price > 0
+                          ? Math.round(((p.price - p.cost) / p.price) * 100)
+                          : 0}
+                        %)
+                      </span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td style={tdStyle}>
                   <span
@@ -4477,6 +4515,11 @@ function ReportsTab({
           label={t("stat_itemsSold")}
           value={summary.itemsSold}
           icon={Package}
+        />
+        <StatCard
+          label={t("stat_profit")}
+          value={fmt(summary.profit)}
+          icon={TrendingUp}
         />
       </div>
 
@@ -5867,6 +5910,7 @@ function ProductModal({ data, onClose, onSave }) {
         name_en: "",
         category: CATEGORY_KEYS[0],
         price: "",
+        cost: "",
         stock: "",
         unit_km: "",
         unit_en: "",
@@ -6002,6 +6046,18 @@ function ProductModal({ data, onClose, onSave }) {
             step="0.01"
             value={form.price}
             onChange={(e) => setForm({ ...form, price: e.target.value })}
+            placeholder="0.00"
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={fieldLabel}>{t("fieldCost")}</label>
+          <input
+            style={fieldInput}
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.cost || ""}
+            onChange={(e) => setForm({ ...form, cost: e.target.value })}
             placeholder="0.00"
           />
         </div>
