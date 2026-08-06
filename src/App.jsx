@@ -5925,7 +5925,7 @@ function OnlineOrdersTab({
         style={{
           padding: "16px 26px 26px",
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
           gap: "14px",
         }}
       >
