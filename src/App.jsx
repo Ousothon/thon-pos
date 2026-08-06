@@ -6066,31 +6066,38 @@ function OnlineOrdersTab({
                     onClick={() => onReject(o)}
                     style={{
                       ...iconBtnStyle,
+                      width: "auto",
+                      minWidth: 0,
                       color: "var(--danger)",
                       flex: 1,
-                      padding: "6px 11px",
+                      padding: "6px 8px",
                       fontSize: "12px",
                       fontWeight: 700,
                       display: "flex",
                       justifyContent: "center",
                       whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                       gap: "5px",
                     }}
                   >
-                    <X size={13} /> {t("reject")}
+                    <X size={13} style={{ flexShrink: 0 }} /> {t("reject")}
                   </button>
                   <button
                     onClick={() => onAccept(o)}
                     style={{
                       ...primaryBtnStyle,
+                      minWidth: 0,
                       flex: 1,
                       justifyContent: "center",
                       whiteSpace: "nowrap",
-                      padding: "6px 12px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      padding: "6px 8px",
                       fontSize: "12px",
                     }}
                   >
-                    <Check size={13} /> {t("accept")}
+                    <Check size={13} style={{ flexShrink: 0 }} /> {t("accept")}
                   </button>
                 </div>
               )}
@@ -6100,31 +6107,39 @@ function OnlineOrdersTab({
                     onClick={() => onCancel(o)}
                     style={{
                       ...iconBtnStyle,
+                      width: "auto",
+                      minWidth: 0,
                       color: "var(--danger)",
                       flex: 1,
-                      padding: "6px 11px",
+                      padding: "6px 8px",
                       fontSize: "12px",
                       fontWeight: 700,
                       display: "flex",
                       justifyContent: "center",
                       whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                       gap: "5px",
                     }}
                   >
-                    <X size={13} /> {t("cancelOrder")}
+                    <X size={13} style={{ flexShrink: 0 }} /> {t("cancelOrder")}
                   </button>
                   <button
                     onClick={() => onMarkPaid(o)}
                     style={{
                       ...primaryBtnStyle,
+                      minWidth: 0,
                       flex: 1,
                       justifyContent: "center",
                       whiteSpace: "nowrap",
-                      padding: "6px 12px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      padding: "6px 8px",
                       fontSize: "12px",
                     }}
                   >
-                    <Check size={13} /> {t("markPaid")}
+                    <Check size={13} style={{ flexShrink: 0 }} />{" "}
+                    {t("markPaid")}
                   </button>
                 </div>
               )}
