@@ -268,6 +268,33 @@ const STRINGS = {
   cat_snack: { km: "ជីវជាតិ", en: "Snacks" },
   cat_other: { km: "ផ្សេងៗ", en: "Other" },
 
+  manageCategories: { km: "គ្រប់គ្រងប្រភេទ", en: "Manage categories" },
+  manageCategories_subtitle: {
+    km: "បន្ថែម ឬលុបប្រភេទទំនិញតាមអាជីវកម្មរបស់អ្នក",
+    en: "Add or remove product categories for your shop",
+  },
+  cat_addBtn: { km: "បន្ថែមប្រភេទថ្មី", en: "Add category" },
+  cat_labelKm: { km: "ឈ្មោះ (ខ្មែរ)", en: "Name (Khmer)" },
+  cat_labelEn: { km: "ឈ្មោះ (អង់គ្លេស)", en: "Name (English)" },
+  cat_deleteConfirm: {
+    km: "តើអ្នកចង់លុបប្រភេទនេះមែនទេ?",
+    en: "Delete this category?",
+  },
+  cat_inUse: {
+    km: "មិនអាចលុបបានទេ ព្រោះមានទំនិញ {count} កំពុងប្រើប្រភេទនេះ",
+    en: "Can't delete — {count} product(s) still use this category",
+  },
+  cat_nameRequired: {
+    km: "សូមបញ្ចូលឈ្មោះប្រភេទ",
+    en: "Please enter a category name",
+  },
+  cat_duplicateKey: {
+    km: "ប្រភេទនេះមានរួចហើយ",
+    en: "This category already exists",
+  },
+  toast_categoryAdded: { km: "បានបន្ថែមប្រភេទ", en: "Category added" },
+  toast_categoryDeleted: { km: "បានលុបប្រភេទ", en: "Category deleted" },
+
   searchProducts: { km: "ស្វែងរកទំនិញ...", en: "Search products..." },
   noProductsFound: { km: "រកមិនឃើញទំនិញ", en: "No products found" },
   outOfStock: { km: "អស់ស្តុក", en: "Out of stock" },
@@ -689,7 +716,7 @@ const STRINGS = {
   },
 };
 
-const LangContext = createContext({ lang: "km", t: (k) => k });
+const LangContext = createContext({ lang: "km", t: (k) => k, categories: [] });
 function useT() {
   return useContext(LangContext);
 }
@@ -740,6 +767,13 @@ const NAV = [
 function POSApp() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState(
+    CATEGORY_KEYS.map((k) => ({
+      key: k,
+      label_km: STRINGS["cat_" + k].km,
+      label_en: STRINGS["cat_" + k].en,
+    })),
+  );
   const [sales, setSales] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -767,6 +801,7 @@ function POSApp() {
   const [invSearch, setInvSearch] = useState("");
   const [invCategory, setInvCategory] = useState("all");
   const [productModal, setProductModal] = useState(null);
+  const [categoryModal, setCategoryModal] = useState(false);
   const [customerModal, setCustomerModal] = useState(null);
   const [expenseModal, setExpenseModal] = useState(null);
 
@@ -795,7 +830,13 @@ function POSApp() {
       });
     return str;
   };
-  const catLabel = (cat) => t("cat_" + cat);
+  const catLabel = (cat) => {
+    const found = categories.find((c) => c.key === cat);
+    if (!found) return cat;
+    return lang === "en"
+      ? found.label_en || found.label_km
+      : found.label_km || found.label_en;
+  };
   const prodName = (p) =>
     lang === "en" ? p.name_en || p.name_km || "" : p.name_km || p.name_en || "";
   const prodUnit = (p) => (lang === "en" ? p.unit_en || p.unit_km : p.unit_km);
@@ -809,6 +850,9 @@ function POSApp() {
         setSales(parsed.sales || []);
         setCustomers(parsed.customers || []);
         setExpenses(parsed.expenses || []);
+        if (parsed.categories && parsed.categories.length) {
+          setCategories(parsed.categories);
+        }
         setShopName(parsed.shopName || "");
         setKhrRate(parsed.khrRate || KHR_PER_USD_DEFAULT);
         setLang(parsed.lang || "km");
@@ -839,6 +883,7 @@ function POSApp() {
             sales,
             customers,
             expenses,
+            categories,
             shopName,
             khrRate,
             lang,
@@ -856,6 +901,7 @@ function POSApp() {
     sales,
     customers,
     expenses,
+    categories,
     shopName,
     khrRate,
     lang,
@@ -1319,6 +1365,30 @@ function POSApp() {
       /* offline */
     }
   };
+  const pushCategoryRow = async (c) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("categories").upsert(
+        {
+          key: c.key,
+          label_km: c.label_km || "",
+          label_en: c.label_en || "",
+          updated_at: c.updatedAt || Date.now(),
+        },
+        { onConflict: "key" },
+      );
+    } catch {
+      /* offline */
+    }
+  };
+  const deleteCategoryRow = async (key) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("categories").delete().eq("key", key);
+    } catch {
+      /* offline */
+    }
+  };
 
   const [onlineOrders, setOnlineOrders] = useState([]);
   const pendingOrderCount = onlineOrders.filter(
@@ -1365,6 +1435,32 @@ function POSApp() {
         map.set(item.id, item); // probably just created, not synced yet — keep
       }
       // else: assume deleted on another device, drop it
+    });
+    return Array.from(map.values());
+  };
+
+  // Same convergence rule as mergeById, but categories are keyed by their
+  // "key" string (e.g. "beverage") instead of a generated id.
+  const mergeCategories = (local, remote) => {
+    const map = new Map();
+    remote.forEach((item) => map.set(item.key, item));
+    local.forEach((item) => {
+      const existing = map.get(item.key);
+      if (existing) {
+        const localTime =
+          typeof item.updatedAt === "number" ? item.updatedAt : 0;
+        const remoteTime =
+          typeof existing.updatedAt === "number" ? existing.updatedAt : 0;
+        if (remoteTime > localTime) return;
+        map.set(item.key, item);
+        return;
+      }
+      if (typeof item.updatedAt !== "number") {
+        map.set(item.key, item);
+        return;
+      }
+      const age = Date.now() - item.updatedAt;
+      if (age < 20000) map.set(item.key, item);
     });
     return Array.from(map.values());
   };
@@ -1462,6 +1558,25 @@ function POSApp() {
     }
   };
 
+  const fetchCloudCategories = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.from("categories").select("*");
+      if (error) throw error;
+      if (data && data.length) {
+        const mapped = data.map((r) => ({
+          key: r.key,
+          label_km: r.label_km || "",
+          label_en: r.label_en || "",
+          updatedAt: r.updated_at || 0,
+        }));
+        setCategories((prev) => mergeCategories(prev, mapped));
+      }
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
   // ---- Pull products/users from Supabase so every device shares the same catalog + accounts ----
   const fetchCloudProducts = async () => {
     if (!supabase) return;
@@ -1549,6 +1664,7 @@ function POSApp() {
     fetchCloudUsers();
     fetchCloudSettings();
     fetchCloudExpenses();
+    fetchCloudCategories();
     const poll = setInterval(() => {
       fetchCloudSales();
       fetchCloudCustomers();
@@ -1556,6 +1672,7 @@ function POSApp() {
       fetchCloudUsers();
       fetchCloudSettings();
       fetchCloudExpenses();
+      fetchCloudCategories();
     }, 15000);
     let channel;
     try {
@@ -1590,6 +1707,11 @@ function POSApp() {
           "postgres_changes",
           { event: "*", schema: "public", table: "expenses" },
           fetchCloudExpenses,
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "categories" },
+          fetchCloudCategories,
         )
         .subscribe();
     } catch {
@@ -1981,6 +2103,45 @@ function POSApp() {
     );
   };
 
+  const saveCategory = (form) => {
+    const label_km = (form.label_km || "").trim();
+    const label_en = (form.label_en || "").trim();
+    if (!label_km && !label_en) {
+      showToast(t("cat_nameRequired"), "error");
+      return;
+    }
+    const key = (label_en || label_km)
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\u1780-\u17ff]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    if (categories.some((c) => c.key === key)) {
+      showToast(t("cat_duplicateKey"), "error");
+      return;
+    }
+    const created = { key, label_km, label_en, updatedAt: Date.now() };
+    setCategories([...categories, created]);
+    showToast(t("toast_categoryAdded"));
+    pushCategoryRow(created);
+    logAudit("add", "category", label_km || label_en);
+  };
+  const deleteCategory = (key) => {
+    const inUse = products.filter((p) => p.category === key).length;
+    if (inUse > 0) {
+      showToast(t("cat_inUse", { count: inUse }), "error");
+      return;
+    }
+    const target = categories.find((c) => c.key === key);
+    setCategories(categories.filter((c) => c.key !== key));
+    showToast(t("toast_categoryDeleted"));
+    deleteCategoryRow(key);
+    logAudit(
+      "delete",
+      "category",
+      target ? target.label_km || target.label_en : key,
+    );
+  };
+
   // ---------- Reports ----------
   const rangedSales = useMemo(() => {
     const now = new Date();
@@ -2288,7 +2449,7 @@ function POSApp() {
 
   if (!currentUser) {
     return (
-      <LangContext.Provider value={{ lang, t, catLabel }}>
+      <LangContext.Provider value={{ lang, t, catLabel, categories }}>
         <LoginScreen
           shopName={shopName || t("shopNameDefault")}
           lang={lang}
@@ -2304,7 +2465,7 @@ function POSApp() {
   }
 
   return (
-    <LangContext.Provider value={{ lang, t, catLabel }}>
+    <LangContext.Provider value={{ lang, t, catLabel, categories }}>
       <div
         style={{
           background: "var(--bg)",
@@ -2616,6 +2777,7 @@ function POSApp() {
               openAdd={() => setProductModal({ mode: "add" })}
               openEdit={(p) => setProductModal({ mode: "edit", product: p })}
               deleteProduct={deleteProduct}
+              openManageCategories={() => setCategoryModal(true)}
             />
           )}
           {activeTab === "reports" && (
@@ -2723,6 +2885,15 @@ function POSApp() {
             data={expenseModal}
             onClose={() => setExpenseModal(null)}
             onSave={saveExpense}
+          />
+        )}
+        {categoryModal && (
+          <CategoryModal
+            categories={categories}
+            products={products}
+            onClose={() => setCategoryModal(false)}
+            onAdd={saveCategory}
+            onDelete={deleteCategory}
           />
         )}
         {userModal && (
@@ -3270,6 +3441,20 @@ const primaryBtnStyle = {
   fontWeight: 700,
   cursor: "pointer",
 };
+const secondaryBtnStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "7px",
+  padding: "9px 14px",
+  borderRadius: "9px",
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  color: "var(--text)",
+  fontSize: "13.5px",
+  fontWeight: 600,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
 const thStyle = { padding: "8px 12px", fontWeight: 600 };
 const tdStyle = { padding: "11px 12px" };
 
@@ -3330,7 +3515,7 @@ function ProductThumb({ image, size = 40 }) {
 // ================= POS =================
 
 function POSTab(props) {
-  const { t } = useT();
+  const { t, categories } = useT();
   const {
     products,
     prodName,
@@ -3414,7 +3599,7 @@ function POSTab(props) {
               onClick={() => setCategoryFilter("all")}
               label={t("cat_all")}
             />
-            {CATEGORY_KEYS.map((c) => (
+            {categories.map(({ key: c }) => (
               <CategoryPill
                 key={c}
                 active={categoryFilter === c}
@@ -4188,8 +4373,9 @@ function InventoryTab({
   openAdd,
   openEdit,
   deleteProduct,
+  openManageCategories,
 }) {
-  const { t } = useT();
+  const { t, categories } = useT();
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
@@ -4237,12 +4423,15 @@ function InventoryTab({
           }}
         >
           <option value="all">{t("allCategories")}</option>
-          {CATEGORY_KEYS.map((c) => (
-            <option key={c} value={c}>
-              {catLabel(c)}
+          {categories.map((cat) => (
+            <option key={cat.key} value={cat.key}>
+              {catLabel(cat.key)}
             </option>
           ))}
         </select>
+        <button onClick={openManageCategories} style={secondaryBtnStyle}>
+          <Package size={15} /> {t("manageCategories")}
+        </button>
       </div>
 
       <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
@@ -5786,11 +5975,13 @@ function OnlineOrdersTab({
                     style={{
                       ...iconBtnStyle,
                       color: "var(--danger)",
-                      width: "auto",
+                      flex: 1,
                       padding: "6px 11px",
                       fontSize: "12px",
                       fontWeight: 700,
                       display: "flex",
+                      justifyContent: "center",
+                      whiteSpace: "nowrap",
                       gap: "5px",
                     }}
                   >
@@ -5800,6 +5991,9 @@ function OnlineOrdersTab({
                     onClick={() => onAccept(o)}
                     style={{
                       ...primaryBtnStyle,
+                      flex: 1,
+                      justifyContent: "center",
+                      whiteSpace: "nowrap",
                       padding: "6px 12px",
                       fontSize: "12px",
                     }}
@@ -5815,11 +6009,13 @@ function OnlineOrdersTab({
                     style={{
                       ...iconBtnStyle,
                       color: "var(--danger)",
-                      width: "auto",
+                      flex: 1,
                       padding: "6px 11px",
                       fontSize: "12px",
                       fontWeight: 700,
                       display: "flex",
+                      justifyContent: "center",
+                      whiteSpace: "nowrap",
                       gap: "5px",
                     }}
                   >
@@ -5829,6 +6025,9 @@ function OnlineOrdersTab({
                     onClick={() => onMarkPaid(o)}
                     style={{
                       ...primaryBtnStyle,
+                      flex: 1,
+                      justifyContent: "center",
+                      whiteSpace: "nowrap",
                       padding: "6px 12px",
                       fontSize: "12px",
                     }}
@@ -6262,14 +6461,14 @@ const fieldInput = {
 };
 
 function ProductModal({ data, onClose, onSave }) {
-  const { t, catLabel } = useT();
+  const { t, catLabel, categories } = useT();
   const editing = data.mode === "edit";
   const p = editing
     ? data.product
     : {
         name_km: "",
         name_en: "",
-        category: CATEGORY_KEYS[0],
+        category: categories[0] ? categories[0].key : "",
         price: "",
         cost: "",
         stock: "",
@@ -6390,9 +6589,9 @@ function ProductModal({ data, onClose, onSave }) {
         value={form.category}
         onChange={(e) => setForm({ ...form, category: e.target.value })}
       >
-        {CATEGORY_KEYS.map((c) => (
-          <option key={c} value={c}>
-            {catLabel(c)}
+        {categories.map((cat) => (
+          <option key={cat.key} value={cat.key}>
+            {catLabel(cat.key)}
           </option>
         ))}
       </select>
@@ -6580,6 +6779,112 @@ function ExpenseModal({ data, onClose, onSave }) {
       >
         {t("save")}
       </button>
+    </ModalShell>
+  );
+}
+
+function CategoryModal({ categories, products, onClose, onAdd, onDelete }) {
+  const { t, lang } = useT();
+  const [form, setForm] = useState({ label_km: "", label_en: "" });
+
+  const countInUse = (key) => products.filter((p) => p.category === key).length;
+
+  const handleAdd = () => {
+    onAdd(form);
+    setForm({ label_km: "", label_en: "" });
+  };
+
+  return (
+    <ModalShell title={t("manageCategories")} onClose={onClose} width="440px">
+      <div
+        style={{
+          fontSize: "13px",
+          color: "var(--text-muted)",
+          marginBottom: "14px",
+        }}
+      >
+        {t("manageCategories_subtitle")}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          marginBottom: "18px",
+          maxHeight: "260px",
+          overflowY: "auto",
+        }}
+      >
+        {categories.map((c) => {
+          const used = countInUse(c.key);
+          const label =
+            lang === "en" ? c.label_en || c.label_km : c.label_km || c.label_en;
+          return (
+            <div
+              key={c.key}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 12px",
+                borderRadius: "9px",
+                border: "1px solid var(--border)",
+                background: "var(--surface-alt)",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "14px", fontWeight: 600 }}>{label}</div>
+                {used > 0 && (
+                  <div
+                    style={{ fontSize: "11.5px", color: "var(--text-muted)" }}
+                  >
+                    {used} {t("nav_inventory")}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  if (window.confirm(t("cat_deleteConfirm"))) onDelete(c.key);
+                }}
+                style={{ ...iconBtnStyle, color: "var(--danger)" }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          borderTop: "1px solid var(--border)",
+          paddingTop: "14px",
+        }}
+      >
+        <label style={fieldLabel}>{t("cat_labelKm")}</label>
+        <input
+          style={fieldInput}
+          value={form.label_km}
+          onChange={(e) => setForm({ ...form, label_km: e.target.value })}
+        />
+        <label style={fieldLabel}>{t("cat_labelEn")}</label>
+        <input
+          style={fieldInput}
+          value={form.label_en}
+          onChange={(e) => setForm({ ...form, label_en: e.target.value })}
+        />
+        <button
+          onClick={handleAdd}
+          style={{
+            ...primaryBtnStyle,
+            width: "100%",
+            justifyContent: "center",
+          }}
+        >
+          <Plus size={16} /> {t("cat_addBtn")}
+        </button>
+      </div>
     </ModalShell>
   );
 }
@@ -6920,7 +7225,13 @@ function StorefrontApp() {
       });
     return str;
   };
-  const catLabel = (cat) => t("cat_" + cat);
+  const catLabel = (cat) => {
+    const found = categories.find((c) => c.key === cat);
+    if (!found) return cat;
+    return lang === "en"
+      ? found.label_en || found.label_km
+      : found.label_km || found.label_en;
+  };
   const prodName = (p) =>
     lang === "en" ? p.name_en || p.name_km || "" : p.name_km || p.name_en || "";
   const prodUnit = (p) =>
@@ -6928,6 +7239,13 @@ function StorefrontApp() {
 
   const [status, setStatus] = useState(supabase ? "loading" : "unconfigured"); // loading | ready | error | unconfigured
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState(
+    CATEGORY_KEYS.map((k) => ({
+      key: k,
+      label_km: STRINGS["cat_" + k].km,
+      label_en: STRINGS["cat_" + k].en,
+    })),
+  );
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [cart, setCart] = useState([]);
@@ -6952,6 +7270,22 @@ function StorefrontApp() {
         setStatus("ready");
       } catch {
         setStatus("error");
+      }
+    })();
+    (async () => {
+      try {
+        const { data } = await supabase.from("categories").select("*");
+        if (data && data.length) {
+          setCategories(
+            data.map((r) => ({
+              key: r.key,
+              label_km: r.label_km,
+              label_en: r.label_en,
+            })),
+          );
+        }
+      } catch {
+        /* keep default categories */
       }
     })();
   }, []);
@@ -7018,7 +7352,7 @@ function StorefrontApp() {
   };
 
   return (
-    <LangContext.Provider value={{ lang, t, catLabel }}>
+    <LangContext.Provider value={{ lang, t, catLabel, categories }}>
       <div
         style={{
           background: "var(--bg)",
@@ -7194,7 +7528,7 @@ function StorefrontApp() {
                   onClick={() => setCategoryFilter("all")}
                   label={t("allCategories")}
                 />
-                {CATEGORY_KEYS.map((c) => (
+                {categories.map(({ key: c }) => (
                   <CategoryPill
                     key={c}
                     active={categoryFilter === c}
