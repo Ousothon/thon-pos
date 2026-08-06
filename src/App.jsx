@@ -583,6 +583,20 @@ const STRINGS = {
     km: "ឧទាហរណ៍៖ $1 = {amount}",
     en: "Example: $1 = {amount}",
   },
+  settings_shopTitle: {
+    km: "ព័ត៌មានហាង",
+    en: "Shop info",
+  },
+  settings_shopSubtitle: {
+    km: "ប្តូររូបភាព និងឈ្មោះហាង បង្ហាញនៅផ្ទាំងម៉ឺនុយ និងលើវិក្កយបត្រ",
+    en: "Change the logo and name shown in the sidebar and on receipts",
+  },
+  settings_shopNameLabel: { km: "ឈ្មោះហាង", en: "Shop name" },
+  settings_shopLogoLabel: { km: "រូបភាពហាង (Logo)", en: "Shop logo" },
+  uploadLogo: { km: "ផ្ទុករូបភាព", en: "Upload logo" },
+  changeLogo: { km: "ប្តូររូបភាព", en: "Change logo" },
+  removeLogo: { km: "លុបរូបភាព", en: "Remove logo" },
+  settings_shopSaved: { km: "បានរក្សាទុកព័ត៌មានហាង", en: "Shop info saved" },
   auditLog_subtitle: {
     km: "{count} កំណត់ត្រា",
     en: "{count} entries",
@@ -780,6 +794,7 @@ function POSApp() {
   const [customers, setCustomers] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [shopName, setShopName] = useState("");
+  const [shopLogo, setShopLogo] = useState(null);
   const [khrRate, setKhrRate] = useState(KHR_PER_USD_DEFAULT);
   const [lang, setLang] = useState("km");
   const [activeTab, setActiveTab] = useState("pos");
@@ -809,7 +824,6 @@ function POSApp() {
 
   const [reportRange, setReportRange] = useState("today");
   const [expandedSale, setExpandedSale] = useState(null);
-  const [editingShopName, setEditingShopName] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [theme, setTheme] = useState(
     () => localStorage.getItem("shop-theme") || "light",
@@ -856,6 +870,7 @@ function POSApp() {
           setCategories(parsed.categories);
         }
         setShopName(parsed.shopName || "");
+        setShopLogo(parsed.shopLogo || null);
         setKhrRate(parsed.khrRate || KHR_PER_USD_DEFAULT);
         setLang(parsed.lang || "km");
         setUsers(
@@ -887,6 +902,7 @@ function POSApp() {
             expenses,
             categories,
             shopName,
+            shopLogo,
             khrRate,
             lang,
             users,
@@ -905,6 +921,7 @@ function POSApp() {
     expenses,
     categories,
     shopName,
+    shopLogo,
     khrRate,
     lang,
     users,
@@ -1639,6 +1656,10 @@ function POSApp() {
         .maybeSingle();
       if (error) throw error;
       if (data && data.khr_rate) setKhrRate(data.khr_rate);
+      if (data && typeof data.shop_name === "string")
+        setShopName(data.shop_name);
+      if (data && typeof data.shop_logo === "string")
+        setShopLogo(data.shop_logo);
     } catch {
       /* ignore, local cache still works */
     }
@@ -1653,6 +1674,23 @@ function POSApp() {
           { id: "default", khr_rate: rate, updated_at: Date.now() },
           { onConflict: "id" },
         );
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  const pushShopInfo = async (name, logo) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("shop_settings").upsert(
+        {
+          id: "default",
+          shop_name: name || null,
+          shop_logo: logo || null,
+          updated_at: Date.now(),
+        },
+        { onConflict: "id" },
+      );
     } catch {
       showToast(t("toast_supabaseError"), "error");
     }
@@ -2454,6 +2492,7 @@ function POSApp() {
       <LangContext.Provider value={{ lang, t, catLabel, categories }}>
         <LoginScreen
           shopName={shopName || t("shopNameDefault")}
+          shopLogo={shopLogo}
           lang={lang}
           setLang={setLang}
           onLogin={login}
@@ -2507,45 +2546,53 @@ function POSApp() {
           }}
         >
           <div style={{ padding: "22px 18px 14px" }}>
-            {editingShopName ? (
-              <input
-                autoFocus
-                value={shopName}
-                onChange={(e) => setShopName(e.target.value)}
-                onBlur={() => {
-                  setEditingShopName(false);
-                  showToast(t("toast_shopNameSaved"));
-                }}
-                onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: "19px",
-                  fontWeight: 700,
-                  color: "var(--primary)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "6px",
-                  padding: "2px 6px",
-                  width: "100%",
-                }}
-              />
-            ) : (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                marginBottom: "2px",
+              }}
+            >
+              {shopLogo ? (
+                <div
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "9px",
+                    overflow: "hidden",
+                    flexShrink: 0,
+                    background: "var(--surface-alt)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <img
+                    src={shopLogo}
+                    alt=""
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                  />
+                </div>
+              ) : null}
               <div
-                onClick={() => setEditingShopName(true)}
-                title={
-                  lang === "en" ? "Click to rename" : "ចុចដើម្បីប្តូរឈ្មោះ"
-                }
                 style={{
                   fontFamily: "var(--font-display)",
                   fontSize: "19px",
                   fontWeight: 700,
                   color: "var(--primary)",
                   lineHeight: 1.3,
-                  cursor: "pointer",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {shopName || t("shopNameDefault")}
               </div>
-            )}
+            </div>
             <div
               style={{
                 fontSize: "12px",
@@ -2851,6 +2898,11 @@ function POSApp() {
               khrRate={khrRate}
               setKhrRate={setKhrRate}
               onSaveKhrRate={pushKhrRate}
+              shopName={shopName}
+              setShopName={setShopName}
+              shopLogo={shopLogo}
+              setShopLogo={setShopLogo}
+              onSaveShopInfo={pushShopInfo}
             />
           )}
           {!allowedTabs.includes(activeTab) && (
@@ -3201,6 +3253,7 @@ function ThemeSwitch({ theme, setTheme, t }) {
 
 function LoginScreen({
   shopName,
+  shopLogo,
   lang,
   setLang,
   onLogin,
@@ -3284,14 +3337,23 @@ function LoginScreen({
               width: "52px",
               height: "52px",
               borderRadius: "14px",
-              background: "var(--primary)",
+              background: shopLogo ? "transparent" : "var(--primary)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               marginBottom: "12px",
+              overflow: "hidden",
             }}
           >
-            <ShieldCheck size={26} color="#fff" />
+            {shopLogo ? (
+              <img
+                src={shopLogo}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <ShieldCheck size={26} color="#fff" />
+            )}
           </div>
           <div
             style={{
@@ -6431,14 +6493,32 @@ function AuditLogTab({ auditLog }) {
 
 // ================= Settings =================
 
-function SettingsTab({ khrRate, setKhrRate, onSaveKhrRate }) {
+function SettingsTab({
+  khrRate,
+  setKhrRate,
+  onSaveKhrRate,
+  shopName,
+  setShopName,
+  shopLogo,
+  setShopLogo,
+  onSaveShopInfo,
+}) {
   const { t } = useT();
   const [draft, setDraft] = useState(String(khrRate));
   const [saved, setSaved] = useState(false);
+  const [nameDraft, setNameDraft] = useState(shopName);
+  const [logoDraft, setLogoDraft] = useState(shopLogo);
+  const [shopSaved, setShopSaved] = useState(false);
+  const fileRef = useRef(null);
 
   useEffect(() => {
     setDraft(String(khrRate));
   }, [khrRate]);
+
+  useEffect(() => {
+    setNameDraft(shopName);
+    setLogoDraft(shopLogo);
+  }, [shopName, shopLogo]);
 
   const save = () => {
     const n = Number(draft);
@@ -6449,10 +6529,174 @@ function SettingsTab({ khrRate, setKhrRate, onSaveKhrRate }) {
     setTimeout(() => setSaved(false), 1800);
   };
 
+  const handleLogoFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const dataUrl = await resizeImage(file, 240, 0.8);
+    setLogoDraft(dataUrl);
+  };
+
+  const saveShopInfo = () => {
+    setShopName(nameDraft);
+    setShopLogo(logoDraft);
+    if (onSaveShopInfo) onSaveShopInfo(nameDraft, logoDraft);
+    setShopSaved(true);
+    setTimeout(() => setShopSaved(false), 1800);
+  };
+
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar title={t("nav_settings")} subtitle={t("settings_subtitle")} />
       <div style={{ padding: "16px 26px 26px" }}>
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "14px",
+            padding: "18px",
+            maxWidth: "440px",
+            marginBottom: "18px",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: "14.5px",
+              marginBottom: "4px",
+            }}
+          >
+            {t("settings_shopTitle")}
+          </div>
+          <div
+            style={{
+              fontSize: "12.5px",
+              color: "var(--text-muted)",
+              marginBottom: "14px",
+            }}
+          >
+            {t("settings_shopSubtitle")}
+          </div>
+
+          <label style={fieldLabel}>{t("settings_shopLogoLabel")}</label>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              marginBottom: "16px",
+            }}
+          >
+            <div
+              style={{
+                width: "68px",
+                height: "68px",
+                borderRadius: "12px",
+                overflow: "hidden",
+                background: "var(--surface-alt)",
+                border: "1px solid var(--border)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              {logoDraft ? (
+                <img
+                  src={logoDraft}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <ImageOff size={24} color="var(--text-muted)" />
+              )}
+            </div>
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+            >
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoFile}
+                style={{ display: "none" }}
+              />
+              <button
+                onClick={() => fileRef.current.click()}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "7px 12px",
+                  borderRadius: "7px",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <ImagePlus size={14} />{" "}
+                {logoDraft ? t("changeLogo") : t("uploadLogo")}
+              </button>
+              {logoDraft && (
+                <button
+                  onClick={() => setLogoDraft(null)}
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--danger)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    padding: 0,
+                  }}
+                >
+                  {t("removeLogo")}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <label style={fieldLabel}>{t("settings_shopNameLabel")}</label>
+          <input
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            placeholder={t("shopNameDefault")}
+            style={{ ...fieldInput, marginBottom: "6px" }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              marginTop: "8px",
+            }}
+          >
+            <button
+              onClick={saveShopInfo}
+              style={{
+                ...primaryBtnStyle,
+                padding: "8px 16px",
+                fontSize: "13px",
+              }}
+            >
+              {t("settings_saveBtn")}
+            </button>
+            {shopSaved && (
+              <span
+                style={{
+                  fontSize: "12.5px",
+                  color: "var(--primary)",
+                  fontWeight: 600,
+                }}
+              >
+                {t("settings_shopSaved")}
+              </span>
+            )}
+          </div>
+        </div>
+
         <div
           style={{
             background: "var(--surface)",
