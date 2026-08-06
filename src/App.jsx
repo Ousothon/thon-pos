@@ -51,6 +51,7 @@ import {
   Settings as SettingsIcon,
   Wallet,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -234,6 +235,16 @@ const SESSION_KEY = "shop-session";
 
 const genId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+// Generates a short, easy-to-read random password for the "reset password"
+// button in the user form — avoids ambiguous characters like 0/O, 1/l/I.
+const genPassword = () => {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < 8; i++) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
+};
 const fmt = (n) => "$" + (Number(n) || 0).toFixed(2);
 // Riel exchange rate — the shop-wide default; editable live from Settings.
 const KHR_PER_USD_DEFAULT = 4100;
@@ -404,6 +415,12 @@ const STRINGS = {
   changePhoto: { km: "ប្តូររូបភាព", en: "Change photo" },
   removePhoto: { km: "លុបរូបភាព", en: "Remove" },
   save: { km: "រក្សាទុក", en: "Save" },
+  confirmCancel: { km: "បោះបង់", en: "Cancel" },
+  confirmDelete: { km: "លុប", en: "Delete" },
+  confirmDialog_irreversible: {
+    km: "សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ",
+    en: "This action cannot be undone",
+  },
 
   rep_title: { km: "របាយការណ៍លក់", en: "Sales reports" },
   rep_subtitle: { km: "វិភាគការលក់តាមកំឡុងពេល", en: "Analyze sales over time" },
@@ -511,6 +528,15 @@ const STRINGS = {
   },
   fieldUsername: { km: "ឈ្មោះគណនី", en: "Username" },
   fieldPassword: { km: "លេខសម្ងាត់", en: "Password" },
+  pw_leaveBlank: {
+    km: "ទុកទទេ ដើម្បីរក្សាលេខសម្ងាត់ចាស់",
+    en: "Leave blank to keep the current password",
+  },
+  pw_generate: { km: "បង្កើតលេខសម្ងាត់ថ្មី", en: "Generate new password" },
+  user_deleteConfirm: {
+    km: "តើអ្នកចង់លុបអ្នកប្រើប្រាស់នេះមែនទេ?",
+    en: "Delete this user?",
+  },
   loginBtn: { km: "ចូលប្រើប្រព័ន្ធ", en: "Sign in" },
   loginBtnLoading: { km: "កំពុងចូល...", en: "Signing in..." },
   toast_loginFailed: {
@@ -3610,7 +3636,7 @@ const secondaryBtnStyle = {
   cursor: "pointer",
   whiteSpace: "nowrap",
 };
-const thStyle = { padding: "8px 12px", fontWeight: 600 };
+const thStyle = { padding: "8px 12px", fontWeight: 600, textAlign: "start" };
 const tdStyle = { padding: "11px 12px" };
 
 function CategoryPill({ active, onClick, label }) {
@@ -5521,6 +5547,7 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
 
 function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
   const { t } = useT();
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const now = new Date();
   const thisMonthTotal = expenses
     .filter((e) => {
@@ -5574,7 +5601,13 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
               overflow: "hidden",
             }}
           >
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                tableLayout: "fixed",
+              }}
+            >
               <thead>
                 <tr
                   style={{
@@ -5584,14 +5617,18 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
                     borderBottom: "1px solid var(--border)",
                   }}
                 >
-                  <th style={thStyle}>{t("exp_date")}</th>
-                  <th style={thStyle}>{t("exp_category")}</th>
-                  <th style={thStyle}>{t("exp_note")}</th>
-                  <th style={thStyle}>{t("exp_addedBy")}</th>
-                  <th style={{ ...thStyle, textAlign: "end" }}>
+                  <th style={{ ...thStyle, width: "14%" }}>{t("exp_date")}</th>
+                  <th style={{ ...thStyle, width: "16%" }}>
+                    {t("exp_category")}
+                  </th>
+                  <th style={{ ...thStyle, width: "28%" }}>{t("exp_note")}</th>
+                  <th style={{ ...thStyle, width: "16%" }}>
+                    {t("exp_addedBy")}
+                  </th>
+                  <th style={{ ...thStyle, width: "16%", textAlign: "end" }}>
                     {t("exp_amount")}
                   </th>
-                  <th style={thStyle}></th>
+                  <th style={{ ...thStyle, width: "10%" }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -5600,12 +5637,46 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
                     key={e.id}
                     style={{ borderBottom: "1px solid var(--border)" }}
                   >
-                    <td style={tdStyle}>{e.date}</td>
-                    <td style={tdStyle}>{t("exp_cat_" + e.category)}</td>
-                    <td style={{ ...tdStyle, color: "var(--text-muted)" }}>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {e.date}
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {t("exp_cat_" + e.category)}
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        color: "var(--text-muted)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {e.note || "—"}
                     </td>
-                    <td style={{ ...tdStyle, color: "var(--text-muted)" }}>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        color: "var(--text-muted)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {e.username || "—"}
                     </td>
                     <td
@@ -5632,11 +5703,7 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
                           <Pencil size={13} />
                         </button>
                         <button
-                          onClick={() => {
-                            if (window.confirm(t("exp_deleteConfirm"))) {
-                              deleteExpense(e.id);
-                            }
-                          }}
+                          onClick={() => setDeleteTarget(e.id)}
                           style={{ ...iconBtnStyle, color: "var(--danger)" }}
                         >
                           <Trash2 size={13} />
@@ -5650,6 +5717,16 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
           </div>
         )}
       </div>
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t("exp_deleteConfirm")}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            deleteExpense(deleteTarget);
+            setDeleteTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -6258,6 +6335,7 @@ function OnlineOrdersTab({
 
 function UsersTab({ users, currentUser, openAdd, openEdit, deleteUser }) {
   const { t, lang } = useT();
+  const [deleteTarget, setDeleteTarget] = useState(null);
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
@@ -6360,7 +6438,7 @@ function UsersTab({ users, currentUser, openAdd, openEdit, deleteUser }) {
                     <Pencil size={13} />
                   </button>
                   <button
-                    onClick={() => deleteUser(u.id)}
+                    onClick={() => setDeleteTarget(u)}
                     style={{ ...iconBtnStyle, color: "var(--danger)" }}
                   >
                     <Trash2 size={13} />
@@ -6383,6 +6461,21 @@ function UsersTab({ users, currentUser, openAdd, openEdit, deleteUser }) {
           </div>
         )}
       </div>
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t("user_deleteConfirm")}
+          message={`${
+            lang === "en"
+              ? deleteTarget.name_en || deleteTarget.name_km
+              : deleteTarget.name_km || deleteTarget.name_en
+          } (${deleteTarget.username}) — ${t("confirmDialog_irreversible")}`}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            deleteUser(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -6836,6 +6929,111 @@ function ModalShell({ title, onClose, children, width = "380px" }) {
   );
 }
 
+// A polished replacement for window.confirm() — used before any destructive
+// action (delete expense, delete category, etc). Renders on top of any other
+// modal (higher z-index) so it can confirm deletions that happen inside a
+// ModalShell too.
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  danger = true,
+  onConfirm,
+  onCancel,
+}) {
+  const { t } = useT();
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(20,30,27,.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 80,
+        padding: "16px",
+      }}
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          borderRadius: "16px",
+          width: "360px",
+          maxWidth: "100%",
+          boxShadow: "0 20px 50px rgba(0,0,0,.3)",
+          padding: "24px 22px 18px",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            width: "46px",
+            height: "46px",
+            borderRadius: "50%",
+            background: danger
+              ? "rgba(220,38,38,.12)"
+              : "color-mix(in srgb, var(--primary) 15%, transparent)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            margin: "0 auto 14px",
+          }}
+        >
+          <AlertTriangle
+            size={22}
+            color={danger ? "var(--danger)" : "var(--primary)"}
+          />
+        </div>
+        <div
+          style={{
+            fontFamily: "var(--font-display)",
+            fontWeight: 700,
+            fontSize: "16px",
+            marginBottom: "6px",
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            fontSize: "13px",
+            color: "var(--text-muted)",
+            marginBottom: "20px",
+            lineHeight: 1.5,
+          }}
+        >
+          {message || t("confirmDialog_irreversible")}
+        </div>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button
+            onClick={onCancel}
+            style={{ ...secondaryBtnStyle, flex: 1, justifyContent: "center" }}
+          >
+            {cancelLabel || t("confirmCancel")}
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              ...primaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+              background: danger ? "var(--danger)" : "var(--primary)",
+            }}
+          >
+            {confirmLabel || t("confirmDelete")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const fieldLabel = {
   fontSize: "12.5px",
   fontWeight: 600,
@@ -7178,6 +7376,7 @@ function ExpenseModal({ data, onClose, onSave }) {
 function CategoryModal({ categories, products, onClose, onAdd, onDelete }) {
   const { t, lang } = useT();
   const [form, setForm] = useState({ label_km: "", label_en: "" });
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const countInUse = (key) => products.filter((p) => p.category === key).length;
 
@@ -7187,97 +7386,111 @@ function CategoryModal({ categories, products, onClose, onAdd, onDelete }) {
   };
 
   return (
-    <ModalShell title={t("manageCategories")} onClose={onClose} width="440px">
-      <div
-        style={{
-          fontSize: "13px",
-          color: "var(--text-muted)",
-          marginBottom: "14px",
-        }}
-      >
-        {t("manageCategories_subtitle")}
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
-          marginBottom: "18px",
-          maxHeight: "260px",
-          overflowY: "auto",
-        }}
-      >
-        {categories.map((c) => {
-          const used = countInUse(c.key);
-          const label =
-            lang === "en" ? c.label_en || c.label_km : c.label_km || c.label_en;
-          return (
-            <div
-              key={c.key}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 12px",
-                borderRadius: "9px",
-                border: "1px solid var(--border)",
-                background: "var(--surface-alt)",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: "14px", fontWeight: 600 }}>{label}</div>
-                {used > 0 && (
-                  <div
-                    style={{ fontSize: "11.5px", color: "var(--text-muted)" }}
-                  >
-                    {used} {t("nav_inventory")}
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  if (window.confirm(t("cat_deleteConfirm"))) onDelete(c.key);
-                }}
-                style={{ ...iconBtnStyle, color: "var(--danger)" }}
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      <div
-        style={{
-          borderTop: "1px solid var(--border)",
-          paddingTop: "14px",
-        }}
-      >
-        <label style={fieldLabel}>{t("cat_labelKm")}</label>
-        <input
-          style={fieldInput}
-          value={form.label_km}
-          onChange={(e) => setForm({ ...form, label_km: e.target.value })}
-        />
-        <label style={fieldLabel}>{t("cat_labelEn")}</label>
-        <input
-          style={fieldInput}
-          value={form.label_en}
-          onChange={(e) => setForm({ ...form, label_en: e.target.value })}
-        />
-        <button
-          onClick={handleAdd}
+    <>
+      <ModalShell title={t("manageCategories")} onClose={onClose} width="440px">
+        <div
           style={{
-            ...primaryBtnStyle,
-            width: "100%",
-            justifyContent: "center",
+            fontSize: "13px",
+            color: "var(--text-muted)",
+            marginBottom: "14px",
           }}
         >
-          <Plus size={16} /> {t("cat_addBtn")}
-        </button>
-      </div>
-    </ModalShell>
+          {t("manageCategories_subtitle")}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            marginBottom: "18px",
+            maxHeight: "260px",
+            overflowY: "auto",
+          }}
+        >
+          {categories.map((c) => {
+            const used = countInUse(c.key);
+            const label =
+              lang === "en"
+                ? c.label_en || c.label_km
+                : c.label_km || c.label_en;
+            return (
+              <div
+                key={c.key}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 12px",
+                  borderRadius: "9px",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-alt)",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "14px", fontWeight: 600 }}>
+                    {label}
+                  </div>
+                  {used > 0 && (
+                    <div
+                      style={{ fontSize: "11.5px", color: "var(--text-muted)" }}
+                    >
+                      {used} {t("nav_inventory")}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setDeleteTarget(c.key)}
+                  style={{ ...iconBtnStyle, color: "var(--danger)" }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            borderTop: "1px solid var(--border)",
+            paddingTop: "14px",
+          }}
+        >
+          <label style={fieldLabel}>{t("cat_labelKm")}</label>
+          <input
+            style={fieldInput}
+            value={form.label_km}
+            onChange={(e) => setForm({ ...form, label_km: e.target.value })}
+          />
+          <label style={fieldLabel}>{t("cat_labelEn")}</label>
+          <input
+            style={fieldInput}
+            value={form.label_en}
+            onChange={(e) => setForm({ ...form, label_en: e.target.value })}
+          />
+          <button
+            onClick={handleAdd}
+            style={{
+              ...primaryBtnStyle,
+              width: "100%",
+              justifyContent: "center",
+            }}
+          >
+            <Plus size={16} /> {t("cat_addBtn")}
+          </button>
+        </div>
+      </ModalShell>
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t("cat_deleteConfirm")}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            onDelete(deleteTarget);
+            setDeleteTarget(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -7318,28 +7531,67 @@ function UserModal({ data, onClose, onSave }) {
       <div style={{ position: "relative" }}>
         <input
           type={showPw ? "text" : "password"}
-          style={{ ...fieldInput, paddingRight: "36px" }}
+          style={{ ...fieldInput, paddingRight: "68px", marginBottom: "6px" }}
           value={form.password || ""}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
           placeholder={editing ? "••••••••" : ""}
+          autoCapitalize="none"
         />
-        <button
-          type="button"
-          onClick={() => setShowPw(!showPw)}
+        <div
           style={{
             position: "absolute",
             right: "10px",
-            top: "10px",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "var(--text-muted)",
+            top: "9px",
             display: "flex",
+            alignItems: "center",
+            gap: "8px",
           }}
         >
-          {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-        </button>
+          <button
+            type="button"
+            onClick={() => {
+              setForm({ ...form, password: genPassword() });
+              setShowPw(true);
+            }}
+            title={t("pw_generate")}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-muted)",
+              display: "flex",
+            }}
+          >
+            <RefreshCw size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowPw(!showPw)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-muted)",
+              display: "flex",
+            }}
+          >
+            {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        </div>
       </div>
+      {editing && (
+        <div
+          style={{
+            fontSize: "11.5px",
+            color: "var(--text-muted)",
+            marginBottom: "14px",
+            marginTop: "-2px",
+          }}
+        >
+          {t("pw_leaveBlank")}
+        </div>
+      )}
+      {!editing && <div style={{ marginBottom: "14px" }} />}
       <label style={fieldLabel}>{t("fieldRole")}</label>
       <div style={{ display: "flex", gap: "9px", marginBottom: "18px" }}>
         {["admin", "staff"].map((r) => (
