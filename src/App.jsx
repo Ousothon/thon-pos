@@ -1398,17 +1398,49 @@ function POSApp() {
     }
   };
 
+  // ---- Shop-wide settings (e.g. KHR rate) shared across every device ----
+  const fetchCloudSettings = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from("shop_settings")
+        .select("*")
+        .eq("id", "default")
+        .maybeSingle();
+      if (error) throw error;
+      if (data && data.khr_rate) setKhrRate(data.khr_rate);
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
+  const pushKhrRate = async (rate) => {
+    if (!supabase) return;
+    try {
+      await supabase
+        .from("shop_settings")
+        .upsert(
+          { id: "default", khr_rate: rate, updated_at: Date.now() },
+          { onConflict: "id" },
+        );
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
   useEffect(() => {
     if (!supabase || loading) return;
     fetchCloudSales();
     fetchCloudCustomers();
     fetchCloudProducts();
     fetchCloudUsers();
+    fetchCloudSettings();
     const poll = setInterval(() => {
       fetchCloudSales();
       fetchCloudCustomers();
       fetchCloudProducts();
       fetchCloudUsers();
+      fetchCloudSettings();
     }, 15000);
     let channel;
     try {
@@ -1433,6 +1465,11 @@ function POSApp() {
           "postgres_changes",
           { event: "*", schema: "public", table: "users" },
           fetchCloudUsers,
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "shop_settings" },
+          fetchCloudSettings,
         )
         .subscribe();
     } catch {
@@ -2423,7 +2460,11 @@ function POSApp() {
             <AuditLogTab auditLog={auditLog} />
           )}
           {activeTab === "settings" && allowedTabs.includes("settings") && (
-            <SettingsTab khrRate={khrRate} setKhrRate={setKhrRate} />
+            <SettingsTab
+              khrRate={khrRate}
+              setKhrRate={setKhrRate}
+              onSaveKhrRate={pushKhrRate}
+            />
           )}
           {!allowedTabs.includes(activeTab) && (
             <div
@@ -5639,15 +5680,20 @@ function AuditLogTab({ auditLog }) {
 
 // ================= Settings =================
 
-function SettingsTab({ khrRate, setKhrRate }) {
+function SettingsTab({ khrRate, setKhrRate, onSaveKhrRate }) {
   const { t } = useT();
   const [draft, setDraft] = useState(String(khrRate));
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setDraft(String(khrRate));
+  }, [khrRate]);
 
   const save = () => {
     const n = Number(draft);
     if (!n || n <= 0) return;
     setKhrRate(n);
+    onSaveKhrRate(n);
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   };
