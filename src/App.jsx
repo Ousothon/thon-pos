@@ -2822,6 +2822,7 @@ function POSApp() {
               <OnlineOrdersTab
                 orders={activeOnlineOrders}
                 archivedOrders={archivedOnlineOrders}
+                products={products}
                 supabaseStatus={supabaseStatus}
                 onAccept={acceptOnlineOrder}
                 onReject={rejectOnlineOrder}
@@ -5596,6 +5597,7 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
 function OnlineOrdersTab({
   orders,
   archivedOrders,
+  products,
   supabaseStatus,
   onAccept,
   onReject,
@@ -5985,21 +5987,72 @@ function OnlineOrdersTab({
                 marginBottom: "10px",
               }}
             >
-              {(o.items || []).map((it, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "2px 0",
-                  }}
-                >
-                  <span>
-                    {it.name} ×{it.qty}
-                  </span>
-                  <span>{fmt(it.price * it.qty)}</span>
-                </div>
-              ))}
+              {(o.items || []).map((it, idx) => {
+                const prod = (products || []).find((p) => p.id === it.id);
+                const thumb = prod && prod.image;
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      justifyContent: "space-between",
+                      padding: "3px 0",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        minWidth: 0,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "26px",
+                          height: "26px",
+                          borderRadius: "6px",
+                          overflow: "hidden",
+                          flexShrink: 0,
+                          background: "var(--surface-alt)",
+                          border: "1px solid var(--border)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {thumb ? (
+                          <img
+                            src={thumb}
+                            alt=""
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          <ImageOff size={12} color="var(--text-muted)" />
+                        )}
+                      </div>
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {it.name} ×{it.qty}
+                      </span>
+                    </div>
+                    <span style={{ flexShrink: 0 }}>
+                      {fmt(it.price * it.qty)}
+                    </span>
+                  </div>
+                );
+              })}
               {o.note && (
                 <div
                   style={{
