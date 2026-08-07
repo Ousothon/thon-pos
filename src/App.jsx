@@ -58,6 +58,8 @@ import {
   Crown,
   Award,
   RotateCcw,
+  Bell,
+  BellOff,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -880,6 +882,12 @@ const STRINGS = {
   downloadQr: { km: "ទាញយក QR", en: "Download QR" },
   scanToOrder: { km: "ស្កេនដើម្បីកម្ម៉ង់", en: "Scan to order" },
   liveIndicator: { km: "កំពុងភ្ជាប់ផ្ទាល់", en: "Live" },
+  toast_newOrderReceived: {
+    km: "🛎️ មានការកម្មង់ថ្មីពី {name}!",
+    en: "🛎️ New order from {name}!",
+  },
+  notifySound_on: { km: "សំឡេងជូនដំណឹង៖ បើក", en: "Notify sound: On" },
+  notifySound_off: { km: "សំឡេងជូនដំណឹង៖ បិទ", en: "Notify sound: Off" },
   offlineIndicator: { km: "មិនទាន់ភ្ជាប់", en: "Not connected" },
 
   storefront_title: { km: "កម្ម៉ង់អនឡាញ", en: "Order online" },
@@ -915,6 +923,40 @@ function useT() {
 }
 
 // ---------------- image helper ----------------
+// Short two-tone "ding" for new online orders — generated with the Web
+// Audio API so no external sound file needs to be hosted or bundled.
+function playNewOrderChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const playTone = (freq, start, duration) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(
+        0.22,
+        ctx.currentTime + start + 0.02,
+      );
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        ctx.currentTime + start + duration,
+      );
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + duration + 0.02);
+    };
+    playTone(880, 0, 0.16);
+    playTone(1175, 0.14, 0.22);
+    setTimeout(() => ctx.close(), 700);
+  } catch {
+    /* audio unavailable — silently skip */
+  }
+}
+
 function resizeImage(file, maxDim = 320, quality = 0.75) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1653,6 +1695,29 @@ function POSApp() {
   };
 
   const [onlineOrders, setOnlineOrders] = useState([]);
+  const [notifySoundOn, setNotifySoundOn] = useState(
+    () => localStorage.getItem("notifySoundOn") !== "off",
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem("notifySoundOn", notifySoundOn ? "on" : "off");
+    } catch {
+      /* ignore */
+    }
+  }, [notifySoundOn]);
+  useEffect(() => {
+    if (
+      supabase &&
+      typeof Notification !== "undefined" &&
+      Notification.permission === "default"
+    ) {
+      try {
+        Notification.requestPermission();
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
   const pendingOrderCount = onlineOrders.filter(
     (o) => o.status === "pending" && !o.archived,
   ).length;
@@ -2035,6 +2100,34 @@ function POSApp() {
           "postgres_changes",
           { event: "*", schema: "public", table: "online_orders" },
           fetchOnlineOrders,
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "online_orders" },
+          (payload) => {
+            const soundOn = localStorage.getItem("notifySoundOn") !== "off";
+            if (soundOn) playNewOrderChime();
+            showToast(
+              t("toast_newOrderReceived", {
+                name: (payload.new && payload.new.customer_name) || "",
+              }),
+            );
+            if (
+              typeof Notification !== "undefined" &&
+              Notification.permission === "granted" &&
+              document.hidden
+            ) {
+              try {
+                new Notification(
+                  t("toast_newOrderReceived", {
+                    name: (payload.new && payload.new.customer_name) || "",
+                  }),
+                );
+              } catch {
+                /* ignore */
+              }
+            }
+          },
         )
         .subscribe();
     } catch {
@@ -3150,6 +3243,8 @@ function POSApp() {
                 onReject={rejectOnlineOrder}
                 onMarkPaid={markOrderPaid}
                 onUndoPaid={undoMarkPaid}
+                notifySoundOn={notifySoundOn}
+                setNotifySoundOn={setNotifySoundOn}
                 onCancel={cancelAcceptedOrder}
                 onArchiveOrder={archiveOrder}
                 onArchiveFinished={archiveFinishedOrders}
@@ -6211,6 +6306,8 @@ function OnlineOrdersTab({
   onArchiveFinished,
   onRestoreOrder,
   onRestoreAllOrders,
+  notifySoundOn,
+  setNotifySoundOn,
 }) {
   const { t, lang } = useT();
   const [copied, setCopied] = useState(false);
@@ -6386,6 +6483,18 @@ function OnlineOrdersTab({
                 {t("archive_restoreAll")}
               </button>
             )}
+            <button
+              onClick={() => setNotifySoundOn(!notifySoundOn)}
+              title={notifySoundOn ? t("notifySound_on") : t("notifySound_off")}
+              style={{
+                ...iconBtnStyle,
+                width: "auto",
+                padding: "8px 10px",
+                color: notifySoundOn ? "var(--primary)" : "var(--text-muted)",
+              }}
+            >
+              {notifySoundOn ? <Bell size={15} /> : <BellOff size={15} />}
+            </button>
             <div
               style={{
                 display: "flex",
