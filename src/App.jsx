@@ -784,6 +784,55 @@ const STRINGS = {
   status_paid: { km: "បានបង់ប្រាក់", en: "Paid" },
   status_rejected: { km: "បានបដិសេធ", en: "Rejected" },
   status_cancelled: { km: "បានលុបចោល", en: "Cancelled" },
+
+  storefront_status_pending: {
+    km: "កំពុងរង់ចាំហាងបញ្ជាក់",
+    en: "Waiting for the shop to confirm",
+  },
+  storefront_status_accepted: {
+    km: "ហាងទទួលហើយ កំពុងរៀបចំ",
+    en: "Accepted — being prepared",
+  },
+  storefront_status_paid: {
+    km: "បានទូទាត់រួចរាល់ អរគុណ!",
+    en: "Paid — thank you!",
+  },
+  storefront_status_rejected: {
+    km: "ការកម្មង់ត្រូវបានបដិសេធ",
+    en: "Order was rejected",
+  },
+  storefront_status_cancelled: {
+    km: "ការកម្មង់ត្រូវបានលុបចោល",
+    en: "Order was cancelled",
+  },
+  storefront_toast_accepted: {
+    km: "ហាងបានទទួលការកម្មង់របស់អ្នក!",
+    en: "The shop accepted your order!",
+  },
+  storefront_toast_paid: {
+    km: "ការទូទាត់ត្រូវបានបញ្ជាក់",
+    en: "Payment confirmed",
+  },
+  storefront_toast_rejected: {
+    km: "សូមអភ័យទោស ការកម្មង់ត្រូវបានបដិសេធ",
+    en: "Sorry, your order was rejected",
+  },
+  storefront_toast_cancelled: {
+    km: "ការកម្មង់ត្រូវបានលុបចោល",
+    en: "Your order was cancelled",
+  },
+  storefront_trackTitle: { km: "ស្ថានភាពការកម្មង់", en: "Order status" },
+  storefront_liveNote: {
+    km: "ស្ថានភាពនេះកែប្រែដោយស្វ័យប្រវត្តិ មិនចាំបាច់ refresh ទេ",
+    en: "This updates automatically — no need to refresh",
+  },
+  storefront_myOrders: { km: "ការកម្មង់របស់ខ្ញុំ", en: "My orders" },
+  storefront_orderRef: { km: "កូដ", en: "Ref" },
+  storefront_noOrders: {
+    km: "អ្នកមិនទាន់មានការកម្មង់ណាមួយទេ",
+    en: "You don't have any orders yet",
+  },
+  storefront_backToStatus: { km: "ត្រឡប់ក្រោយ", en: "Back" },
   markPaid: { km: "បានទទួលប្រាក់", en: "Mark as paid" },
   cancelOrder: { km: "លុបចោល", en: "Cancel" },
   toast_orderPaid: {
@@ -3276,6 +3325,18 @@ function FontStyles() {
       .spin-icon {
         animation: spin .8s linear infinite;
       }
+      .live-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--primary);
+        flex-shrink: 0;
+        animation: livePulse 1.4s ease-in-out infinite;
+      }
+      @keyframes livePulse {
+        0%, 100% { opacity: .35; transform: scale(.85); }
+        50% { opacity: 1; transform: scale(1.15); }
+      }
 
       /* ---- Mobile hamburger + sidebar drawer (hidden on desktop) ---- */
       .mobile-menu-btn {
@@ -3733,6 +3794,60 @@ function TopBar({ title, subtitle, action }) {
       </div>
       {action}
     </div>
+  );
+}
+
+function OrderStatusBadge({ status, t }) {
+  const map = {
+    pending: {
+      label: t("storefront_status_pending"),
+      bg: "var(--accent)",
+      fg: "#fff",
+      Icon: Clock3,
+    },
+    accepted: {
+      label: t("storefront_status_accepted"),
+      bg: "#e0a030",
+      fg: "#fff",
+      Icon: Clock3,
+    },
+    paid: {
+      label: t("storefront_status_paid"),
+      bg: "var(--primary)",
+      fg: "#fff",
+      Icon: Check,
+    },
+    rejected: {
+      label: t("storefront_status_rejected"),
+      bg: "var(--danger)",
+      fg: "#fff",
+      Icon: XCircle,
+    },
+    cancelled: {
+      label: t("storefront_status_cancelled"),
+      bg: "var(--text-muted)",
+      fg: "#fff",
+      Icon: XCircle,
+    },
+  };
+  const s = map[status] || map.pending;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "5px",
+        padding: "4px 10px",
+        borderRadius: "999px",
+        fontSize: "11.5px",
+        fontWeight: 700,
+        background: s.bg,
+        color: s.fg,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <s.Icon size={12} /> {s.label}
+    </span>
   );
 }
 
@@ -8377,6 +8492,108 @@ function StorefrontApp() {
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
   const [cartExpanded, setCartExpanded] = useState(false);
+  const [myOrder, setMyOrder] = useState(null);
+  const [orderHistory, setOrderHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, kind = "ok") => {
+    setToast({ msg, kind });
+    setTimeout(() => setToast(null), 3200);
+  };
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("storefront_orders");
+      if (raw) setOrderHistory(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const saveOrderToHistory = (order) => {
+    try {
+      const entry = {
+        id: order.id,
+        name: order.customer_name,
+        total: order.subtotal,
+        date: order.created_at || new Date().toISOString(),
+      };
+      const next = [
+        entry,
+        ...orderHistory.filter((o) => o.id !== order.id),
+      ].slice(0, 15);
+      setOrderHistory(next);
+      localStorage.setItem("storefront_orders", JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Live-track the order currently shown on the confirmation screen: any
+  // status change the shop makes (accept / reject / mark paid / cancel)
+  // pushes to this page instantly via Supabase realtime.
+  useEffect(() => {
+    if (!supabase || !myOrder || !myOrder.id) return;
+    const channel = supabase
+      .channel(`storefront-order-${myOrder.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "online_orders",
+          filter: `id=eq.${myOrder.id}`,
+        },
+        (payload) => {
+          setMyOrder((prev) => {
+            if (!prev || prev.status === payload.new.status) return prev;
+            const toastKey = {
+              accepted: "storefront_toast_accepted",
+              paid: "storefront_toast_paid",
+              rejected: "storefront_toast_rejected",
+              cancelled: "storefront_toast_cancelled",
+            }[payload.new.status];
+            if (toastKey) showToast(t(toastKey));
+            if (
+              typeof Notification !== "undefined" &&
+              Notification.permission === "granted" &&
+              document.hidden &&
+              toastKey
+            ) {
+              try {
+                new Notification(t(toastKey));
+              } catch {
+                /* ignore */
+              }
+            }
+            return { ...prev, ...payload.new };
+          });
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myOrder && myOrder.id]);
+
+  const trackOrder = async (id) => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from("online_orders")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (error) throw error;
+      setMyOrder(data);
+      setSubmitted(true);
+      setShowHistory(false);
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
 
   useEffect(() => {
     if (!supabase) return;
@@ -8449,15 +8666,32 @@ function StorefrontApp() {
     setFormError("");
     setSubmitting(true);
     try {
-      await supabase.from("online_orders").insert({
-        customer_name: name.trim(),
-        customer_phone: phone.trim(),
-        note: note.trim() || null,
-        items: cart,
-        subtotal,
-        status: "pending",
-      });
+      const { data, error } = await supabase
+        .from("online_orders")
+        .insert({
+          customer_name: name.trim(),
+          customer_phone: phone.trim(),
+          note: note.trim() || null,
+          items: cart,
+          subtotal,
+          status: "pending",
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      setMyOrder(data);
+      saveOrderToHistory(data);
       setSubmitted(true);
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "default"
+      ) {
+        try {
+          Notification.requestPermission();
+        } catch {
+          /* ignore */
+        }
+      }
     } catch {
       setFormError(t("toast_supabaseError"));
     }
@@ -8470,6 +8704,7 @@ function StorefrontApp() {
     setPhone("");
     setNote("");
     setSubmitted(false);
+    setMyOrder(null);
   };
 
   return (
@@ -8481,9 +8716,24 @@ function StorefrontApp() {
           width: "100%",
           fontFamily: "var(--font-body)",
           color: "var(--text)",
+          position: "relative",
         }}
       >
         <FontStyles />
+        {toast && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              pointerEvents: "none",
+              zIndex: 60,
+            }}
+          >
+            <div style={{ pointerEvents: "auto" }}>
+              <Toast msg={toast.msg} kind={toast.kind} />
+            </div>
+          </div>
+        )}
         <div
           style={{
             maxWidth: "900px",
@@ -8524,6 +8774,96 @@ function StorefrontApp() {
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              {orderHistory.length > 0 && (
+                <div style={{ position: "relative" }}>
+                  <button
+                    onClick={() => setShowHistory((v) => !v)}
+                    title={t("storefront_myOrders")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "38px",
+                      height: "38px",
+                      borderRadius: "10px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      color: "var(--text)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <History size={17} />
+                  </button>
+                  {showHistory && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "46px",
+                        right: 0,
+                        width: "280px",
+                        maxHeight: "320px",
+                        overflowY: "auto",
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "12px",
+                        boxShadow: "0 12px 30px rgba(0,0,0,.15)",
+                        zIndex: 40,
+                        padding: "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          color: "var(--text-muted)",
+                          padding: "6px 8px",
+                        }}
+                      >
+                        {t("storefront_myOrders")}
+                      </div>
+                      {orderHistory.map((o) => (
+                        <div
+                          key={o.id}
+                          onClick={() => trackOrder(o.id)}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "8px",
+                            borderRadius: "8px",
+                            cursor: "pointer",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.background =
+                              "var(--surface-alt)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = "transparent")
+                          }
+                        >
+                          <div style={{ fontSize: "12.5px" }}>
+                            <div style={{ fontWeight: 600 }}>
+                              {t("storefront_orderRef")} #
+                              {String(o.id).slice(0, 6)}
+                            </div>
+                            <div
+                              style={{
+                                color: "var(--text-muted)",
+                                fontSize: "11.5px",
+                              }}
+                            >
+                              {new Date(o.date).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <div style={{ fontWeight: 700, fontSize: "12.5px" }}>
+                            ${Number(o.total || 0).toFixed(2)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <LangSwitch lang={lang} setLang={setLang} />
               <ThemeSwitch theme={theme} setTheme={setTheme} t={t} />
             </div>
@@ -8569,7 +8909,7 @@ function StorefrontApp() {
           {status === "ready" && submitted && (
             <div
               style={{
-                padding: "40px 24px",
+                padding: "32px 24px",
                 textAlign: "center",
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
@@ -8594,11 +8934,90 @@ function StorefrontApp() {
                 style={{
                   fontSize: "13.5px",
                   color: "var(--text-muted)",
-                  marginBottom: "20px",
+                  marginBottom: "18px",
                 }}
               >
                 {t("storefront_submitted_sub")}
               </div>
+
+              {myOrder && (
+                <div
+                  style={{
+                    background: "var(--surface-alt)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "13px",
+                    padding: "16px",
+                    textAlign: "start",
+                    marginBottom: "18px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--text-muted)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t("storefront_trackTitle")}
+                    </div>
+                    <OrderStatusBadge status={myOrder.status} t={t} />
+                  </div>
+
+                  {(myOrder.items || []).map((it, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: "13px",
+                        padding: "3px 0",
+                      }}
+                    >
+                      <span>
+                        {it.name} ×{it.qty}
+                      </span>
+                      <span>${(it.price * it.qty).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                      marginTop: "8px",
+                      paddingTop: "8px",
+                      borderTop: "1px dashed var(--border)",
+                    }}
+                  >
+                    <span>{t("total")}</span>
+                    <span>${(myOrder.subtotal || 0).toFixed(2)}</span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      marginTop: "12px",
+                      fontSize: "11.5px",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    <span className="live-dot" />
+                    {t("storefront_liveNote")}
+                  </div>
+                </div>
+              )}
+
               <button
                 onClick={resetOrder}
                 style={{ ...primaryBtnStyle, justifyContent: "center" }}
