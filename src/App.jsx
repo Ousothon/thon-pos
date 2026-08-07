@@ -708,10 +708,7 @@ const STRINGS = {
   },
   settings_soundUpload: { km: "ផ្ទុកសំឡេងឡើង", en: "Upload sound" },
   settings_soundChange: { km: "ប្តូរឯកសារសំឡេង", en: "Change sound file" },
-  settings_soundRemove: {
-    km: "លុបសំឡេងផ្ទាល់ខ្លួន",
-    en: "Remove custom sound",
-  },
+  settings_soundRemove: { km: "លុបសំឡេងផ្ទាល់ខ្លួន", en: "Remove custom sound" },
   settings_soundTest: { km: "សាកល្បងស្តាប់", en: "Test sound" },
   settings_soundNoFile: {
     km: "មិនទាន់មានឯកសារសំឡេងនៅឡើយ",
@@ -1166,7 +1163,16 @@ function POSApp() {
   const [shopLogo, setShopLogo] = useState(null);
   const [khrRate, setKhrRate] = useState(KHR_PER_USD_DEFAULT);
   const [lang, setLang] = useState("km");
-  const [activeTab, setActiveTab] = useState("pos");
+  const [activeTab, setActiveTab] = useState(
+    () => localStorage.getItem("shop-activeTab") || "pos",
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem("shop-activeTab", activeTab);
+    } catch {
+      /* ignore */
+    }
+  }, [activeTab]);
   const [toast, setToast] = useState(null);
 
   const [users, setUsers] = useState([]);
@@ -2304,8 +2310,7 @@ function POSApp() {
             const soundOn = localStorage.getItem("notifySoundOn") !== "off";
             if (soundOn)
               playNotifySound({
-                soundId:
-                  localStorage.getItem("notifySoundId") || DEFAULT_SOUND_ID,
+                soundId: localStorage.getItem("notifySoundId") || DEFAULT_SOUND_ID,
                 customUrl: localStorage.getItem("notifySoundCustom") || null,
                 durationSec:
                   Number(localStorage.getItem("notifySoundDuration")) || 0,
@@ -7886,7 +7891,9 @@ function SettingsTab({
                 ...iconBtnStyle,
                 color: soundOnDraft ? "var(--primary)" : "var(--text-muted)",
               }}
-              title={soundOnDraft ? t("notifySound_on") : t("notifySound_off")}
+              title={
+                soundOnDraft ? t("notifySound_on") : t("notifySound_off")
+              }
             >
               {soundOnDraft ? <Bell size={15} /> : <BellOff size={15} />}
             </button>
@@ -8011,7 +8018,9 @@ function SettingsTab({
             {t("settings_soundDurationHint")}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "10px" }}
+          >
             <button
               onClick={saveSoundSettings}
               style={{
@@ -8492,8 +8501,7 @@ function DateField({ value, onChange, style }) {
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target))
-        setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
@@ -8612,7 +8620,10 @@ function DateField({ value, onChange, style }) {
               onClick={() => goMonth(1)}
               style={iconBtnStyle}
             >
-              <ChevronDown size={14} style={{ transform: "rotate(-90deg)" }} />
+              <ChevronDown
+                size={14}
+                style={{ transform: "rotate(-90deg)" }}
+              />
             </button>
           </div>
           <div
