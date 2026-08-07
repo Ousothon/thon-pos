@@ -54,6 +54,7 @@ import {
   RefreshCw,
   Ban,
   Power,
+  Key,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -537,6 +538,32 @@ const STRINGS = {
     en: "Leave blank to keep the current password",
   },
   pw_generate: { km: "បង្កើតលេខសម្ងាត់ថ្មី", en: "Generate new password" },
+  changePassword: { km: "ប្តូរលេខសម្ងាត់", en: "Change password" },
+  fieldCurrentPassword: {
+    km: "លេខសម្ងាត់បច្ចុប្បន្ន",
+    en: "Current password",
+  },
+  fieldNewPassword: { km: "លេខសម្ងាត់ថ្មី", en: "New password" },
+  fieldConfirmPassword: {
+    km: "បញ្ជាក់លេខសម្ងាត់ថ្មី",
+    en: "Confirm new password",
+  },
+  toast_pwChanged: {
+    km: "បានប្តូរលេខសម្ងាត់រួចរាល់",
+    en: "Password changed successfully",
+  },
+  toast_pwWrongCurrent: {
+    km: "លេខសម្ងាត់បច្ចុប្បន្នមិនត្រឹមត្រូវ",
+    en: "Current password is incorrect",
+  },
+  toast_pwMismatch: {
+    km: "លេខសម្ងាត់ថ្មីទាំងពីរមិនត្រូវគ្នា",
+    en: "New passwords don't match",
+  },
+  toast_pwTooShort: {
+    km: "លេខសម្ងាត់ត្រូវមានយ៉ាងតិច ៦ តួអក្សរ",
+    en: "Password must be at least 6 characters",
+  },
   user_deleteConfirm: {
     km: "តើអ្នកចង់លុបអ្នកប្រើប្រាស់នេះមែនទេ?",
     en: "Delete this user?",
@@ -862,6 +889,7 @@ function POSApp() {
   const [users, setUsers] = useState([]);
   const [sessionUserId, setSessionUserId] = useState(null);
   const [userModal, setUserModal] = useState(null);
+  const [changePwOpen, setChangePwOpen] = useState(false);
   const [loginError, setLoginError] = useState("");
 
   const [cart, setCart] = useState([]);
@@ -1129,6 +1157,20 @@ function POSApp() {
     // Disabling the account you're currently signed in as should sign you
     // out right away too — the currentUser-watching effect below handles
     // that as soon as `users` re-renders with active: false.
+  };
+
+  // Lets any signed-in user (admin or staff) change their own password
+  // from the sidebar, without needing an admin to do it for them.
+  const changeOwnPassword = (currentPw, newPw) => {
+    if (!currentUser) return "error";
+    if (currentUser.password !== currentPw) return "wrong-current";
+    if (!newPw || newPw.length < 6) return "too-short";
+    const updated = { ...currentUser, password: newPw, updatedAt: Date.now() };
+    setUsers(users.map((u) => (u.id === currentUser.id ? updated : u)));
+    pushUserRow(updated);
+    showToast(t("toast_pwChanged"));
+    logAudit("edit", "user", currentUser.name_km || currentUser.username);
+    return "ok";
   };
 
   // ---------- POS ----------
@@ -2862,6 +2904,13 @@ function POSApp() {
                 </div>
               </div>
               <button
+                onClick={() => setChangePwOpen(true)}
+                title={t("changePassword")}
+                style={{ ...iconBtnStyle, marginRight: "2px" }}
+              >
+                <Key size={13} />
+              </button>
+              <button
                 onClick={logout}
                 title={t("logout")}
                 style={{ ...iconBtnStyle, color: "var(--danger)" }}
@@ -3068,6 +3117,12 @@ function POSApp() {
             data={userModal}
             onClose={() => setUserModal(null)}
             onSave={saveUser}
+          />
+        )}
+        {changePwOpen && (
+          <ChangePasswordModal
+            onClose={() => setChangePwOpen(false)}
+            onChangePassword={changeOwnPassword}
           />
         )}
         {receipt && (
@@ -7774,6 +7829,105 @@ function UserModal({ data, onClose, onSave }) {
       </div>
       <button
         onClick={() => onSave(editing ? { ...form, id: data.user.id } : form)}
+        style={{ ...primaryBtnStyle, width: "100%", justifyContent: "center" }}
+      >
+        {t("save")}
+      </button>
+    </ModalShell>
+  );
+}
+
+// Lets the signed-in user change their own password (any role) — separate
+// from UserModal, which is the admin-only add/edit-any-user form.
+function ChangePasswordModal({ onClose, onChangePassword }) {
+  const { t } = useT();
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [fieldError, setFieldError] = useState("");
+
+  const submit = () => {
+    if (newPw !== confirmPw) {
+      setFieldError(t("toast_pwMismatch"));
+      return;
+    }
+    const result = onChangePassword(currentPw, newPw);
+    if (result === "wrong-current") {
+      setFieldError(t("toast_pwWrongCurrent"));
+    } else if (result === "too-short") {
+      setFieldError(t("toast_pwTooShort"));
+    } else if (result === "ok") {
+      onClose();
+    }
+  };
+
+  return (
+    <ModalShell title={t("changePassword")} onClose={onClose} width="360px">
+      <label style={fieldLabel}>{t("fieldCurrentPassword")}</label>
+      <input
+        type={showPw ? "text" : "password"}
+        style={fieldInput}
+        value={currentPw}
+        onChange={(e) => {
+          setCurrentPw(e.target.value);
+          setFieldError("");
+        }}
+        autoFocus
+      />
+      <label style={fieldLabel}>{t("fieldNewPassword")}</label>
+      <input
+        type={showPw ? "text" : "password"}
+        style={fieldInput}
+        value={newPw}
+        onChange={(e) => {
+          setNewPw(e.target.value);
+          setFieldError("");
+        }}
+      />
+      <label style={fieldLabel}>{t("fieldConfirmPassword")}</label>
+      <div style={{ position: "relative" }}>
+        <input
+          type={showPw ? "text" : "password"}
+          style={{ ...fieldInput, paddingRight: "36px" }}
+          value={confirmPw}
+          onChange={(e) => {
+            setConfirmPw(e.target.value);
+            setFieldError("");
+          }}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+        <button
+          type="button"
+          onClick={() => setShowPw(!showPw)}
+          style={{
+            position: "absolute",
+            right: "10px",
+            top: "10px",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "var(--text-muted)",
+            display: "flex",
+          }}
+        >
+          {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
+      </div>
+      {fieldError && (
+        <div
+          style={{
+            color: "var(--danger)",
+            fontSize: "12.5px",
+            marginTop: "-8px",
+            marginBottom: "14px",
+          }}
+        >
+          {fieldError}
+        </div>
+      )}
+      <button
+        onClick={submit}
         style={{ ...primaryBtnStyle, width: "100%", justifyContent: "center" }}
       >
         {t("save")}
