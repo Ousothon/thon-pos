@@ -55,6 +55,8 @@ import {
   Ban,
   Power,
   Key,
+  Crown,
+  Award,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -262,6 +264,17 @@ const fmtKhr = (usd, rate = KHR_PER_USD_DEFAULT) => {
 // Loyalty points redemption rate — how many points equal $1 of discount.
 // Change this single number to adjust the rate shop-wide.
 const POINTS_PER_DOLLAR = 100;
+
+// Customer loyalty tier based on lifetime spend — purely a visual badge in
+// the Customers tab, doesn't affect discounts or points math.
+const CUSTOMER_TIER_THRESHOLDS = { gold: 500, silver: 200, bronze: 50 };
+const customerTier = (totalSpent) => {
+  const spent = Number(totalSpent) || 0;
+  if (spent >= CUSTOMER_TIER_THRESHOLDS.gold) return "gold";
+  if (spent >= CUSTOMER_TIER_THRESHOLDS.silver) return "silver";
+  if (spent >= CUSTOMER_TIER_THRESHOLDS.bronze) return "bronze";
+  return null;
+};
 
 // ---------------- i18n ----------------
 const STRINGS = {
@@ -521,6 +534,21 @@ const STRINGS = {
   addCustomerTitle: { km: "បន្ថែមអតិថិជនថ្មី", en: "Add new customer" },
   fieldCustomerName: { km: "ឈ្មោះ", en: "Name" },
   fieldPhone: { km: "លេខទូរស័ព្ទ", en: "Phone number" },
+  cust_searchPlaceholder: {
+    km: "ស្វែងរកតាមឈ្មោះ ឬលេខទូរស័ព្ទ...",
+    en: "Search by name or phone...",
+  },
+  cust_noSearchResults: {
+    km: "រកមិនឃើញអតិថិជនដែលត្រូវនឹងការស្វែងរកទេ",
+    en: "No customers match your search",
+  },
+  cust_deleteConfirm: {
+    km: "តើអ្នកចង់លុបអតិថិជននេះមែនទេ?",
+    en: "Delete this customer?",
+  },
+  cust_tier_gold: { km: "សមាជិកមាស", en: "Gold member" },
+  cust_tier_silver: { km: "សមាជិកប្រាក់", en: "Silver member" },
+  cust_tier_bronze: { km: "សមាជិកសំរិទ្ធ", en: "Bronze member" },
 
   paymentSuccess: { km: "ការទូទាត់បានជោគជ័យ", en: "Payment successful" },
   close: { km: "បិទ", en: "Close" },
@@ -5531,6 +5559,24 @@ function ReportsTab({
 
 function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
   const { t } = useT();
+  const [search, setSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? customers.filter(
+        (c) =>
+          (c.name || "").toLowerCase().includes(q) ||
+          (c.phone || "").toLowerCase().includes(q),
+      )
+    : customers;
+
+  const tierStyle = {
+    gold: { bg: "rgba(217,119,6,.12)", color: "#b45309", Icon: Crown },
+    silver: { bg: "rgba(100,116,139,.14)", color: "#475569", Icon: Award },
+    bronze: { bg: "rgba(180,83,9,.10)", color: "#92400e", Icon: Award },
+  };
+
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
@@ -5542,6 +5588,51 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
           </button>
         }
       />
+      {customers.length > 0 && (
+        <div style={{ padding: "16px 26px 0" }}>
+          <div style={{ position: "relative", maxWidth: "340px" }}>
+            <Search
+              size={15}
+              color="var(--text-muted)"
+              style={{
+                position: "absolute",
+                left: "12px",
+                top: "50%",
+                transform: "translateY(-50%)",
+              }}
+            />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("cust_searchPlaceholder")}
+              style={{
+                ...fieldInput,
+                margin: 0,
+                paddingLeft: "34px",
+                paddingRight: search ? "34px" : "12px",
+              }}
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                style={{
+                  position: "absolute",
+                  right: "8px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  display: "flex",
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <div
         style={{
           padding: "18px 26px",
@@ -5563,123 +5654,203 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
             {t("noCustomersYet")}
           </div>
         )}
-        {customers.map((c) => (
+        {customers.length > 0 && filtered.length === 0 && (
           <div
-            key={c.id}
             style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "14px",
-              padding: "16px",
+              gridColumn: "1/-1",
+              color: "var(--text-muted)",
+              fontSize: "14px",
+              textAlign: "center",
+              padding: "34px 0",
             }}
           >
+            {t("cust_noSearchResults")}
+          </div>
+        )}
+        {filtered.map((c) => {
+          const tier = customerTier(c.totalSpent);
+          const initial = (c.name || "?").trim().charAt(0).toUpperCase();
+          return (
             <div
+              key={c.id}
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "start",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "16px",
               }}
             >
-              <div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "start",
+                }}
+              >
                 <div
-                  style={{ display: "flex", alignItems: "center", gap: "7px" }}
+                  style={{ display: "flex", gap: "10px", alignItems: "start" }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: "15px" }}>
-                    {c.name}
+                  <div
+                    style={{
+                      width: "34px",
+                      height: "34px",
+                      borderRadius: "999px",
+                      background: tier
+                        ? tierStyle[tier].bg
+                        : "var(--surface-alt)",
+                      color: tier ? tierStyle[tier].color : "var(--primary)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {initial}
                   </div>
-                  {Number(c.discount_percent) > 0 && (
-                    <span
+                  <div>
+                    <div
                       style={{
-                        padding: "2px 8px",
-                        borderRadius: "999px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        background: "var(--primary)",
-                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        flexWrap: "wrap",
                       }}
                     >
-                      -{c.discount_percent}%
-                    </span>
-                  )}
+                      <div style={{ fontWeight: 700, fontSize: "15px" }}>
+                        {c.name}
+                      </div>
+                      {Number(c.discount_percent) > 0 && (
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            borderRadius: "999px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            background: "var(--primary)",
+                            color: "#fff",
+                          }}
+                        >
+                          -{c.discount_percent}%
+                        </span>
+                      )}
+                      {tier && (
+                        <span
+                          title={t("cust_tier_" + tier)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                            padding: "2px 8px",
+                            borderRadius: "999px",
+                            fontSize: "10.5px",
+                            fontWeight: 700,
+                            background: tierStyle[tier].bg,
+                            color: tierStyle[tier].color,
+                          }}
+                        >
+                          {(() => {
+                            const TierIcon = tierStyle[tier].Icon;
+                            return <TierIcon size={11} />;
+                          })()}
+                          {t("cust_tier_" + tier)}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "12.5px",
+                        color: "var(--text-muted)",
+                        marginTop: "3px",
+                      }}
+                    >
+                      {c.phone || t("noPhone")}
+                    </div>
+                  </div>
                 </div>
-                <div
-                  style={{
-                    fontSize: "12.5px",
-                    color: "var(--text-muted)",
-                    marginTop: "3px",
-                  }}
-                >
-                  {c.phone || t("noPhone")}
+                <div style={{ display: "flex", gap: "5px" }}>
+                  <button onClick={() => openEdit(c)} style={iconBtnStyle}>
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    onClick={() => setDeleteTarget(c)}
+                    style={{ ...iconBtnStyle, color: "var(--danger)" }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: "5px" }}>
-                <button onClick={() => openEdit(c)} style={iconBtnStyle}>
-                  <Pencil size={13} />
-                </button>
-                <button
-                  onClick={() => deleteCustomer(c.id)}
-                  style={{ ...iconBtnStyle, color: "var(--danger)" }}
-                >
-                  <Trash2 size={13} />
-                </button>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "16px",
+                  marginTop: "14px",
+                  paddingTop: "11px",
+                  borderTop: "1px dashed var(--border)",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    {t("totalSpent")}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                    }}
+                  >
+                    {fmt(c.totalSpent || 0)}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    {t("visits")}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                    }}
+                  >
+                    {c.visits || 0}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    {t("points")}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                      color: "var(--accent)",
+                    }}
+                  >
+                    {c.points || 0}
+                  </div>
+                </div>
               </div>
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: "16px",
-                marginTop: "14px",
-                paddingTop: "11px",
-                borderTop: "1px dashed var(--border)",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  {t("totalSpent")}
-                </div>
-                <div
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: 700,
-                    fontSize: "14px",
-                  }}
-                >
-                  {fmt(c.totalSpent || 0)}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  {t("visits")}
-                </div>
-                <div
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: 700,
-                    fontSize: "14px",
-                  }}
-                >
-                  {c.visits || 0}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  {t("points")}
-                </div>
-                <div
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: 700,
-                    fontSize: "14px",
-                    color: "var(--accent)",
-                  }}
-                >
-                  {c.points || 0}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t("cust_deleteConfirm")}
+          message={`${deleteTarget.name}${
+            deleteTarget.phone ? " (" + deleteTarget.phone + ")" : ""
+          } — ${t("confirmDialog_irreversible")}`}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            deleteCustomer(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
