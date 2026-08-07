@@ -685,6 +685,46 @@ const STRINGS = {
   changeLogo: { km: "ប្តូររូបភាព", en: "Change logo" },
   removeLogo: { km: "លុបរូបភាព", en: "Remove logo" },
   settings_shopSaved: { km: "បានរក្សាទុកព័ត៌មានហាង", en: "Shop info saved" },
+  settings_soundTitle: {
+    km: "សំឡេងជូនដំណឹង",
+    en: "Notification sound",
+  },
+  settings_soundSubtitle: {
+    km: "ជ្រើសរើសសំឡេងសម្រាប់ការបញ្ជាទិញអនឡាញថ្មី ឬផ្ទុកសំឡេងផ្ទាល់ខ្លួន",
+    en: "Choose the sound for new online orders, or upload your own",
+  },
+  settings_soundEnableLabel: { km: "បើក/បិទសំឡេង", en: "Enable sound" },
+  settings_soundPresetLabel: { km: "សំឡេង", en: "Sound" },
+  settings_soundDurationLabel: {
+    km: "រយៈពេលបន្លឺសំឡេង (វិនាទី)",
+    en: "Ring duration (seconds)",
+  },
+  settings_soundDurationHint: {
+    km: "0 មានន័យថាបន្លឺម្ដងហើយឈប់។ លើសពី 0 វានឹងបន្លឺដដែលៗហើយឈប់ដោយស្វ័យប្រវត្តិបន្ទាប់ពីរយៈពេលនេះ",
+    en: "0 means play once. Above 0, it repeats until this many seconds pass, then stops automatically",
+  },
+  settings_soundUpload: { km: "ផ្ទុកសំឡេងឡើង", en: "Upload sound" },
+  settings_soundChange: { km: "ប្តូរឯកសារសំឡេង", en: "Change sound file" },
+  settings_soundRemove: {
+    km: "លុបសំឡេងផ្ទាល់ខ្លួន",
+    en: "Remove custom sound",
+  },
+  settings_soundTest: { km: "សាកល្បងស្តាប់", en: "Test sound" },
+  settings_soundNoFile: {
+    km: "មិនទាន់មានឯកសារសំឡេងនៅឡើយ",
+    en: "No sound file uploaded yet",
+  },
+  settings_soundTooLarge: {
+    km: "ឯកសារធំពេក សូមជ្រើសសំឡេងតូចជាង ១MB",
+    en: "File too large — please pick a sound under 1MB",
+  },
+  settings_soundSaved: { km: "បានរក្សាទុកសំឡេង", en: "Sound settings saved" },
+  sound_chime: { km: "សំឡេងកណ្ដឹងទឹម (លំនាំដើម)", en: "Chime (default)" },
+  sound_bell: { km: "សំឡេងកណ្ដឹង", en: "Bell" },
+  sound_alert: { km: "សំឡេងជូនដំណឹងបន្ទាន់", en: "Alert" },
+  sound_soft: { km: "សំឡេងទន់ភ្លន់", en: "Soft pop" },
+  sound_marimba: { km: "សំឡេងម៉ារីមបា", en: "Marimba" },
+  sound_custom: { km: "សំឡេងផ្ទាល់ខ្លួន (Upload)", en: "Custom (uploaded)" },
   auditLog_subtitle: {
     km: "{count} កំណត់ត្រា",
     en: "{count} entries",
@@ -922,36 +962,143 @@ function useT() {
   return useContext(LangContext);
 }
 
-// ---------------- image helper ----------------
-// Short two-tone "ding" for new online orders — generated with the Web
-// Audio API so no external sound file needs to be hosted or bundled.
-function playNewOrderChime() {
+// ---------------- notification sound ----------------
+// Built-in tone presets for new online orders — each generated with the
+// Web Audio API so no external sound file needs to be hosted or bundled.
+// `hit(playTone)` schedules one or more short tones starting at t=0;
+// `length` is roughly how long that hit takes, used to space repeats.
+const SOUND_PRESETS = {
+  chime: {
+    length: 0.4,
+    hit: (playTone) => {
+      playTone(880, 0, 0.16);
+      playTone(1175, 0.14, 0.22);
+    },
+  },
+  bell: {
+    length: 0.55,
+    hit: (playTone) => {
+      playTone(1046, 0, 0.5);
+      playTone(1568, 0.02, 0.45);
+    },
+  },
+  alert: {
+    length: 0.55,
+    hit: (playTone) => {
+      playTone(1200, 0, 0.12);
+      playTone(1200, 0.18, 0.12);
+      playTone(1200, 0.36, 0.12);
+    },
+  },
+  soft: {
+    length: 0.3,
+    hit: (playTone) => {
+      playTone(660, 0, 0.24);
+    },
+  },
+  marimba: {
+    length: 0.5,
+    hit: (playTone) => {
+      playTone(523, 0, 0.18);
+      playTone(659, 0.1, 0.18);
+      playTone(784, 0.2, 0.24);
+    },
+  },
+};
+const SOUND_PRESET_KEYS = Object.keys(SOUND_PRESETS);
+const DEFAULT_SOUND_ID = "chime";
+
+function playPresetOnce(ctx, soundId) {
+  const preset = SOUND_PRESETS[soundId] || SOUND_PRESETS[DEFAULT_SOUND_ID];
+  const playTone = (freq, start, duration) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+    gain.gain.exponentialRampToValueAtTime(
+      0.22,
+      ctx.currentTime + start + 0.02,
+    );
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      ctx.currentTime + start + duration,
+    );
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime + start);
+    osc.stop(ctx.currentTime + start + duration + 0.02);
+  };
+  preset.hit(playTone);
+  return preset.length;
+}
+
+// Keeps track of any currently-ringing sound so a new call (or the
+// "stop after N seconds" timer) can cleanly cancel it.
+let _chimeStopTimer = null;
+let _chimeIntervalTimer = null;
+let _chimeCustomAudio = null;
+
+function stopNotifySound() {
+  if (_chimeStopTimer) {
+    clearTimeout(_chimeStopTimer);
+    _chimeStopTimer = null;
+  }
+  if (_chimeIntervalTimer) {
+    clearInterval(_chimeIntervalTimer);
+    _chimeIntervalTimer = null;
+  }
+  if (_chimeCustomAudio) {
+    try {
+      _chimeCustomAudio.pause();
+    } catch {
+      /* ignore */
+    }
+    _chimeCustomAudio = null;
+  }
+}
+
+// Plays the shop's configured notification sound — a built-in preset,
+// or an uploaded custom audio file. `durationSec` of 0 plays it once;
+// any higher value repeats the sound until that many seconds have
+// elapsed, then stops automatically on its own.
+function playNotifySound({
+  soundId = DEFAULT_SOUND_ID,
+  customUrl = null,
+  durationSec = 0,
+} = {}) {
   try {
+    stopNotifySound();
+
+    if (soundId === "custom" && customUrl) {
+      const audio = new Audio(customUrl);
+      _chimeCustomAudio = audio;
+      audio.play().catch(() => {
+        /* playback blocked (e.g. no user gesture yet) — ignore */
+      });
+      if (durationSec > 0) {
+        audio.loop = true;
+        _chimeStopTimer = setTimeout(() => {
+          stopNotifySound();
+        }, durationSec * 1000);
+      }
+      return;
+    }
+
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
-    const ctx = new Ctx();
-    const playTone = (freq, start, duration) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
-      gain.gain.exponentialRampToValueAtTime(
-        0.22,
-        ctx.currentTime + start + 0.02,
-      );
-      gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        ctx.currentTime + start + duration,
-      );
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ctx.currentTime + start);
-      osc.stop(ctx.currentTime + start + duration + 0.02);
+    const fire = () => {
+      const ctx = new Ctx();
+      const hitLength = playPresetOnce(ctx, soundId);
+      setTimeout(() => ctx.close(), hitLength * 1000 + 300);
     };
-    playTone(880, 0, 0.16);
-    playTone(1175, 0.14, 0.22);
-    setTimeout(() => ctx.close(), 700);
+    fire();
+    if (durationSec > 0) {
+      _chimeIntervalTimer = setInterval(fire, 900);
+      _chimeStopTimer = setTimeout(() => {
+        stopNotifySound();
+      }, durationSec * 1000);
+    }
   } catch {
     /* audio unavailable — silently skip */
   }
@@ -1705,6 +1852,52 @@ function POSApp() {
       /* ignore */
     }
   }, [notifySoundOn]);
+  // Which preset ("chime", "bell", ... or "custom") plays for new orders.
+  const [notifySoundId, setNotifySoundId] = useState(
+    () => localStorage.getItem("notifySoundId") || DEFAULT_SOUND_ID,
+  );
+  // Data-URL of a user-uploaded custom sound file, if any.
+  const [notifySoundCustom, setNotifySoundCustom] = useState(
+    () => localStorage.getItem("notifySoundCustom") || "",
+  );
+  const [notifySoundCustomName, setNotifySoundCustomName] = useState(
+    () => localStorage.getItem("notifySoundCustomName") || "",
+  );
+  // How long (seconds) the sound keeps repeating before auto-stopping.
+  // 0 = play once.
+  const [notifySoundDuration, setNotifySoundDuration] = useState(
+    () => Number(localStorage.getItem("notifySoundDuration")) || 0,
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem("notifySoundId", notifySoundId);
+    } catch {
+      /* ignore */
+    }
+  }, [notifySoundId]);
+  useEffect(() => {
+    try {
+      if (notifySoundCustom)
+        localStorage.setItem("notifySoundCustom", notifySoundCustom);
+      else localStorage.removeItem("notifySoundCustom");
+    } catch {
+      /* custom sound file may be too large for localStorage — ignore */
+    }
+  }, [notifySoundCustom]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("notifySoundCustomName", notifySoundCustomName);
+    } catch {
+      /* ignore */
+    }
+  }, [notifySoundCustomName]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("notifySoundDuration", String(notifySoundDuration));
+    } catch {
+      /* ignore */
+    }
+  }, [notifySoundDuration]);
   useEffect(() => {
     if (
       supabase &&
@@ -2106,7 +2299,14 @@ function POSApp() {
           { event: "INSERT", schema: "public", table: "online_orders" },
           (payload) => {
             const soundOn = localStorage.getItem("notifySoundOn") !== "off";
-            if (soundOn) playNewOrderChime();
+            if (soundOn)
+              playNotifySound({
+                soundId:
+                  localStorage.getItem("notifySoundId") || DEFAULT_SOUND_ID,
+                customUrl: localStorage.getItem("notifySoundCustom") || null,
+                durationSec:
+                  Number(localStorage.getItem("notifySoundDuration")) || 0,
+              });
             showToast(
               t("toast_newOrderReceived", {
                 name: (payload.new && payload.new.customer_name) || "",
@@ -3275,6 +3475,16 @@ function POSApp() {
               shopLogo={shopLogo}
               setShopLogo={setShopLogo}
               onSaveShopInfo={pushShopInfo}
+              notifySoundOn={notifySoundOn}
+              setNotifySoundOn={setNotifySoundOn}
+              notifySoundId={notifySoundId}
+              setNotifySoundId={setNotifySoundId}
+              notifySoundCustom={notifySoundCustom}
+              setNotifySoundCustom={setNotifySoundCustom}
+              notifySoundCustomName={notifySoundCustomName}
+              setNotifySoundCustomName={setNotifySoundCustomName}
+              notifySoundDuration={notifySoundDuration}
+              setNotifySoundDuration={setNotifySoundDuration}
             />
           )}
           {!allowedTabs.includes(activeTab) && (
@@ -7270,6 +7480,16 @@ function SettingsTab({
   shopLogo,
   setShopLogo,
   onSaveShopInfo,
+  notifySoundOn,
+  setNotifySoundOn,
+  notifySoundId,
+  setNotifySoundId,
+  notifySoundCustom,
+  setNotifySoundCustom,
+  notifySoundCustomName,
+  setNotifySoundCustomName,
+  notifySoundDuration,
+  setNotifySoundDuration,
 }) {
   const { t } = useT();
   const [draft, setDraft] = useState(String(khrRate));
@@ -7278,6 +7498,72 @@ function SettingsTab({
   const [logoDraft, setLogoDraft] = useState(shopLogo);
   const [shopSaved, setShopSaved] = useState(false);
   const fileRef = useRef(null);
+
+  const [soundIdDraft, setSoundIdDraft] = useState(notifySoundId);
+  const [soundOnDraft, setSoundOnDraft] = useState(notifySoundOn);
+  const [soundDurationDraft, setSoundDurationDraft] = useState(
+    String(notifySoundDuration),
+  );
+  const [soundCustomDraft, setSoundCustomDraft] = useState(notifySoundCustom);
+  const [soundCustomNameDraft, setSoundCustomNameDraft] = useState(
+    notifySoundCustomName,
+  );
+  const [soundSaved, setSoundSaved] = useState(false);
+  const [soundUploadError, setSoundUploadError] = useState("");
+  const soundFileRef = useRef(null);
+
+  useEffect(() => {
+    setSoundIdDraft(notifySoundId);
+    setSoundOnDraft(notifySoundOn);
+    setSoundDurationDraft(String(notifySoundDuration));
+    setSoundCustomDraft(notifySoundCustom);
+    setSoundCustomNameDraft(notifySoundCustomName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSoundFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setSoundUploadError("");
+    // Keep custom sounds small — they're stored as a data URL in
+    // localStorage, which typically caps out around 5MB per origin.
+    if (file.size > 1024 * 1024) {
+      setSoundUploadError(t("settings_soundTooLarge"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSoundCustomDraft(reader.result);
+      setSoundCustomNameDraft(file.name);
+      setSoundIdDraft("custom");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeSoundFile = () => {
+    setSoundCustomDraft("");
+    setSoundCustomNameDraft("");
+    if (soundIdDraft === "custom") setSoundIdDraft(DEFAULT_SOUND_ID);
+    if (soundFileRef.current) soundFileRef.current.value = "";
+  };
+
+  const testSound = () => {
+    playNotifySound({
+      soundId: soundIdDraft,
+      customUrl: soundCustomDraft,
+      durationSec: Math.min(Number(soundDurationDraft) || 0, 5),
+    });
+  };
+
+  const saveSoundSettings = () => {
+    setNotifySoundOn(soundOnDraft);
+    setNotifySoundId(soundIdDraft);
+    setNotifySoundCustom(soundCustomDraft);
+    setNotifySoundCustomName(soundCustomNameDraft);
+    setNotifySoundDuration(Math.max(0, Number(soundDurationDraft) || 0));
+    setSoundSaved(true);
+    setTimeout(() => setSoundSaved(false), 1800);
+  };
 
   useEffect(() => {
     setDraft(String(khrRate));
@@ -7544,6 +7830,212 @@ function SettingsTab({
             {t("settings_khrPreview", {
               amount: fmtKhr(1, Number(draft) || khrRate),
             })}
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "14px",
+            padding: "18px",
+            maxWidth: "440px",
+            marginTop: "18px",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: "14.5px",
+              marginBottom: "4px",
+            }}
+          >
+            {t("settings_soundTitle")}
+          </div>
+          <div
+            style={{
+              fontSize: "12.5px",
+              color: "var(--text-muted)",
+              marginBottom: "14px",
+            }}
+          >
+            {t("settings_soundSubtitle")}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "14px",
+            }}
+          >
+            <label style={{ ...fieldLabel, marginBottom: 0 }}>
+              {t("settings_soundEnableLabel")}
+            </label>
+            <button
+              onClick={() => setSoundOnDraft(!soundOnDraft)}
+              style={{
+                ...iconBtnStyle,
+                color: soundOnDraft ? "var(--primary)" : "var(--text-muted)",
+              }}
+              title={soundOnDraft ? t("notifySound_on") : t("notifySound_off")}
+            >
+              {soundOnDraft ? <Bell size={15} /> : <BellOff size={15} />}
+            </button>
+          </div>
+
+          <label style={fieldLabel}>{t("settings_soundPresetLabel")}</label>
+          <select
+            value={soundIdDraft}
+            onChange={(e) => setSoundIdDraft(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "9px 10px",
+              borderRadius: "8px",
+              border: "1px solid var(--border)",
+              fontSize: "13.5px",
+              background: "var(--surface-alt)",
+              marginBottom: "12px",
+            }}
+          >
+            {SOUND_PRESET_KEYS.map((key) => (
+              <option key={key} value={key}>
+                {t("sound_" + key)}
+              </option>
+            ))}
+            <option value="custom" disabled={!soundCustomDraft}>
+              {t("sound_custom")}
+            </option>
+          </select>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              marginBottom: "4px",
+            }}
+          >
+            <input
+              ref={soundFileRef}
+              type="file"
+              accept="audio/*"
+              onChange={handleSoundFile}
+              style={{ display: "none" }}
+            />
+            <button
+              onClick={() => soundFileRef.current.click()}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "7px 12px",
+                borderRadius: "7px",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                fontSize: "12.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <ImagePlus size={14} />{" "}
+              {soundCustomDraft
+                ? t("settings_soundChange")
+                : t("settings_soundUpload")}
+            </button>
+            {soundCustomDraft && (
+              <button
+                onClick={removeSoundFile}
+                style={{
+                  fontSize: "12px",
+                  color: "var(--danger)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                {t("settings_soundRemove")}
+              </button>
+            )}
+          </div>
+          <div
+            style={{
+              fontSize: "12px",
+              color: "var(--text-muted)",
+              marginBottom: "6px",
+            }}
+          >
+            {soundCustomNameDraft || t("settings_soundNoFile")}
+          </div>
+          {soundUploadError && (
+            <div
+              style={{
+                color: "var(--danger)",
+                fontSize: "12.5px",
+                fontWeight: 600,
+                marginBottom: "8px",
+              }}
+            >
+              {soundUploadError}
+            </div>
+          )}
+
+          <label style={{ ...fieldLabel, marginTop: "10px" }}>
+            {t("settings_soundDurationLabel")}
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={soundDurationDraft}
+            onChange={(e) => setSoundDurationDraft(e.target.value)}
+            style={{ ...fieldInput, width: "140px", marginBottom: "4px" }}
+          />
+          <div
+            style={{
+              fontSize: "11.5px",
+              color: "var(--text-muted)",
+              marginTop: "-8px",
+              marginBottom: "14px",
+            }}
+          >
+            {t("settings_soundDurationHint")}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              onClick={saveSoundSettings}
+              style={{
+                ...primaryBtnStyle,
+                padding: "8px 16px",
+                fontSize: "13px",
+              }}
+            >
+              {t("settings_saveBtn")}
+            </button>
+            <button
+              onClick={testSound}
+              style={{
+                ...secondaryBtnStyle,
+                padding: "8px 16px",
+                fontSize: "13px",
+              }}
+            >
+              {t("settings_soundTest")}
+            </button>
+            {soundSaved && (
+              <span
+                style={{
+                  fontSize: "12.5px",
+                  color: "var(--primary)",
+                  fontWeight: 600,
+                }}
+              >
+                {t("settings_soundSaved")}
+              </span>
+            )}
           </div>
         </div>
       </div>
