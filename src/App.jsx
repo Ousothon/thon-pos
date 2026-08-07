@@ -688,6 +688,54 @@ const STRINGS = {
   changeLogo: { km: "ប្តូររូបភាព", en: "Change logo" },
   removeLogo: { km: "លុបរូបភាព", en: "Remove logo" },
   settings_shopSaved: { km: "បានរក្សាទុកព័ត៌មានហាង", en: "Shop info saved" },
+
+  settings_paymentTitle: {
+    km: "វិធីទូទាត់ប្រាក់ (Online order)",
+    en: "Payment methods (Online orders)",
+  },
+  settings_paymentSubtitle: {
+    km: "ជ្រើសរើសវិធីទូទាត់ដែលអតិថិជនអាចជ្រើសបានពេលកម្មង់អនឡាញ",
+    en: "Choose which payment methods customers can pick when ordering online",
+  },
+  settings_payCashLabel: {
+    km: "សាច់ប្រាក់ពេលទទួល",
+    en: "Cash on pickup/delivery",
+  },
+  settings_payKhqrLabel: { km: "KHQR ស្កេនទូទាត់", en: "KHQR scan to pay" },
+  settings_khqrImageLabel: {
+    km: "រូបភាព KHQR របស់ហាង",
+    en: "Your shop's KHQR image",
+  },
+  settings_khqrImageHint: {
+    km: "ថតរូប QR code ពីកម្មវិធីធនាគាររបស់អ្នក (ABA, ACLEDA, Wing ។ល។) ហើយផ្ទុកឡើងទីនេះ",
+    en: "Screenshot the QR code from your banking app (ABA, ACLEDA, Wing, etc.) and upload it here",
+  },
+  uploadKhqrImage: { km: "ផ្ទុករូបភាព QR", en: "Upload QR image" },
+  changeKhqrImage: { km: "ប្តូររូបភាព QR", en: "Change QR image" },
+  removeKhqrImage: { km: "លុបរូបភាព QR", en: "Remove QR image" },
+  settings_khqrTooLarge: {
+    km: "ឯកសារធំពេក សូមជ្រើសរូបភាពតូចជាង 1MB",
+    en: "File too large — please pick an image under 1MB",
+  },
+  settings_paymentSaved: {
+    km: "បានរក្សាទុកការកំណត់ការទូទាត់",
+    en: "Payment settings saved",
+  },
+  settings_khqrNeedsImageWarning: {
+    km: "សូមផ្ទុករូបភាព QR សិន មុននឹងបើកមុខងារនេះ",
+    en: "Please upload a QR image before enabling this",
+  },
+
+  checkout_paymentMethod: { km: "វិធីទូទាត់ប្រាក់", en: "Payment method" },
+  checkout_payCash: { km: "សាច់ប្រាក់ពេលទទួល", en: "Cash on pickup" },
+  checkout_payKhqr: { km: "ស្កេន KHQR ទូទាត់ភ្លាមៗ", en: "Scan KHQR now" },
+  checkout_khqrInstructions: {
+    km: "ស្កេន QR ខាងក្រោមដើម្បីទូទាត់ចំនួន {amount} រួចចុចដាក់ការកម្មង់ខាងក្រោម",
+    en: "Scan the QR below to pay {amount}, then submit your order below",
+  },
+  order_paidVia_cash: { km: "សាច់ប្រាក់", en: "Cash" },
+  order_paidVia_khqr: { km: "KHQR", en: "KHQR" },
+
   settings_soundTitle: {
     km: "សំឡេងជូនដំណឹង",
     en: "Notification sound",
@@ -708,7 +756,10 @@ const STRINGS = {
   },
   settings_soundUpload: { km: "ផ្ទុកសំឡេងឡើង", en: "Upload sound" },
   settings_soundChange: { km: "ប្តូរឯកសារសំឡេង", en: "Change sound file" },
-  settings_soundRemove: { km: "លុបសំឡេងផ្ទាល់ខ្លួន", en: "Remove custom sound" },
+  settings_soundRemove: {
+    km: "លុបសំឡេងផ្ទាល់ខ្លួន",
+    en: "Remove custom sound",
+  },
   settings_soundTest: { km: "សាកល្បងស្តាប់", en: "Test sound" },
   settings_soundNoFile: {
     km: "មិនទាន់មានឯកសារសំឡេងនៅឡើយ",
@@ -1133,6 +1184,39 @@ function resizeImage(file, maxDim = 320, quality = 0.75) {
   });
 }
 
+function resizeQrImage(file, maxDim = 640) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width,
+          h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w >= h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        // PNG (lossless) — a QR code's sharp black/white modules can become
+        // unscannable with JPEG's compression artifacts.
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 const NAV = [
   { id: "pos", key: "nav_pos", icon: ShoppingCart },
   { id: "dashboard", key: "nav_dashboard", icon: LayoutDashboard },
@@ -1162,6 +1246,9 @@ function POSApp() {
   const [shopName, setShopName] = useState("");
   const [shopLogo, setShopLogo] = useState(null);
   const [khrRate, setKhrRate] = useState(KHR_PER_USD_DEFAULT);
+  const [payCashEnabled, setPayCashEnabled] = useState(true);
+  const [payKhqrEnabled, setPayKhqrEnabled] = useState(false);
+  const [khqrImage, setKhqrImage] = useState("");
   const [lang, setLang] = useState("km");
   const [activeTab, setActiveTab] = useState(
     () => localStorage.getItem("shop-activeTab") || "pos",
@@ -1248,6 +1335,13 @@ function POSApp() {
         setShopName(parsed.shopName || "");
         setShopLogo(parsed.shopLogo || null);
         setKhrRate(parsed.khrRate || KHR_PER_USD_DEFAULT);
+        setPayCashEnabled(
+          typeof parsed.payCashEnabled === "boolean"
+            ? parsed.payCashEnabled
+            : true,
+        );
+        setPayKhqrEnabled(!!parsed.payKhqrEnabled);
+        setKhqrImage(parsed.khqrImage || "");
         setLang(parsed.lang || "km");
         setUsers(
           parsed.users && parsed.users.length ? parsed.users : seedUsers,
@@ -1280,6 +1374,9 @@ function POSApp() {
             shopName,
             shopLogo,
             khrRate,
+            payCashEnabled,
+            payKhqrEnabled,
+            khqrImage,
             lang,
             users,
           }),
@@ -1299,6 +1396,9 @@ function POSApp() {
     shopName,
     shopLogo,
     khrRate,
+    payCashEnabled,
+    payKhqrEnabled,
+    khqrImage,
     lang,
     users,
     loading,
@@ -2171,8 +2271,32 @@ function POSApp() {
         setShopName(data.shop_name);
       if (data && typeof data.shop_logo === "string")
         setShopLogo(data.shop_logo);
+      if (data && typeof data.pay_cash_enabled === "boolean")
+        setPayCashEnabled(data.pay_cash_enabled);
+      if (data && typeof data.pay_khqr_enabled === "boolean")
+        setPayKhqrEnabled(data.pay_khqr_enabled);
+      if (data && typeof data.khqr_image === "string")
+        setKhqrImage(data.khqr_image);
     } catch {
       /* ignore, local cache still works */
+    }
+  };
+
+  const pushPaymentSettings = async (cashEnabled, khqrEnabled, khqrImg) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("shop_settings").upsert(
+        {
+          id: "default",
+          pay_cash_enabled: cashEnabled,
+          pay_khqr_enabled: khqrEnabled,
+          khqr_image: khqrImg || null,
+          updated_at: Date.now(),
+        },
+        { onConflict: "id" },
+      );
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
     }
   };
 
@@ -2310,7 +2434,8 @@ function POSApp() {
             const soundOn = localStorage.getItem("notifySoundOn") !== "off";
             if (soundOn)
               playNotifySound({
-                soundId: localStorage.getItem("notifySoundId") || DEFAULT_SOUND_ID,
+                soundId:
+                  localStorage.getItem("notifySoundId") || DEFAULT_SOUND_ID,
                 customUrl: localStorage.getItem("notifySoundCustom") || null,
                 durationSec:
                   Number(localStorage.getItem("notifySoundDuration")) || 0,
@@ -3493,6 +3618,15 @@ function POSApp() {
               setNotifySoundCustomName={setNotifySoundCustomName}
               notifySoundDuration={notifySoundDuration}
               setNotifySoundDuration={setNotifySoundDuration}
+              payCashEnabled={payCashEnabled}
+              payKhqrEnabled={payKhqrEnabled}
+              khqrImage={khqrImage}
+              onSavePaymentSettings={(cash, khqr, img) => {
+                setPayCashEnabled(cash);
+                setPayKhqrEnabled(khqr);
+                setKhqrImage(img);
+                pushPaymentSettings(cash, khqr, img);
+              }}
             />
           )}
           {!allowedTabs.includes(activeTab) && (
@@ -4275,6 +4409,41 @@ const secondaryBtnStyle = {
 };
 const thStyle = { padding: "8px 12px", fontWeight: 600, textAlign: "start" };
 const tdStyle = { padding: "11px 12px" };
+
+function ToggleSwitch({ on, onClick, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        width: "40px",
+        height: "23px",
+        borderRadius: "12px",
+        border: "none",
+        background: on ? "var(--primary)" : "var(--border)",
+        position: "relative",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        flexShrink: 0,
+        transition: "background .15s",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: "2px",
+          left: on ? "19px" : "2px",
+          width: "19px",
+          height: "19px",
+          borderRadius: "50%",
+          background: "#fff",
+          boxShadow: "0 1px 3px rgba(0,0,0,.25)",
+          transition: "left .15s",
+        }}
+      />
+    </button>
+  );
+}
 
 function CategoryPill({ active, onClick, label }) {
   return (
@@ -6897,6 +7066,28 @@ function OnlineOrdersTab({
                 <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
                   {o.customer_phone || ""}
                 </div>
+                {o.payment_method && (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      marginTop: "4px",
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                      padding: "2px 7px",
+                      borderRadius: "999px",
+                      background:
+                        o.payment_method === "khqr"
+                          ? "color-mix(in srgb, var(--primary) 15%, transparent)"
+                          : "var(--surface-alt)",
+                      color:
+                        o.payment_method === "khqr"
+                          ? "var(--primary)"
+                          : "var(--text-muted)",
+                    }}
+                  >
+                    {t("order_paidVia_" + o.payment_method)}
+                  </span>
+                )}
               </div>
               {statusBadge(o.status)}
             </div>
@@ -7499,6 +7690,10 @@ function SettingsTab({
   setNotifySoundCustomName,
   notifySoundDuration,
   setNotifySoundDuration,
+  payCashEnabled,
+  payKhqrEnabled,
+  khqrImage,
+  onSavePaymentSettings,
 }) {
   const { t } = useT();
   const [draft, setDraft] = useState(String(khrRate));
@@ -7507,6 +7702,13 @@ function SettingsTab({
   const [logoDraft, setLogoDraft] = useState(shopLogo);
   const [shopSaved, setShopSaved] = useState(false);
   const fileRef = useRef(null);
+
+  const [payCashDraft, setPayCashDraft] = useState(payCashEnabled);
+  const [payKhqrDraft, setPayKhqrDraft] = useState(payKhqrEnabled);
+  const [khqrImageDraft, setKhqrImageDraft] = useState(khqrImage);
+  const [khqrError, setKhqrError] = useState("");
+  const [paymentSaved, setPaymentSaved] = useState(false);
+  const khqrFileRef = useRef(null);
 
   const [soundIdDraft, setSoundIdDraft] = useState(notifySoundId);
   const [soundOnDraft, setSoundOnDraft] = useState(notifySoundOn);
@@ -7605,6 +7807,37 @@ function SettingsTab({
     if (onSaveShopInfo) onSaveShopInfo(nameDraft, logoDraft);
     setShopSaved(true);
     setTimeout(() => setShopSaved(false), 1800);
+  };
+
+  const handleKhqrFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setKhqrError("");
+    if (file.size > 1024 * 1024) {
+      setKhqrError(t("settings_khqrTooLarge"));
+      return;
+    }
+    const dataUrl = await resizeQrImage(file, 640);
+    setKhqrImageDraft(dataUrl);
+  };
+  const removeKhqrImage = () => {
+    setKhqrImageDraft("");
+    if (payKhqrDraft) setPayKhqrDraft(false);
+    if (khqrFileRef.current) khqrFileRef.current.value = "";
+  };
+  const toggleKhqr = () => {
+    if (!payKhqrDraft && !khqrImageDraft) {
+      setKhqrError(t("settings_khqrNeedsImageWarning"));
+      return;
+    }
+    setKhqrError("");
+    setPayKhqrDraft(!payKhqrDraft);
+  };
+  const savePaymentSettings = () => {
+    if (onSavePaymentSettings)
+      onSavePaymentSettings(payCashDraft, payKhqrDraft, khqrImageDraft);
+    setPaymentSaved(true);
+    setTimeout(() => setPaymentSaved(false), 1800);
   };
 
   return (
@@ -7781,6 +8014,195 @@ function SettingsTab({
               marginBottom: "4px",
             }}
           >
+            {t("settings_paymentTitle")}
+          </div>
+          <div
+            style={{
+              fontSize: "12.5px",
+              color: "var(--text-muted)",
+              marginBottom: "16px",
+            }}
+          >
+            {t("settings_paymentSubtitle")}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 0",
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            <span style={{ fontSize: "13.5px", fontWeight: 600 }}>
+              {t("settings_payCashLabel")}
+            </span>
+            <ToggleSwitch
+              on={payCashDraft}
+              onClick={() => setPayCashDraft(!payCashDraft)}
+            />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 0",
+            }}
+          >
+            <span style={{ fontSize: "13.5px", fontWeight: 600 }}>
+              {t("settings_payKhqrLabel")}
+            </span>
+            <ToggleSwitch on={payKhqrDraft} onClick={toggleKhqr} />
+          </div>
+
+          <label style={{ ...fieldLabel, marginTop: "6px" }}>
+            {t("settings_khqrImageLabel")}
+          </label>
+          <div
+            style={{
+              fontSize: "12px",
+              color: "var(--text-muted)",
+              marginBottom: "10px",
+            }}
+          >
+            {t("settings_khqrImageHint")}
+          </div>
+          <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+            <div
+              style={{
+                width: "84px",
+                height: "84px",
+                borderRadius: "10px",
+                border: "1px solid var(--border)",
+                background: "var(--surface-alt)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                flexShrink: 0,
+              }}
+            >
+              {khqrImageDraft ? (
+                <img
+                  src={khqrImageDraft}
+                  alt=""
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                  }}
+                />
+              ) : (
+                <ImageOff size={22} color="var(--text-muted)" />
+              )}
+            </div>
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+            >
+              <input
+                ref={khqrFileRef}
+                type="file"
+                accept="image/*"
+                onChange={handleKhqrFile}
+                style={{ display: "none" }}
+              />
+              <button
+                onClick={() => khqrFileRef.current.click()}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "7px 12px",
+                  borderRadius: "7px",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <ImagePlus size={14} />{" "}
+                {khqrImageDraft ? t("changeKhqrImage") : t("uploadKhqrImage")}
+              </button>
+              {khqrImageDraft && (
+                <button
+                  onClick={removeKhqrImage}
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--danger)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    padding: 0,
+                  }}
+                >
+                  {t("removeKhqrImage")}
+                </button>
+              )}
+            </div>
+          </div>
+          {khqrError && (
+            <div
+              style={{
+                fontSize: "12px",
+                color: "var(--danger)",
+                marginTop: "10px",
+              }}
+            >
+              {khqrError}
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              marginTop: "16px",
+            }}
+          >
+            <button
+              onClick={savePaymentSettings}
+              style={{
+                ...primaryBtnStyle,
+                padding: "8px 16px",
+                fontSize: "13px",
+              }}
+            >
+              {t("settings_saveBtn")}
+            </button>
+            {paymentSaved && (
+              <span
+                style={{
+                  fontSize: "12.5px",
+                  color: "var(--primary)",
+                  fontWeight: 600,
+                }}
+              >
+                {t("settings_paymentSaved")}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "14px",
+            padding: "18px",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: "14.5px",
+              marginBottom: "4px",
+            }}
+          >
             {t("settings_khrTitle")}
           </div>
           <div
@@ -7891,9 +8313,7 @@ function SettingsTab({
                 ...iconBtnStyle,
                 color: soundOnDraft ? "var(--primary)" : "var(--text-muted)",
               }}
-              title={
-                soundOnDraft ? t("notifySound_on") : t("notifySound_off")
-              }
+              title={soundOnDraft ? t("notifySound_on") : t("notifySound_off")}
             >
               {soundOnDraft ? <Bell size={15} /> : <BellOff size={15} />}
             </button>
@@ -8018,9 +8438,7 @@ function SettingsTab({
             {t("settings_soundDurationHint")}
           </div>
 
-          <div
-            style={{ display: "flex", alignItems: "center", gap: "10px" }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <button
               onClick={saveSoundSettings}
               style={{
@@ -8501,7 +8919,8 @@ function DateField({ value, onChange, style }) {
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target))
+        setOpen(false);
     };
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
@@ -8620,10 +9039,7 @@ function DateField({ value, onChange, style }) {
               onClick={() => goMonth(1)}
               style={iconBtnStyle}
             >
-              <ChevronDown
-                size={14}
-                style={{ transform: "rotate(-90deg)" }}
-              />
+              <ChevronDown size={14} style={{ transform: "rotate(-90deg)" }} />
             </button>
           </div>
           <div
@@ -9443,6 +9859,10 @@ function StorefrontApp() {
   const [orderHistory, setOrderHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [toast, setToast] = useState(null);
+  const [payCashEnabled, setPayCashEnabled] = useState(true);
+  const [payKhqrEnabled, setPayKhqrEnabled] = useState(false);
+  const [khqrImage, setKhqrImage] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
 
   const showToast = (msg, kind = "ok") => {
     setToast({ msg, kind });
@@ -9573,6 +9993,29 @@ function StorefrontApp() {
         /* keep default categories */
       }
     })();
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("shop_settings")
+          .select("*")
+          .eq("id", "default")
+          .maybeSingle();
+        if (data) {
+          setPayCashEnabled(
+            typeof data.pay_cash_enabled === "boolean"
+              ? data.pay_cash_enabled
+              : true,
+          );
+          setPayKhqrEnabled(!!data.pay_khqr_enabled);
+          setKhqrImage(data.khqr_image || "");
+          if (!data.pay_cash_enabled && data.pay_khqr_enabled) {
+            setPaymentMethod("khqr");
+          }
+        }
+      } catch {
+        /* keep default (cash only) */
+      }
+    })();
   }, []);
 
   const filtered = products.filter((p) => {
@@ -9622,6 +10065,7 @@ function StorefrontApp() {
           items: cart,
           subtotal,
           status: "pending",
+          payment_method: paymentMethod,
         })
         .select()
         .single();
@@ -10290,6 +10734,102 @@ function StorefrontApp() {
                           placeholder={t("storefront_note")}
                           style={{ ...fieldInput, marginBottom: "4px" }}
                         />
+                        {(payCashEnabled || payKhqrEnabled) && (
+                          <div style={{ marginBottom: "12px" }}>
+                            <label
+                              style={{ ...fieldLabel, marginBottom: "6px" }}
+                            >
+                              {t("checkout_paymentMethod")}
+                            </label>
+                            <div style={{ display: "flex", gap: "8px" }}>
+                              {payCashEnabled && (
+                                <button
+                                  onClick={() => setPaymentMethod("cash")}
+                                  style={{
+                                    flex: 1,
+                                    padding: "9px 10px",
+                                    borderRadius: "9px",
+                                    border:
+                                      paymentMethod === "cash"
+                                        ? "2px solid var(--primary)"
+                                        : "1px solid var(--border)",
+                                    background:
+                                      paymentMethod === "cash"
+                                        ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                                        : "var(--surface)",
+                                    fontSize: "13px",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {t("checkout_payCash")}
+                                </button>
+                              )}
+                              {payKhqrEnabled && khqrImage && (
+                                <button
+                                  onClick={() => setPaymentMethod("khqr")}
+                                  style={{
+                                    flex: 1,
+                                    padding: "9px 10px",
+                                    borderRadius: "9px",
+                                    border:
+                                      paymentMethod === "khqr"
+                                        ? "2px solid var(--primary)"
+                                        : "1px solid var(--border)",
+                                    background:
+                                      paymentMethod === "khqr"
+                                        ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                                        : "var(--surface)",
+                                    fontSize: "13px",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {t("checkout_payKhqr")}
+                                </button>
+                              )}
+                            </div>
+                            {paymentMethod === "khqr" &&
+                              payKhqrEnabled &&
+                              khqrImage && (
+                                <div
+                                  style={{
+                                    marginTop: "12px",
+                                    padding: "14px",
+                                    borderRadius: "12px",
+                                    border: "1px solid var(--border)",
+                                    background: "var(--surface-alt)",
+                                    textAlign: "center",
+                                  }}
+                                >
+                                  <img
+                                    src={khqrImage}
+                                    alt="KHQR"
+                                    style={{
+                                      width: "180px",
+                                      height: "180px",
+                                      objectFit: "contain",
+                                      margin: "0 auto 10px",
+                                      background: "#fff",
+                                      borderRadius: "8px",
+                                      padding: "8px",
+                                    }}
+                                  />
+                                  <div
+                                    style={{
+                                      fontSize: "12.5px",
+                                      color: "var(--text-muted)",
+                                      lineHeight: 1.5,
+                                    }}
+                                  >
+                                    {t("checkout_khqrInstructions", {
+                                      amount: fmt(subtotal),
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        )}
                         {formError && (
                           <div
                             style={{
