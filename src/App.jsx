@@ -626,6 +626,9 @@ const STRINGS = {
   exp_editTitle: { km: "កែប្រែចំណាយ", en: "Edit expense" },
   exp_addTitle: { km: "បន្ថែមចំណាយថ្មី", en: "Add new expense" },
   exp_date: { km: "កាលបរិច្ឆេទ", en: "Date" },
+  datePicker_select: { km: "ជ្រើសរើសកាលបរិច្ឆេទ", en: "Select date" },
+  datePicker_clear: { km: "សម្អាត", en: "Clear" },
+  datePicker_today: { km: "ថ្ងៃនេះ", en: "Today" },
   exp_category: { km: "ប្រភេទ", en: "Category" },
   exp_amount: { km: "ចំនួនទឹកប្រាក់ ($)", en: "Amount ($)" },
   exp_note: { km: "កំណត់ចំណាំ", en: "Note" },
@@ -3744,8 +3747,9 @@ function FontStyles() {
         #receipt-print-area, #receipt-print-area * { visibility: visible; }
         #receipt-print-area {
           position: absolute;
-          left: 0;
+          left: 50%;
           top: 0;
+          transform: translateX(-50%);
           width: 300px;
           box-shadow: none !important;
           border-radius: 0 !important;
@@ -8471,6 +8475,262 @@ function CustomerModal({ data, onClose, onSave }) {
   );
 }
 
+// Lightweight themed date picker — replaces the native <input type="date">
+// so the calendar popup matches the app's own look instead of the
+// browser/OS default one.
+function DateField({ value, onChange, style }) {
+  const { t, lang } = useT();
+  const [open, setOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(() =>
+    (value ? new Date(value + "T00:00:00") : new Date()).getFullYear(),
+  );
+  const [viewMonth, setViewMonth] = useState(() =>
+    (value ? new Date(value + "T00:00:00") : new Date()).getMonth(),
+  );
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const d = value ? new Date(value + "T00:00:00") : new Date();
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const toISO = (y, m, day) =>
+    `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+  const displayLabel = value
+    ? new Date(value + "T00:00:00").toLocaleDateString(
+        lang === "en" ? "en-US" : "km-KH",
+        { year: "numeric", month: "short", day: "numeric" },
+      )
+    : t("datePicker_select");
+
+  const weekdayLabels = WEEKDAY_LABELS[lang] || WEEKDAY_LABELS.en;
+  const monthLabels = MONTH_LABELS[lang] || MONTH_LABELS.en;
+
+  const firstOfMonth = new Date(viewYear, viewMonth, 1);
+  const startWeekday = firstOfMonth.getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  const goMonth = (delta) => {
+    let m = viewMonth + delta;
+    let y = viewYear;
+    if (m < 0) {
+      m = 11;
+      y -= 1;
+    }
+    if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+    setViewMonth(m);
+    setViewYear(y);
+  };
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", ...style }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          ...fieldInput,
+          marginBottom: 0,
+          textAlign: "left",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          cursor: "pointer",
+          background: "var(--surface)",
+          color: value ? "var(--text)" : "var(--text-muted)",
+        }}
+      >
+        {displayLabel}
+        <ChevronDown
+          size={14}
+          style={{
+            color: "var(--text-muted)",
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform .15s ease",
+            flexShrink: 0,
+          }}
+        />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            zIndex: 55,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "12px",
+            boxShadow: "0 12px 30px rgba(0,0,0,.16)",
+            padding: "14px",
+            width: "260px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "10px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => goMonth(-1)}
+              style={iconBtnStyle}
+            >
+              <ChevronDown size={14} style={{ transform: "rotate(90deg)" }} />
+            </button>
+            <span style={{ fontWeight: 700, fontSize: "13.5px" }}>
+              {monthLabels[viewMonth]} {viewYear}
+            </span>
+            <button
+              type="button"
+              onClick={() => goMonth(1)}
+              style={iconBtnStyle}
+            >
+              <ChevronDown size={14} style={{ transform: "rotate(-90deg)" }} />
+            </button>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              gap: "2px",
+              marginBottom: "4px",
+            }}
+          >
+            {weekdayLabels.map((w, i) => (
+              <div
+                key={i}
+                style={{
+                  textAlign: "center",
+                  fontSize: "10.5px",
+                  color: "var(--text-muted)",
+                  fontWeight: 600,
+                  padding: "2px 0",
+                }}
+              >
+                {w}
+              </div>
+            ))}
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              gap: "2px",
+            }}
+          >
+            {cells.map((day, i) => {
+              if (day === null) return <div key={i} />;
+              const iso = toISO(viewYear, viewMonth, day);
+              const isSelected = iso === value;
+              const isToday = iso === todayISO;
+              return (
+                <button
+                  type="button"
+                  key={i}
+                  onClick={() => {
+                    onChange(iso);
+                    setOpen(false);
+                  }}
+                  style={{
+                    width: "100%",
+                    aspectRatio: "1",
+                    border: "none",
+                    borderRadius: "7px",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    background: isSelected ? "var(--primary)" : "transparent",
+                    color: isSelected
+                      ? "#fff"
+                      : isToday
+                        ? "var(--primary)"
+                        : "var(--text)",
+                    fontWeight: isSelected || isToday ? 700 : 500,
+                  }}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: "10px",
+              paddingTop: "10px",
+              borderTop: "1px dashed var(--border)",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                fontSize: "12.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              {t("datePicker_clear")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(todayISO);
+                setOpen(false);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--primary)",
+                fontSize: "12.5px",
+                fontWeight: 700,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              {t("datePicker_today")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExpenseModal({ data, onClose, onSave }) {
   const { t } = useT();
   const editing = data.mode === "edit";
@@ -8499,11 +8759,10 @@ function ExpenseModal({ data, onClose, onSave }) {
       onClose={onClose}
     >
       <label style={fieldLabel}>{t("exp_date")}</label>
-      <input
-        type="date"
-        style={fieldInput}
+      <DateField
         value={form.date}
-        onChange={(ev) => setForm({ ...form, date: ev.target.value })}
+        onChange={(v) => setForm({ ...form, date: v })}
+        style={{ marginBottom: "14px" }}
       />
       <label style={fieldLabel}>{t("exp_category")}</label>
       <select
