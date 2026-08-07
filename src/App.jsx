@@ -57,6 +57,7 @@ import {
   Key,
   Crown,
   Award,
+  RotateCcw,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -835,6 +836,19 @@ const STRINGS = {
   storefront_backToStatus: { km: "ត្រឡប់ក្រោយ", en: "Back" },
   markPaid: { km: "បានទទួលប្រាក់", en: "Mark as paid" },
   cancelOrder: { km: "លុបចោល", en: "Cancel" },
+  undoPaid: { km: "មិនទាន់បង់ (ត្រឡប់ក្រោយ)", en: "Undo — not paid" },
+  undoPaid_confirmTitle: {
+    km: "ត្រឡប់ស្ថានភាពការទូទាត់?",
+    en: "Undo this payment?",
+  },
+  undoPaid_confirmMsg: {
+    km: 'នេះនឹងដកចេញពី Revenue ដែលបានកត់ត្រា ហើយប្តូរស្ថានភាពត្រឡប់ទៅ "ទទួលហើយ (មិនទាន់ទូទាត់)" វិញ។ ប្រើពេលបុគ្គលិកចុច Mark as paid ច្រឡំ។',
+    en: 'This removes the recorded revenue and reverts the order back to "Accepted (unpaid)". Use this when a staff member marked it paid by mistake.',
+  },
+  toast_orderUnpaid: {
+    km: "បានត្រឡប់ទៅជាមិនទាន់ទូទាត់ និងដកចេញពី Revenue",
+    en: "Reverted to unpaid and removed from revenue",
+  },
   toast_orderPaid: {
     km: "បានកត់ត្រាការទូទាត់ និងបញ្ចូល Revenue",
     en: "Payment recorded and added to revenue",
@@ -2129,6 +2143,7 @@ function POSApp() {
         ...prev,
         {
           id: genId(),
+          orderId: order.id,
           date: new Date().toISOString(),
           items: order.items || [],
           subtotal: order.subtotal,
@@ -2149,6 +2164,29 @@ function POSApp() {
         prev.map((o) => (o.id === order.id ? { ...o, status: "paid" } : o)),
       );
       showToast(t("toast_orderPaid"));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  // Corrective action for when a staff member mis-clicks "Mark as paid" —
+  // reverts the order to accepted/unpaid and removes the revenue entry
+  // that was recorded for it, so books stay accurate.
+  const undoMarkPaid = async (order) => {
+    try {
+      const sale = sales.find((s) => s.orderId === order.id);
+      if (supabase) {
+        await supabase
+          .from("online_orders")
+          .update({ status: "accepted" })
+          .eq("id", order.id);
+        if (sale) await supabase.from("sales").delete().eq("id", sale.id);
+      }
+      setOnlineOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: "accepted" } : o)),
+      );
+      if (sale) setSales((prev) => prev.filter((s) => s.id !== sale.id));
+      showToast(t("toast_orderUnpaid"));
     } catch {
       showToast(t("toast_supabaseError"), "error");
     }
@@ -3111,6 +3149,7 @@ function POSApp() {
                 onAccept={acceptOnlineOrder}
                 onReject={rejectOnlineOrder}
                 onMarkPaid={markOrderPaid}
+                onUndoPaid={undoMarkPaid}
                 onCancel={cancelAcceptedOrder}
                 onArchiveOrder={archiveOrder}
                 onArchiveFinished={archiveFinishedOrders}
@@ -6166,6 +6205,7 @@ function OnlineOrdersTab({
   onAccept,
   onReject,
   onMarkPaid,
+  onUndoPaid,
   onCancel,
   onArchiveOrder,
   onArchiveFinished,
@@ -6176,6 +6216,7 @@ function OnlineOrdersTab({
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [archiveView, setArchiveView] = useState("active"); // 'active' | 'archived'
+  const [undoTarget, setUndoTarget] = useState(null);
   const visibleOrders = archiveView === "archived" ? archivedOrders : orders;
 
   const storeUrl =
@@ -6662,20 +6703,39 @@ function OnlineOrdersTab({
               )}
               {archiveView === "active" &&
                 ["paid", "rejected", "cancelled"].includes(o.status) && (
-                  <button
-                    onClick={() => onArchiveOrder(o)}
-                    style={{
-                      ...iconBtnStyle,
-                      width: "auto",
-                      padding: "6px 11px",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      display: "flex",
-                      gap: "5px",
-                    }}
-                  >
-                    <History size={13} /> {t("archive_single")}
-                  </button>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    {o.status === "paid" && (
+                      <button
+                        onClick={() => setUndoTarget(o)}
+                        style={{
+                          ...iconBtnStyle,
+                          width: "auto",
+                          padding: "6px 11px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          display: "flex",
+                          gap: "5px",
+                          color: "var(--danger)",
+                        }}
+                      >
+                        <RotateCcw size={13} /> {t("undoPaid")}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onArchiveOrder(o)}
+                      style={{
+                        ...iconBtnStyle,
+                        width: "auto",
+                        padding: "6px 11px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        display: "flex",
+                        gap: "5px",
+                      }}
+                    >
+                      <History size={13} /> {t("archive_single")}
+                    </button>
+                  </div>
                 )}
               {archiveView === "active" && o.status === "pending" && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
@@ -6752,6 +6812,19 @@ function OnlineOrdersTab({
           </div>
         ))}
       </div>
+      {undoTarget && (
+        <ConfirmDialog
+          title={t("undoPaid_confirmTitle")}
+          message={t("undoPaid_confirmMsg")}
+          confirmLabel={t("undoPaid")}
+          danger
+          onConfirm={() => {
+            onUndoPaid(undoTarget);
+            setUndoTarget(null);
+          }}
+          onCancel={() => setUndoTarget(null)}
+        />
+      )}
     </div>
   );
 }
