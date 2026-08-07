@@ -687,13 +687,13 @@ const STRINGS = {
     km: "បានបើកគណនីអ្នកប្រើប្រាស់វិញ",
     en: "User account enabled",
   },
-  toast_cannotDisableSelf: {
-    km: "មិនអាចបិទគណនីខ្លួនឯងបានទេ",
-    en: "You can't disable your own account",
-  },
   toast_accountDisabled: {
     km: "គណនីនេះត្រូវបានបិទ សូមទាក់ទងអ្នកគ្រប់គ្រង",
     en: "This account has been disabled. Contact your admin.",
+  },
+  toast_userSyncFailed: {
+    km: "រក្សាទុកនៅលើ Cloud បរាជ័យ — ប្រហែលជាតារាង users មិនទាន់មាន column ចាំបាច់ទេ (សូមពិនិត្យ Supabase)",
+    en: "Cloud sync failed — the users table may be missing a required column (check Supabase)",
   },
   user_disableConfirm: {
     km: "តើអ្នកចង់បិទគណនីនេះមែនទេ? អ្នកប្រើប្រាស់នេះនឹងចាកចេញភ្លាមៗ ហើយមិនអាចចូលប្រព័ន្ធបានទៀត រហូតដល់អ្នកបើកគណនីវិញ",
@@ -1104,15 +1104,11 @@ function POSApp() {
   };
 
   const toggleUserActive = (id) => {
-    if (id === sessionUserId) {
-      showToast(t("toast_cannotDisableSelf"), "error");
-      return;
-    }
     const target = users.find((u) => u.id === id);
     if (!target) return;
     const nextActive = target.active === false; // currently disabled -> enable, else disable
     if (!nextActive) {
-      // about to disable — make sure at least one active admin remains
+      // about to disable — make sure at least one other active admin remains
       const remainingActiveAdmins = users.filter(
         (u) => u.role === "admin" && u.id !== id && u.active !== false,
       );
@@ -1130,6 +1126,9 @@ function POSApp() {
       "user",
       target.name_km || target.username,
     );
+    // Disabling the account you're currently signed in as should sign you
+    // out right away too — the currentUser-watching effect below handles
+    // that as soon as `users` re-renders with active: false.
   };
 
   // ---------- POS ----------
@@ -1407,7 +1406,7 @@ function POSApp() {
   const pushUserRow = async (u) => {
     if (!supabase) return;
     try {
-      await supabase.from("users").upsert(
+      const { error } = await supabase.from("users").upsert(
         {
           id: u.id,
           username: u.username,
@@ -1420,6 +1419,13 @@ function POSApp() {
         },
         { onConflict: "id" },
       );
+      if (error) {
+        // Supabase's upsert() resolves (doesn't throw) even when the table
+        // rejects the write — e.g. an `active` column that doesn't exist yet
+        // on this project. Surface it, because a silently-failed push here
+        // means a disabled account keeps working on every other device.
+        showToast(t("toast_userSyncFailed"), "error");
+      }
     } catch {
       /* offline */
     }
@@ -6542,21 +6548,19 @@ function UsersTab({
                     </span>
                   </td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
-                    {u.id !== currentUser.id && (
-                      <button
-                        onClick={() => setToggleTarget(u)}
-                        title={disabled ? t("enableUser") : t("disableUser")}
-                        style={{
-                          ...iconBtnStyle,
-                          marginRight: "7px",
-                          color: disabled
-                            ? "var(--primary)"
-                            : "var(--text-muted)",
-                        }}
-                      >
-                        {disabled ? <Power size={13} /> : <Ban size={13} />}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setToggleTarget(u)}
+                      title={disabled ? t("enableUser") : t("disableUser")}
+                      style={{
+                        ...iconBtnStyle,
+                        marginRight: "7px",
+                        color: disabled
+                          ? "var(--primary)"
+                          : "var(--text-muted)",
+                      }}
+                    >
+                      {disabled ? <Power size={13} /> : <Ban size={13} />}
+                    </button>
                     <button
                       onClick={() => openEdit(u)}
                       style={{ ...iconBtnStyle, marginRight: "7px" }}
