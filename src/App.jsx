@@ -7601,15 +7601,21 @@ function SettingsTab({
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar title={t("nav_settings")} subtitle={t("settings_subtitle")} />
-      <div style={{ padding: "16px 26px 26px" }}>
+      <div
+        style={{
+          padding: "16px 26px 26px",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+          gap: "18px",
+          alignItems: "start",
+        }}
+      >
         <div
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
             borderRadius: "14px",
             padding: "18px",
-            maxWidth: "440px",
-            marginBottom: "18px",
           }}
         >
           <div
@@ -7757,7 +7763,6 @@ function SettingsTab({
             border: "1px solid var(--border)",
             borderRadius: "14px",
             padding: "18px",
-            maxWidth: "440px",
           }}
         >
           <div
@@ -7839,8 +7844,6 @@ function SettingsTab({
             border: "1px solid var(--border)",
             borderRadius: "14px",
             padding: "18px",
-            maxWidth: "440px",
-            marginTop: "18px",
           }}
         >
           <div
