@@ -52,6 +52,8 @@ import {
   Wallet,
   Loader2,
   RefreshCw,
+  Ban,
+  Power,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -203,6 +205,7 @@ const seedUsers = [
     name_km: "អ្នកគ្រប់គ្រង",
     name_en: "Administrator",
     role: "admin",
+    active: true,
   },
   {
     id: "u2",
@@ -211,6 +214,7 @@ const seedUsers = [
     name_km: "បុគ្គលិកលក់",
     name_en: "Sales Staff",
     role: "staff",
+    active: true,
   },
 ];
 
@@ -638,6 +642,8 @@ const STRINGS = {
   audit_action_add: { km: "បន្ថែម", en: "Added" },
   audit_action_edit: { km: "កែប្រែ", en: "Updated" },
   audit_action_delete: { km: "លុប", en: "Deleted" },
+  audit_action_enable: { km: "បើកគណនី", en: "Enabled" },
+  audit_action_disable: { km: "បិទគណនី", en: "Disabled" },
   audit_entity_product: { km: "ទំនិញ", en: "Product" },
   audit_entity_customer: { km: "អតិថិជន", en: "Customer" },
   audit_entity_user: { km: "អ្នកប្រើប្រាស់", en: "User" },
@@ -673,6 +679,33 @@ const STRINGS = {
     km: "ត្រូវការអ្នកគ្រប់គ្រងយ៉ាងតិចម្នាក់",
     en: "At least one admin account is required",
   },
+  toast_userDisabled: {
+    km: "បានបិទគណនីអ្នកប្រើប្រាស់",
+    en: "User account disabled",
+  },
+  toast_userEnabled: {
+    km: "បានបើកគណនីអ្នកប្រើប្រាស់វិញ",
+    en: "User account enabled",
+  },
+  toast_cannotDisableSelf: {
+    km: "មិនអាចបិទគណនីខ្លួនឯងបានទេ",
+    en: "You can't disable your own account",
+  },
+  toast_accountDisabled: {
+    km: "គណនីនេះត្រូវបានបិទ សូមទាក់ទងអ្នកគ្រប់គ្រង",
+    en: "This account has been disabled. Contact your admin.",
+  },
+  user_disableConfirm: {
+    km: "តើអ្នកចង់បិទគណនីនេះមែនទេ? អ្នកប្រើប្រាស់នេះនឹងចាកចេញភ្លាមៗ ហើយមិនអាចចូលប្រព័ន្ធបានទៀត រហូតដល់អ្នកបើកគណនីវិញ",
+    en: "Disable this account? They'll be signed out immediately and won't be able to log in until you re-enable it.",
+  },
+  user_enableConfirm: {
+    km: "តើអ្នកចង់បើកគណនីនេះឡើងវិញមែនទេ?",
+    en: "Re-enable this account?",
+  },
+  status_disabled: { km: "បិទហើយ", en: "Disabled" },
+  disableUser: { km: "បិទគណនី", en: "Disable" },
+  enableUser: { km: "បើកគណនី", en: "Enable" },
   permDenied: {
     km: "អ្នកគ្មានសិទ្ធិចូលមើលទំព័រនេះទេ",
     en: "You don't have permission to view this page",
@@ -983,6 +1016,10 @@ function POSApp() {
       setLoginError(t("toast_loginFailed"));
       return;
     }
+    if (match.active === false) {
+      setLoginError(t("toast_accountDisabled"));
+      return;
+    }
     setLoginError("");
     setSessionUserId(match.id);
     const perms = ROLE_PERMS[match.role] || [];
@@ -991,6 +1028,17 @@ function POSApp() {
   const logout = () => {
     setSessionUserId(null);
   };
+
+  // If an admin disables the account that's currently signed in on this
+  // device (locally or from another device via Supabase sync), sign it out
+  // right away instead of waiting for the next manual action.
+  useEffect(() => {
+    if (currentUser && currentUser.active === false) {
+      setSessionUserId(null);
+      showToast(t("toast_accountDisabled"), "error");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser && currentUser.active]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -1053,6 +1101,35 @@ function POSApp() {
     showToast(t("toast_userDeleted"));
     deleteUserRow(id);
     logAudit("delete", "user", target ? target.name_km || target.username : id);
+  };
+
+  const toggleUserActive = (id) => {
+    if (id === sessionUserId) {
+      showToast(t("toast_cannotDisableSelf"), "error");
+      return;
+    }
+    const target = users.find((u) => u.id === id);
+    if (!target) return;
+    const nextActive = target.active === false; // currently disabled -> enable, else disable
+    if (!nextActive) {
+      // about to disable — make sure at least one active admin remains
+      const remainingActiveAdmins = users.filter(
+        (u) => u.role === "admin" && u.id !== id && u.active !== false,
+      );
+      if (target.role === "admin" && remainingActiveAdmins.length === 0) {
+        showToast(t("toast_needOneAdmin"), "error");
+        return;
+      }
+    }
+    const updated = { ...target, active: nextActive, updatedAt: Date.now() };
+    setUsers(users.map((u) => (u.id === id ? updated : u)));
+    pushUserRow(updated);
+    showToast(t(nextActive ? "toast_userEnabled" : "toast_userDisabled"));
+    logAudit(
+      nextActive ? "enable" : "disable",
+      "user",
+      target.name_km || target.username,
+    );
   };
 
   // ---------- POS ----------
@@ -1338,6 +1415,7 @@ function POSApp() {
           name_km: u.name_km || "",
           name_en: u.name_en || "",
           role: u.role,
+          active: typeof u.active === "boolean" ? u.active : true,
           updated_at: u.updatedAt || Date.now(),
         },
         { onConflict: "id" },
@@ -1662,6 +1740,7 @@ function POSApp() {
           name_km: r.name_km || "",
           name_en: r.name_en || "",
           role: r.role,
+          active: typeof r.active === "boolean" ? r.active : true,
           updatedAt: r.updated_at || 0,
         }));
         setUsers((prev) => mergeById(prev, mapped));
@@ -2914,6 +2993,7 @@ function POSApp() {
               openAdd={() => setUserModal({ mode: "add" })}
               openEdit={(u) => setUserModal({ mode: "edit", user: u })}
               deleteUser={deleteUser}
+              toggleUserActive={toggleUserActive}
             />
           )}
           {activeTab === "auditLog" && allowedTabs.includes("auditLog") && (
@@ -6333,9 +6413,17 @@ function OnlineOrdersTab({
 
 // ================= Users (admin only) =================
 
-function UsersTab({ users, currentUser, openAdd, openEdit, deleteUser }) {
+function UsersTab({
+  users,
+  currentUser,
+  openAdd,
+  openEdit,
+  deleteUser,
+  toggleUserActive,
+}) {
   const { t, lang } = useT();
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [toggleTarget, setToggleTarget] = useState(null);
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
@@ -6372,80 +6460,119 @@ function UsersTab({ users, currentUser, openAdd, openEdit, deleteUser }) {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.id} style={{ borderTop: "1px solid var(--border)" }}>
-                <td style={{ ...tdStyle, width: "46px" }}>
-                  <div
-                    style={{
-                      width: "32px",
-                      height: "32px",
-                      borderRadius: "999px",
-                      background: "var(--surface-alt)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <UserIcon size={15} color="var(--primary)" />
-                  </div>
-                </td>
-                <td style={tdStyle}>
-                  {lang === "en" ? u.name_en || u.name_km : u.name_km}
-                  {u.id === currentUser.id && (
-                    <span
-                      style={{
-                        marginLeft: "7px",
-                        fontSize: "11px",
-                        color: "var(--primary)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      ({t("loggedInAs")})
-                    </span>
-                  )}
-                </td>
-                <td
+            {users.map((u) => {
+              const disabled = u.active === false;
+              return (
+                <tr
+                  key={u.id}
                   style={{
-                    ...tdStyle,
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--text-muted)",
+                    borderTop: "1px solid var(--border)",
+                    opacity: disabled ? 0.55 : 1,
                   }}
                 >
-                  {u.username}
-                </td>
-                <td style={tdStyle}>
-                  <span
+                  <td style={{ ...tdStyle, width: "46px" }}>
+                    <div
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "999px",
+                        background: "var(--surface-alt)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <UserIcon size={15} color="var(--primary)" />
+                    </div>
+                  </td>
+                  <td style={tdStyle}>
+                    {lang === "en" ? u.name_en || u.name_km : u.name_km}
+                    {u.id === currentUser.id && (
+                      <span
+                        style={{
+                          marginLeft: "7px",
+                          fontSize: "11px",
+                          color: "var(--primary)",
+                          fontWeight: 700,
+                        }}
+                      >
+                        ({t("loggedInAs")})
+                      </span>
+                    )}
+                    {disabled && (
+                      <span
+                        style={{
+                          marginLeft: "7px",
+                          padding: "2px 8px",
+                          borderRadius: "999px",
+                          fontSize: "10.5px",
+                          fontWeight: 700,
+                          background: "rgba(220,38,38,.12)",
+                          color: "var(--danger)",
+                        }}
+                      >
+                        {t("status_disabled")}
+                      </span>
+                    )}
+                  </td>
+                  <td
                     style={{
-                      padding: "3px 10px",
-                      borderRadius: "999px",
-                      fontSize: "11.5px",
-                      fontWeight: 700,
-                      background:
-                        u.role === "admin"
-                          ? "var(--primary)"
-                          : "var(--surface-alt)",
-                      color: u.role === "admin" ? "#fff" : "var(--text)",
+                      ...tdStyle,
+                      fontFamily: "var(--font-mono)",
+                      color: "var(--text-muted)",
                     }}
                   >
-                    {u.role === "admin" ? t("role_admin") : t("role_staff")}
-                  </span>
-                </td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>
-                  <button
-                    onClick={() => openEdit(u)}
-                    style={{ ...iconBtnStyle, marginRight: "7px" }}
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  <button
-                    onClick={() => setDeleteTarget(u)}
-                    style={{ ...iconBtnStyle, color: "var(--danger)" }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    {u.username}
+                  </td>
+                  <td style={tdStyle}>
+                    <span
+                      style={{
+                        padding: "3px 10px",
+                        borderRadius: "999px",
+                        fontSize: "11.5px",
+                        fontWeight: 700,
+                        background:
+                          u.role === "admin"
+                            ? "var(--primary)"
+                            : "var(--surface-alt)",
+                        color: u.role === "admin" ? "#fff" : "var(--text)",
+                      }}
+                    >
+                      {u.role === "admin" ? t("role_admin") : t("role_staff")}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>
+                    {u.id !== currentUser.id && (
+                      <button
+                        onClick={() => setToggleTarget(u)}
+                        title={disabled ? t("enableUser") : t("disableUser")}
+                        style={{
+                          ...iconBtnStyle,
+                          marginRight: "7px",
+                          color: disabled
+                            ? "var(--primary)"
+                            : "var(--text-muted)",
+                        }}
+                      >
+                        {disabled ? <Power size={13} /> : <Ban size={13} />}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => openEdit(u)}
+                      style={{ ...iconBtnStyle, marginRight: "7px" }}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(u)}
+                      style={{ ...iconBtnStyle, color: "var(--danger)" }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {users.length === 0 && (
@@ -6473,6 +6600,29 @@ function UsersTab({ users, currentUser, openAdd, openEdit, deleteUser }) {
           onConfirm={() => {
             deleteUser(deleteTarget.id);
             setDeleteTarget(null);
+          }}
+        />
+      )}
+      {toggleTarget && (
+        <ConfirmDialog
+          title={
+            toggleTarget.active === false
+              ? t("user_enableConfirm")
+              : t("user_disableConfirm")
+          }
+          message={`${
+            lang === "en"
+              ? toggleTarget.name_en || toggleTarget.name_km
+              : toggleTarget.name_km || toggleTarget.name_en
+          } (${toggleTarget.username})`}
+          danger={toggleTarget.active !== false}
+          confirmLabel={
+            toggleTarget.active === false ? t("enableUser") : t("disableUser")
+          }
+          onCancel={() => setToggleTarget(null)}
+          onConfirm={() => {
+            toggleUserActive(toggleTarget.id);
+            setToggleTarget(null);
           }}
         />
       )}
