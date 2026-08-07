@@ -3697,7 +3697,7 @@ function FontStyles() {
       }
       .sidebar-backdrop { display: none; }
 
-      @media (max-width: 900px) {
+      @media (max-width: 1100px) {
         .mobile-menu-btn {
           display: flex;
           position: fixed;
