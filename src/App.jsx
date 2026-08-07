@@ -660,6 +660,10 @@ const STRINGS = {
     km: "កំណត់ការកំណត់ទូទៅរបស់ហាង",
     en: "Configure general shop settings",
   },
+  settings_tab_general: { km: "ទូទៅ", en: "General" },
+  settings_tab_payment: { km: "ការទូទាត់ប្រាក់", en: "Payments" },
+  settings_tab_currency: { km: "អត្រាប្តូរប្រាក់", en: "Currency" },
+  settings_tab_notifications: { km: "ការជូនដំណឹង", en: "Notifications" },
   settings_khrTitle: {
     km: "អត្រាប្តូរប្រាក់រៀល (KHR)",
     en: "Riel exchange rate (KHR)",
@@ -7696,6 +7700,13 @@ function SettingsTab({
   onSavePaymentSettings,
 }) {
   const { t } = useT();
+  const [activeSettingsTab, setActiveSettingsTab] = useState("general");
+  const SETTINGS_TABS = [
+    { id: "general", label: t("settings_tab_general") },
+    { id: "payment", label: t("settings_tab_payment") },
+    { id: "currency", label: t("settings_tab_currency") },
+    { id: "notifications", label: t("settings_tab_notifications") },
+  ];
   const [draft, setDraft] = useState(String(khrRate));
   const [saved, setSaved] = useState(false);
   const [nameDraft, setNameDraft] = useState(shopName);
@@ -7843,632 +7854,682 @@ function SettingsTab({
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar title={t("nav_settings")} subtitle={t("settings_subtitle")} />
-      <div
-        style={{
-          padding: "16px 26px 26px",
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
-          gap: "18px",
-          alignItems: "start",
-        }}
-      >
+      <div style={{ padding: "16px 26px 26px" }}>
         <div
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
             borderRadius: "14px",
-            padding: "18px",
+            overflow: "hidden",
           }}
         >
           <div
             style={{
-              fontWeight: 700,
-              fontSize: "14.5px",
-              marginBottom: "4px",
-            }}
-          >
-            {t("settings_shopTitle")}
-          </div>
-          <div
-            style={{
-              fontSize: "12.5px",
-              color: "var(--text-muted)",
-              marginBottom: "14px",
-            }}
-          >
-            {t("settings_shopSubtitle")}
-          </div>
-
-          <label style={fieldLabel}>{t("settings_shopLogoLabel")}</label>
-          <div
-            style={{
               display: "flex",
               alignItems: "center",
-              gap: "12px",
-              marginBottom: "16px",
-            }}
-          >
-            <div
-              style={{
-                width: "68px",
-                height: "68px",
-                borderRadius: "12px",
-                overflow: "hidden",
-                background: "var(--surface-alt)",
-                border: "1px solid var(--border)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              {logoDraft ? (
-                <img
-                  src={logoDraft}
-                  alt=""
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              ) : (
-                <ImageOff size={24} color="var(--text-muted)" />
-              )}
-            </div>
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "6px" }}
-            >
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                onChange={handleLogoFile}
-                style={{ display: "none" }}
-              />
-              <button
-                onClick={() => fileRef.current.click()}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "7px 12px",
-                  borderRadius: "7px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  fontSize: "12.5px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                <ImagePlus size={14} />{" "}
-                {logoDraft ? t("changeLogo") : t("uploadLogo")}
-              </button>
-              {logoDraft && (
-                <button
-                  onClick={() => setLogoDraft(null)}
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--danger)",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    padding: 0,
-                  }}
-                >
-                  {t("removeLogo")}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <label style={fieldLabel}>{t("settings_shopNameLabel")}</label>
-          <input
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            placeholder={t("shopNameDefault")}
-            style={{ ...fieldInput, marginBottom: "6px" }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              marginTop: "8px",
-            }}
-          >
-            <button
-              onClick={saveShopInfo}
-              style={{
-                ...primaryBtnStyle,
-                padding: "8px 16px",
-                fontSize: "13px",
-              }}
-            >
-              {t("settings_saveBtn")}
-            </button>
-            {shopSaved && (
-              <span
-                style={{
-                  fontSize: "12.5px",
-                  color: "var(--primary)",
-                  fontWeight: 600,
-                }}
-              >
-                {t("settings_shopSaved")}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "14px",
-            padding: "18px",
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 700,
-              fontSize: "14.5px",
-              marginBottom: "4px",
-            }}
-          >
-            {t("settings_paymentTitle")}
-          </div>
-          <div
-            style={{
-              fontSize: "12.5px",
-              color: "var(--text-muted)",
-              marginBottom: "16px",
-            }}
-          >
-            {t("settings_paymentSubtitle")}
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "10px 0",
+              gap: "6px",
+              padding: "0 18px",
               borderBottom: "1px solid var(--border)",
+              overflowX: "auto",
             }}
           >
-            <span style={{ fontSize: "13.5px", fontWeight: 600 }}>
-              {t("settings_payCashLabel")}
-            </span>
-            <ToggleSwitch
-              on={payCashDraft}
-              onClick={() => setPayCashDraft(!payCashDraft)}
-            />
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "10px 0",
-            }}
-          >
-            <span style={{ fontSize: "13.5px", fontWeight: 600 }}>
-              {t("settings_payKhqrLabel")}
-            </span>
-            <ToggleSwitch on={payKhqrDraft} onClick={toggleKhqr} />
-          </div>
-
-          <label style={{ ...fieldLabel, marginTop: "6px" }}>
-            {t("settings_khqrImageLabel")}
-          </label>
-          <div
-            style={{
-              fontSize: "12px",
-              color: "var(--text-muted)",
-              marginBottom: "10px",
-            }}
-          >
-            {t("settings_khqrImageHint")}
-          </div>
-          <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
-            <div
-              style={{
-                width: "84px",
-                height: "84px",
-                borderRadius: "10px",
-                border: "1px solid var(--border)",
-                background: "var(--surface-alt)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                flexShrink: 0,
-              }}
-            >
-              {khqrImageDraft ? (
-                <img
-                  src={khqrImageDraft}
-                  alt=""
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "contain",
-                  }}
-                />
-              ) : (
-                <ImageOff size={22} color="var(--text-muted)" />
-              )}
-            </div>
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "6px" }}
-            >
-              <input
-                ref={khqrFileRef}
-                type="file"
-                accept="image/*"
-                onChange={handleKhqrFile}
-                style={{ display: "none" }}
-              />
+            {SETTINGS_TABS.map((tab) => (
               <button
-                onClick={() => khqrFileRef.current.click()}
+                key={tab.id}
+                onClick={() => setActiveSettingsTab(tab.id)}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "7px 12px",
-                  borderRadius: "7px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  fontSize: "12.5px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                <ImagePlus size={14} />{" "}
-                {khqrImageDraft ? t("changeKhqrImage") : t("uploadKhqrImage")}
-              </button>
-              {khqrImageDraft && (
-                <button
-                  onClick={removeKhqrImage}
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--danger)",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    padding: 0,
-                  }}
-                >
-                  {t("removeKhqrImage")}
-                </button>
-              )}
-            </div>
-          </div>
-          {khqrError && (
-            <div
-              style={{
-                fontSize: "12px",
-                color: "var(--danger)",
-                marginTop: "10px",
-              }}
-            >
-              {khqrError}
-            </div>
-          )}
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              marginTop: "16px",
-            }}
-          >
-            <button
-              onClick={savePaymentSettings}
-              style={{
-                ...primaryBtnStyle,
-                padding: "8px 16px",
-                fontSize: "13px",
-              }}
-            >
-              {t("settings_saveBtn")}
-            </button>
-            {paymentSaved && (
-              <span
-                style={{
-                  fontSize: "12.5px",
-                  color: "var(--primary)",
-                  fontWeight: 600,
-                }}
-              >
-                {t("settings_paymentSaved")}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "14px",
-            padding: "18px",
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 700,
-              fontSize: "14.5px",
-              marginBottom: "4px",
-            }}
-          >
-            {t("settings_khrTitle")}
-          </div>
-          <div
-            style={{
-              fontSize: "12.5px",
-              color: "var(--text-muted)",
-              marginBottom: "14px",
-            }}
-          >
-            {t("settings_khrSubtitle")}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "13px", fontWeight: 600 }}>1$ =</span>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              style={{
-                width: "120px",
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "1px solid var(--border)",
-                fontFamily: "var(--font-mono)",
-                fontSize: "14px",
-                fontWeight: 700,
-              }}
-            />
-            <span style={{ fontSize: "13px", fontWeight: 600 }}>៛</span>
-            <button
-              onClick={save}
-              style={{
-                ...primaryBtnStyle,
-                padding: "8px 16px",
-                fontSize: "13px",
-              }}
-            >
-              {t("settings_saveBtn")}
-            </button>
-          </div>
-          {saved && (
-            <div
-              style={{
-                marginTop: "10px",
-                fontSize: "12.5px",
-                color: "var(--primary)",
-                fontWeight: 600,
-              }}
-            >
-              {t("settings_saved")}
-            </div>
-          )}
-          <div
-            style={{
-              marginTop: "14px",
-              fontSize: "12px",
-              color: "var(--text-muted)",
-            }}
-          >
-            {t("settings_khrPreview", {
-              amount: fmtKhr(1, Number(draft) || khrRate),
-            })}
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "14px",
-            padding: "18px",
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 700,
-              fontSize: "14.5px",
-              marginBottom: "4px",
-            }}
-          >
-            {t("settings_soundTitle")}
-          </div>
-          <div
-            style={{
-              fontSize: "12.5px",
-              color: "var(--text-muted)",
-              marginBottom: "14px",
-            }}
-          >
-            {t("settings_soundSubtitle")}
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: "14px",
-            }}
-          >
-            <label style={{ ...fieldLabel, marginBottom: 0 }}>
-              {t("settings_soundEnableLabel")}
-            </label>
-            <button
-              onClick={() => setSoundOnDraft(!soundOnDraft)}
-              style={{
-                ...iconBtnStyle,
-                color: soundOnDraft ? "var(--primary)" : "var(--text-muted)",
-              }}
-              title={soundOnDraft ? t("notifySound_on") : t("notifySound_off")}
-            >
-              {soundOnDraft ? <Bell size={15} /> : <BellOff size={15} />}
-            </button>
-          </div>
-
-          <label style={fieldLabel}>{t("settings_soundPresetLabel")}</label>
-          <select
-            value={soundIdDraft}
-            onChange={(e) => setSoundIdDraft(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "9px 10px",
-              borderRadius: "8px",
-              border: "1px solid var(--border)",
-              fontSize: "13.5px",
-              background: "var(--surface-alt)",
-              marginBottom: "12px",
-            }}
-          >
-            {SOUND_PRESET_KEYS.map((key) => (
-              <option key={key} value={key}>
-                {t("sound_" + key)}
-              </option>
-            ))}
-            <option value="custom" disabled={!soundCustomDraft}>
-              {t("sound_custom")}
-            </option>
-          </select>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              marginBottom: "4px",
-            }}
-          >
-            <input
-              ref={soundFileRef}
-              type="file"
-              accept="audio/*"
-              onChange={handleSoundFile}
-              style={{ display: "none" }}
-            />
-            <button
-              onClick={() => soundFileRef.current.click()}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "7px 12px",
-                borderRadius: "7px",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                fontSize: "12.5px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              <ImagePlus size={14} />{" "}
-              {soundCustomDraft
-                ? t("settings_soundChange")
-                : t("settings_soundUpload")}
-            </button>
-            {soundCustomDraft && (
-              <button
-                onClick={removeSoundFile}
-                style={{
-                  fontSize: "12px",
-                  color: "var(--danger)",
                   background: "none",
                   border: "none",
+                  borderBottom:
+                    activeSettingsTab === tab.id
+                      ? "2px solid var(--primary)"
+                      : "2px solid transparent",
+                  padding: "14px 6px",
+                  margin: "0 8px",
+                  fontSize: "13.5px",
+                  fontFamily: "var(--font-body)",
+                  fontWeight: activeSettingsTab === tab.id ? 700 : 600,
+                  color:
+                    activeSettingsTab === tab.id
+                      ? "var(--primary)"
+                      : "var(--text-muted)",
                   cursor: "pointer",
-                  padding: 0,
+                  whiteSpace: "nowrap",
                 }}
               >
-                {t("settings_soundRemove")}
+                {tab.label}
               </button>
+            ))}
+          </div>
+
+          <div style={{ padding: "20px" }}>
+            {activeSettingsTab === "general" && (
+              <div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14.5px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  {t("settings_shopTitle")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    marginBottom: "14px",
+                  }}
+                >
+                  {t("settings_shopSubtitle")}
+                </div>
+
+                <label style={fieldLabel}>{t("settings_shopLogoLabel")}</label>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "68px",
+                      height: "68px",
+                      borderRadius: "12px",
+                      overflow: "hidden",
+                      background: "var(--surface-alt)",
+                      border: "1px solid var(--border)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {logoDraft ? (
+                      <img
+                        src={logoDraft}
+                        alt=""
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : (
+                      <ImageOff size={24} color="var(--text-muted)" />
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px",
+                    }}
+                  >
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoFile}
+                      style={{ display: "none" }}
+                    />
+                    <button
+                      onClick={() => fileRef.current.click()}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "7px 12px",
+                        borderRadius: "7px",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        fontSize: "12.5px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <ImagePlus size={14} />{" "}
+                      {logoDraft ? t("changeLogo") : t("uploadLogo")}
+                    </button>
+                    {logoDraft && (
+                      <button
+                        onClick={() => setLogoDraft(null)}
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--danger)",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          padding: 0,
+                        }}
+                      >
+                        {t("removeLogo")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <label style={fieldLabel}>{t("settings_shopNameLabel")}</label>
+                <input
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  placeholder={t("shopNameDefault")}
+                  style={{ ...fieldInput, marginBottom: "6px" }}
+                />
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    marginTop: "8px",
+                  }}
+                >
+                  <button
+                    onClick={saveShopInfo}
+                    style={{
+                      ...primaryBtnStyle,
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {t("settings_saveBtn")}
+                  </button>
+                  {shopSaved && (
+                    <span
+                      style={{
+                        fontSize: "12.5px",
+                        color: "var(--primary)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t("settings_shopSaved")}
+                    </span>
+                  )}
+                </div>
+              </div>
             )}
-          </div>
-          <div
-            style={{
-              fontSize: "12px",
-              color: "var(--text-muted)",
-              marginBottom: "6px",
-            }}
-          >
-            {soundCustomNameDraft || t("settings_soundNoFile")}
-          </div>
-          {soundUploadError && (
-            <div
-              style={{
-                color: "var(--danger)",
-                fontSize: "12.5px",
-                fontWeight: 600,
-                marginBottom: "8px",
-              }}
-            >
-              {soundUploadError}
-            </div>
-          )}
 
-          <label style={{ ...fieldLabel, marginTop: "10px" }}>
-            {t("settings_soundDurationLabel")}
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={soundDurationDraft}
-            onChange={(e) => setSoundDurationDraft(e.target.value)}
-            style={{ ...fieldInput, width: "140px", marginBottom: "4px" }}
-          />
-          <div
-            style={{
-              fontSize: "11.5px",
-              color: "var(--text-muted)",
-              marginTop: "-8px",
-              marginBottom: "14px",
-            }}
-          >
-            {t("settings_soundDurationHint")}
-          </div>
+            {activeSettingsTab === "payment" && (
+              <div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14.5px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  {t("settings_paymentTitle")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    marginBottom: "16px",
+                  }}
+                >
+                  {t("settings_paymentSubtitle")}
+                </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <button
-              onClick={saveSoundSettings}
-              style={{
-                ...primaryBtnStyle,
-                padding: "8px 16px",
-                fontSize: "13px",
-              }}
-            >
-              {t("settings_saveBtn")}
-            </button>
-            <button
-              onClick={testSound}
-              style={{
-                ...secondaryBtnStyle,
-                padding: "8px 16px",
-                fontSize: "13px",
-              }}
-            >
-              {t("settings_soundTest")}
-            </button>
-            {soundSaved && (
-              <span
-                style={{
-                  fontSize: "12.5px",
-                  color: "var(--primary)",
-                  fontWeight: 600,
-                }}
-              >
-                {t("settings_soundSaved")}
-              </span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 0",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <span style={{ fontSize: "13.5px", fontWeight: 600 }}>
+                    {t("settings_payCashLabel")}
+                  </span>
+                  <ToggleSwitch
+                    on={payCashDraft}
+                    onClick={() => setPayCashDraft(!payCashDraft)}
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 0",
+                  }}
+                >
+                  <span style={{ fontSize: "13.5px", fontWeight: 600 }}>
+                    {t("settings_payKhqrLabel")}
+                  </span>
+                  <ToggleSwitch on={payKhqrDraft} onClick={toggleKhqr} />
+                </div>
+
+                <label style={{ ...fieldLabel, marginTop: "6px" }}>
+                  {t("settings_khqrImageLabel")}
+                </label>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--text-muted)",
+                    marginBottom: "10px",
+                  }}
+                >
+                  {t("settings_khqrImageHint")}
+                </div>
+                <div
+                  style={{ display: "flex", gap: "14px", alignItems: "center" }}
+                >
+                  <div
+                    style={{
+                      width: "84px",
+                      height: "84px",
+                      borderRadius: "10px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-alt)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      overflow: "hidden",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {khqrImageDraft ? (
+                      <img
+                        src={khqrImageDraft}
+                        alt=""
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "contain",
+                        }}
+                      />
+                    ) : (
+                      <ImageOff size={22} color="var(--text-muted)" />
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px",
+                    }}
+                  >
+                    <input
+                      ref={khqrFileRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleKhqrFile}
+                      style={{ display: "none" }}
+                    />
+                    <button
+                      onClick={() => khqrFileRef.current.click()}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "7px 12px",
+                        borderRadius: "7px",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        fontSize: "12.5px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <ImagePlus size={14} />{" "}
+                      {khqrImageDraft
+                        ? t("changeKhqrImage")
+                        : t("uploadKhqrImage")}
+                    </button>
+                    {khqrImageDraft && (
+                      <button
+                        onClick={removeKhqrImage}
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--danger)",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          padding: 0,
+                        }}
+                      >
+                        {t("removeKhqrImage")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {khqrError && (
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--danger)",
+                      marginTop: "10px",
+                    }}
+                  >
+                    {khqrError}
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    marginTop: "16px",
+                  }}
+                >
+                  <button
+                    onClick={savePaymentSettings}
+                    style={{
+                      ...primaryBtnStyle,
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {t("settings_saveBtn")}
+                  </button>
+                  {paymentSaved && (
+                    <span
+                      style={{
+                        fontSize: "12.5px",
+                        color: "var(--primary)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t("settings_paymentSaved")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeSettingsTab === "currency" && (
+              <div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14.5px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  {t("settings_khrTitle")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    marginBottom: "14px",
+                  }}
+                >
+                  {t("settings_khrSubtitle")}
+                </div>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
+                  <span style={{ fontSize: "13px", fontWeight: 600 }}>
+                    1$ =
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    style={{
+                      width: "120px",
+                      padding: "8px 10px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border)",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                    }}
+                  />
+                  <span style={{ fontSize: "13px", fontWeight: 600 }}>៛</span>
+                  <button
+                    onClick={save}
+                    style={{
+                      ...primaryBtnStyle,
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {t("settings_saveBtn")}
+                  </button>
+                </div>
+                {saved && (
+                  <div
+                    style={{
+                      marginTop: "10px",
+                      fontSize: "12.5px",
+                      color: "var(--primary)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {t("settings_saved")}
+                  </div>
+                )}
+                <div
+                  style={{
+                    marginTop: "14px",
+                    fontSize: "12px",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  {t("settings_khrPreview", {
+                    amount: fmtKhr(1, Number(draft) || khrRate),
+                  })}
+                </div>
+              </div>
+            )}
+
+            {activeSettingsTab === "notifications" && (
+              <div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14.5px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  {t("settings_soundTitle")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    marginBottom: "14px",
+                  }}
+                >
+                  {t("settings_soundSubtitle")}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: "14px",
+                  }}
+                >
+                  <label style={{ ...fieldLabel, marginBottom: 0 }}>
+                    {t("settings_soundEnableLabel")}
+                  </label>
+                  <button
+                    onClick={() => setSoundOnDraft(!soundOnDraft)}
+                    style={{
+                      ...iconBtnStyle,
+                      color: soundOnDraft
+                        ? "var(--primary)"
+                        : "var(--text-muted)",
+                    }}
+                    title={
+                      soundOnDraft ? t("notifySound_on") : t("notifySound_off")
+                    }
+                  >
+                    {soundOnDraft ? <Bell size={15} /> : <BellOff size={15} />}
+                  </button>
+                </div>
+
+                <label style={fieldLabel}>
+                  {t("settings_soundPresetLabel")}
+                </label>
+                <select
+                  value={soundIdDraft}
+                  onChange={(e) => setSoundIdDraft(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 10px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border)",
+                    fontSize: "13.5px",
+                    background: "var(--surface-alt)",
+                    marginBottom: "12px",
+                  }}
+                >
+                  {SOUND_PRESET_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {t("sound_" + key)}
+                    </option>
+                  ))}
+                  <option value="custom" disabled={!soundCustomDraft}>
+                    {t("sound_custom")}
+                  </option>
+                </select>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  <input
+                    ref={soundFileRef}
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleSoundFile}
+                    style={{ display: "none" }}
+                  />
+                  <button
+                    onClick={() => soundFileRef.current.click()}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "7px 12px",
+                      borderRadius: "7px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      fontSize: "12.5px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <ImagePlus size={14} />{" "}
+                    {soundCustomDraft
+                      ? t("settings_soundChange")
+                      : t("settings_soundUpload")}
+                  </button>
+                  {soundCustomDraft && (
+                    <button
+                      onClick={removeSoundFile}
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--danger)",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      {t("settings_soundRemove")}
+                    </button>
+                  )}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--text-muted)",
+                    marginBottom: "6px",
+                  }}
+                >
+                  {soundCustomNameDraft || t("settings_soundNoFile")}
+                </div>
+                {soundUploadError && (
+                  <div
+                    style={{
+                      color: "var(--danger)",
+                      fontSize: "12.5px",
+                      fontWeight: 600,
+                      marginBottom: "8px",
+                    }}
+                  >
+                    {soundUploadError}
+                  </div>
+                )}
+
+                <label style={{ ...fieldLabel, marginTop: "10px" }}>
+                  {t("settings_soundDurationLabel")}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={soundDurationDraft}
+                  onChange={(e) => setSoundDurationDraft(e.target.value)}
+                  style={{ ...fieldInput, width: "140px", marginBottom: "4px" }}
+                />
+                <div
+                  style={{
+                    fontSize: "11.5px",
+                    color: "var(--text-muted)",
+                    marginTop: "-8px",
+                    marginBottom: "14px",
+                  }}
+                >
+                  {t("settings_soundDurationHint")}
+                </div>
+
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
+                  <button
+                    onClick={saveSoundSettings}
+                    style={{
+                      ...primaryBtnStyle,
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {t("settings_saveBtn")}
+                  </button>
+                  <button
+                    onClick={testSound}
+                    style={{
+                      ...secondaryBtnStyle,
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {t("settings_soundTest")}
+                  </button>
+                  {soundSaved && (
+                    <span
+                      style={{
+                        fontSize: "12.5px",
+                        color: "var(--primary)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t("settings_soundSaved")}
+                    </span>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>
