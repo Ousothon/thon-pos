@@ -5588,51 +5588,49 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
           </button>
         }
       />
-      {customers.length > 0 && (
-        <div style={{ padding: "16px 26px 0" }}>
-          <div style={{ position: "relative", maxWidth: "340px" }}>
-            <Search
-              size={15}
-              color="var(--text-muted)"
+      <div style={{ padding: "16px 26px 0" }}>
+        <div style={{ position: "relative", maxWidth: "340px" }}>
+          <Search
+            size={15}
+            color="var(--text-muted)"
+            style={{
+              position: "absolute",
+              left: "12px",
+              top: "50%",
+              transform: "translateY(-50%)",
+            }}
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("cust_searchPlaceholder")}
+            style={{
+              ...fieldInput,
+              margin: 0,
+              paddingLeft: "34px",
+              paddingRight: search ? "34px" : "12px",
+            }}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
               style={{
                 position: "absolute",
-                left: "12px",
+                right: "8px",
                 top: "50%",
                 transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+                display: "flex",
               }}
-            />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("cust_searchPlaceholder")}
-              style={{
-                ...fieldInput,
-                margin: 0,
-                paddingLeft: "34px",
-                paddingRight: search ? "34px" : "12px",
-              }}
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                style={{
-                  position: "absolute",
-                  right: "8px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--text-muted)",
-                  display: "flex",
-                }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
-      )}
+      </div>
       <div
         style={{
           padding: "18px 26px",
