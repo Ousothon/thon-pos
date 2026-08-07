@@ -664,6 +664,21 @@ const STRINGS = {
   settings_tab_payment: { km: "ការទូទាត់ប្រាក់", en: "Payments" },
   settings_tab_currency: { km: "អត្រាប្តូរប្រាក់", en: "Currency" },
   settings_tab_notifications: { km: "ការជូនដំណឹង", en: "Notifications" },
+  settings_tab_printing: { km: "បោះពុម្ព", en: "Printing" },
+  settings_printTitle: {
+    km: "ទំហំក្រដាសបង្កាន់ដៃ",
+    en: "Receipt paper size",
+  },
+  settings_printSubtitle: {
+    km: "ជ្រើសរើសទំហំក្រដាសសម្រាប់ម៉ាស៊ីនបោះពុម្ពកាំរស្មីរបស់អ្នក (58mm ឬ 80mm)។ ការកំណត់នេះអនុវត្តតែលើកុំព្យូទ័រ/ឧបករណ៍នេះប៉ុណ្ណោះ",
+    en: "Choose the paper width for your thermal receipt printer (58mm or 80mm). This setting applies to this device only",
+  },
+  settings_printWidth58: { km: "58mm (តូច)", en: "58mm (narrow)" },
+  settings_printWidth80: { km: "80mm (ស្តង់ដារ)", en: "80mm (standard)" },
+  settings_printSaved: {
+    km: "បានរក្សាទុកការកំណត់បោះពុម្ព",
+    en: "Print settings saved",
+  },
   settings_khrTitle: {
     km: "អត្រាប្តូរប្រាក់រៀល (KHR)",
     en: "Riel exchange rate (KHR)",
@@ -1303,6 +1318,18 @@ function POSApp() {
       /* ignore */
     }
   }, [theme]);
+  // Receipt paper width for thermal printers — a per-device print setting,
+  // not synced to the cloud, since different tills may have different printers.
+  const [receiptWidth, setReceiptWidth] = useState(
+    () => localStorage.getItem("shop-receiptWidth") || "80mm",
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem("shop-receiptWidth", receiptWidth);
+    } catch {
+      /* ignore */
+    }
+  }, [receiptWidth]);
 
   const t = (key, vars) => {
     const entry = STRINGS[key];
@@ -3631,6 +3658,8 @@ function POSApp() {
                 setKhqrImage(img);
                 pushPaymentSettings(cash, khqr, img);
               }}
+              receiptWidth={receiptWidth}
+              setReceiptWidth={setReceiptWidth}
             />
           )}
           {!allowedTabs.includes(activeTab) && (
@@ -3697,6 +3726,7 @@ function POSApp() {
             sale={receipt}
             shopName={shopName || t("shopNameDefault")}
             khrRate={khrRate}
+            receiptWidth={receiptWidth}
             onClose={() => setReceipt(null)}
           />
         )}
@@ -3893,7 +3923,7 @@ function FontStyles() {
           left: 50%;
           top: 0;
           transform: translateX(-50%);
-          width: 300px;
+          width: var(--receipt-print-width, 300px);
           box-shadow: none !important;
           border-radius: 0 !important;
           background: #fff !important;
@@ -7698,6 +7728,8 @@ function SettingsTab({
   payKhqrEnabled,
   khqrImage,
   onSavePaymentSettings,
+  receiptWidth,
+  setReceiptWidth,
 }) {
   const { t } = useT();
   const [activeSettingsTab, setActiveSettingsTab] = useState("general");
@@ -7706,6 +7738,7 @@ function SettingsTab({
     { id: "payment", label: t("settings_tab_payment") },
     { id: "currency", label: t("settings_tab_currency") },
     { id: "notifications", label: t("settings_tab_notifications") },
+    { id: "printing", label: t("settings_tab_printing") },
   ];
   const [draft, setDraft] = useState(String(khrRate));
   const [saved, setSaved] = useState(false);
@@ -7733,6 +7766,14 @@ function SettingsTab({
   const [soundSaved, setSoundSaved] = useState(false);
   const [soundUploadError, setSoundUploadError] = useState("");
   const soundFileRef = useRef(null);
+
+  const [printWidthDraft, setPrintWidthDraft] = useState(receiptWidth);
+  const [printSaved, setPrintSaved] = useState(false);
+  const savePrintSettings = () => {
+    setReceiptWidth(printWidthDraft);
+    setPrintSaved(true);
+    setTimeout(() => setPrintSaved(false), 1800);
+  };
 
   useEffect(() => {
     setSoundIdDraft(notifySoundId);
@@ -8526,6 +8567,146 @@ function SettingsTab({
                       }}
                     >
                       {t("settings_soundSaved")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeSettingsTab === "printing" && (
+              <div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14.5px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  {t("settings_printTitle")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    marginBottom: "16px",
+                  }}
+                >
+                  {t("settings_printSubtitle")}
+                </div>
+
+                <div
+                  style={{ display: "flex", gap: "10px", marginBottom: "6px" }}
+                >
+                  {[
+                    { id: "58mm", label: t("settings_printWidth58") },
+                    { id: "80mm", label: t("settings_printWidth80") },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setPrintWidthDraft(opt.id)}
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "14px 10px",
+                        borderRadius: "10px",
+                        border:
+                          printWidthDraft === opt.id
+                            ? "2px solid var(--primary)"
+                            : "1px solid var(--border)",
+                        background:
+                          printWidthDraft === opt.id
+                            ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                            : "var(--surface)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: opt.id === "58mm" ? "34px" : "46px",
+                          height: "54px",
+                          borderRadius: "3px",
+                          border: "1px solid var(--border)",
+                          background: "var(--surface-alt)",
+                          position: "relative",
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "8px",
+                            left: "6px",
+                            right: "6px",
+                            height: "2px",
+                            background: "var(--text-muted)",
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "14px",
+                            left: "6px",
+                            right: "6px",
+                            height: "2px",
+                            background: "var(--text-muted)",
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "20px",
+                            left: "6px",
+                            right: "6px",
+                            height: "2px",
+                            background: "var(--text-muted)",
+                          }}
+                        />
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "12.5px",
+                          fontWeight: 600,
+                          color:
+                            printWidthDraft === opt.id
+                              ? "var(--primary)"
+                              : "var(--text)",
+                        }}
+                      >
+                        {opt.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    marginTop: "12px",
+                  }}
+                >
+                  <button
+                    onClick={savePrintSettings}
+                    style={{
+                      ...primaryBtnStyle,
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {t("settings_saveBtn")}
+                  </button>
+                  {printSaved && (
+                    <span
+                      style={{
+                        fontSize: "12.5px",
+                        color: "var(--primary)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t("settings_printSaved")}
                     </span>
                   )}
                 </div>
@@ -9644,8 +9825,10 @@ function ChangePasswordModal({ onClose, onChangePassword }) {
   );
 }
 
-function ReceiptModal({ sale, shopName, khrRate, onClose }) {
+function ReceiptModal({ sale, shopName, khrRate, receiptWidth, onClose }) {
   const { t, lang } = useT();
+  const isNarrow = receiptWidth === "58mm";
+  const areaWidthPx = isNarrow ? "220px" : "300px";
   return (
     <div
       style={{
@@ -9656,6 +9839,7 @@ function ReceiptModal({ sale, shopName, khrRate, onClose }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 50,
+        "--receipt-print-width": areaWidthPx,
       }}
     >
       <div
@@ -9663,7 +9847,7 @@ function ReceiptModal({ sale, shopName, khrRate, onClose }) {
         style={{
           background: "var(--surface)",
           borderRadius: "12px",
-          width: "300px",
+          width: areaWidthPx,
           boxShadow: "0 20px 50px rgba(0,0,0,.25)",
         }}
       >
