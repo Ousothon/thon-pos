@@ -3725,6 +3725,7 @@ function POSApp() {
           <ReceiptModal
             sale={receipt}
             shopName={shopName || t("shopNameDefault")}
+            shopLogo={shopLogo}
             khrRate={khrRate}
             receiptWidth={receiptWidth}
             onClose={() => setReceipt(null)}
@@ -9825,7 +9826,14 @@ function ChangePasswordModal({ onClose, onChangePassword }) {
   );
 }
 
-function ReceiptModal({ sale, shopName, khrRate, receiptWidth, onClose }) {
+function ReceiptModal({
+  sale,
+  shopName,
+  shopLogo,
+  khrRate,
+  receiptWidth,
+  onClose,
+}) {
   const { t, lang } = useT();
   const isNarrow = receiptWidth === "58mm";
   const areaWidthPx = isNarrow ? "220px" : "300px";
@@ -9858,11 +9866,26 @@ function ReceiptModal({ sale, shopName, khrRate, receiptWidth, onClose }) {
             borderBottom: "1px dashed var(--border)",
           }}
         >
-          <CheckCircle2
-            size={32}
-            color="var(--primary)"
-            style={{ margin: "0 auto 9px" }}
-          />
+          {shopLogo ? (
+            <img
+              src={shopLogo}
+              alt=""
+              style={{
+                width: "44px",
+                height: "44px",
+                objectFit: "cover",
+                borderRadius: "8px",
+                margin: "0 auto 9px",
+                display: "block",
+              }}
+            />
+          ) : (
+            <CheckCircle2
+              size={32}
+              color="var(--primary)"
+              style={{ margin: "0 auto 9px" }}
+            />
+          )}
           <div
             style={{
               fontFamily: "var(--font-display)",
