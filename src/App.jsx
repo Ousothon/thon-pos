@@ -933,6 +933,14 @@ const STRINGS = {
   auditLog_col_user: { km: "អ្នកប្រើប្រាស់", en: "User" },
   auditLog_col_action: { km: "សកម្មភាព", en: "Action" },
   auditLog_col_item: { km: "ធាតុ", en: "Item" },
+  auditLog_noResults: {
+    km: "រកមិនឃើញកំណត់ត្រាដែលត្រូវនឹងលក្ខខណ្ឌនេះទេ",
+    en: "No log entries match this filter",
+  },
+  auditLog_searchPlaceholder: {
+    km: "ស្វែងរកអ្នកប្រើ ឬ ធាតុ...",
+    en: "Search user or item...",
+  },
   audit_action_add: { km: "បន្ថែម", en: "Added" },
   audit_action_edit: { km: "កែប្រែ", en: "Updated" },
   audit_action_delete: { km: "លុប", en: "Deleted" },
@@ -9102,12 +9110,23 @@ function UsersTab({
 
 function AuditLogTab({ auditLog }) {
   const { t, lang } = useT();
-  const actionColor = {
-    add: "var(--success, #16a34a)",
-    edit: "var(--primary)",
-    delete: "var(--danger)",
-    refund: "var(--danger)",
+  const [search, setSearch] = useState("");
+  const [actionFilter, setActionFilter] = useState("all");
+
+  const actionMeta = {
+    add: { color: "#16a34a", Icon: Plus },
+    edit: { color: "var(--primary)", Icon: Pencil },
+    delete: { color: "var(--danger)", Icon: Trash2 },
+    refund: { color: "var(--danger)", Icon: RotateCcw },
+    enable: { color: "#16a34a", Icon: Check },
+    disable: { color: "var(--text-muted)", Icon: Ban },
+    cancel: { color: "var(--danger)", Icon: XCircle },
+    reject: { color: "var(--danger)", Icon: XCircle },
   };
+  const availableActions = Array.from(
+    new Set(auditLog.map((e) => e.action)),
+  ).filter((a) => actionMeta[a]);
+
   const fmtTime = (iso) => {
     try {
       return new Date(iso).toLocaleString(lang === "en" ? "en-US" : "km-KH", {
@@ -9118,12 +9137,73 @@ function AuditLogTab({ auditLog }) {
       return iso;
     }
   };
+
+  const q = search.trim().toLowerCase();
+  const filtered = auditLog.filter((entry) => {
+    if (actionFilter !== "all" && entry.action !== actionFilter) return false;
+    if (!q) return true;
+    return (
+      (entry.username || "").toLowerCase().includes(q) ||
+      (entry.entity_label || "").toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
         title={t("nav_auditLog")}
         subtitle={t("auditLog_subtitle", { count: auditLog.length })}
       />
+      <div style={{ padding: "16px 26px 0", display: "flex", gap: "12px" }}>
+        <div style={{ position: "relative", flex: 1, maxWidth: "320px" }}>
+          <Search
+            size={15}
+            style={{
+              position: "absolute",
+              left: "12px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--text-muted)",
+            }}
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("auditLog_searchPlaceholder")}
+            style={{
+              width: "100%",
+              padding: "9px 12px 9px 34px",
+              borderRadius: "9px",
+              border: "1px solid var(--border)",
+              fontSize: "14px",
+            }}
+          />
+        </div>
+      </div>
+      {availableActions.length > 0 && (
+        <div
+          style={{
+            padding: "12px 26px 0",
+            display: "flex",
+            gap: "7px",
+            flexWrap: "wrap",
+          }}
+        >
+          <CategoryPill
+            active={actionFilter === "all"}
+            onClick={() => setActionFilter("all")}
+            label={t("cat_all")}
+          />
+          {availableActions.map((a) => (
+            <CategoryPill
+              key={a}
+              active={actionFilter === a}
+              onClick={() => setActionFilter(a)}
+              label={t("audit_action_" + a)}
+            />
+          ))}
+        </div>
+      )}
       <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
         <table
           style={{
@@ -9148,47 +9228,58 @@ function AuditLogTab({ auditLog }) {
             </tr>
           </thead>
           <tbody>
-            {auditLog.map((entry) => (
-              <tr
-                key={entry.id}
-                style={{ borderTop: "1px solid var(--border)" }}
-              >
-                <td
-                  style={{
-                    ...tdStyle,
-                    color: "var(--text-muted)",
-                    whiteSpace: "nowrap",
-                  }}
+            {filtered.map((entry) => {
+              const meta = actionMeta[entry.action] || {
+                color: "var(--text-muted)",
+                Icon: null,
+              };
+              const ActionIcon = meta.Icon;
+              return (
+                <tr
+                  key={entry.id}
+                  className="dash-row"
+                  style={{ borderTop: "1px solid var(--border)" }}
                 >
-                  {fmtTime(entry.created_at)}
-                </td>
-                <td style={{ ...tdStyle, fontWeight: 600 }}>
-                  {entry.username || "—"}
-                </td>
-                <td style={tdStyle}>
-                  <span
+                  <td
                     style={{
-                      padding: "3px 10px",
-                      borderRadius: "999px",
-                      fontSize: "11.5px",
-                      fontWeight: 700,
-                      color: "#fff",
-                      background:
-                        actionColor[entry.action] || "var(--surface-alt)",
+                      ...tdStyle,
+                      color: "var(--text-muted)",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    {t("audit_action_" + entry.action)}
-                  </span>
-                </td>
-                <td style={tdStyle}>
-                  {t("audit_entity_" + entry.entity_type)} —{" "}
-                  {entry.entity_label}
-                </td>
-              </tr>
-            ))}
+                    {fmtTime(entry.created_at)}
+                  </td>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>
+                    {entry.username || "—"}
+                  </td>
+                  <td style={tdStyle}>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        padding: "3px 10px 3px 8px",
+                        borderRadius: "999px",
+                        fontSize: "11.5px",
+                        fontWeight: 700,
+                        color: "#fff",
+                        background: meta.color,
+                      }}
+                    >
+                      {ActionIcon && <ActionIcon size={11} />}
+                      {t("audit_action_" + entry.action)}
+                    </span>
+                  </td>
+                  <td style={tdStyle}>
+                    {t("audit_entity_" + entry.entity_type)} —{" "}
+                    {entry.entity_label}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        {auditLog.length === 0 && (
+        {auditLog.length > 0 && filtered.length === 0 && (
           <div
             style={{
               color: "var(--text-muted)",
@@ -9197,6 +9288,23 @@ function AuditLogTab({ auditLog }) {
               padding: "34px 0",
             }}
           >
+            {t("auditLog_noResults")}
+          </div>
+        )}
+        {auditLog.length === 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "8px",
+              color: "var(--text-muted)",
+              fontSize: "14px",
+              textAlign: "center",
+              padding: "34px 0",
+            }}
+          >
+            <History size={26} color="var(--border)" />
             {t("auditLog_empty")}
           </div>
         )}
