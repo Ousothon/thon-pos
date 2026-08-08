@@ -553,8 +553,8 @@ const STRINGS = {
     en: "Scan barcode with camera",
   },
   scan_instructions: {
-    km: "ដាក់បាកូដឲ្យចំកាមេរ៉ា",
-    en: "Point your camera at a barcode",
+    km: "ដាក់បាកូដឲ្យត្រង់ ស្របនឹងប្រអប់ស — ជៀសពន្លឺចាំង",
+    en: "Hold the barcode straight inside the box — avoid glare",
   },
   scan_loadingLib: {
     km: "កំពុងបើកកាមេរ៉ា...",
@@ -8997,10 +8997,31 @@ function BarcodeScanModal({ onClose, onDetected }) {
     loadHtml5Qrcode()
       .then(() => {
         if (cancelled) return Promise.reject(new Error("cancelled"));
-        instance = new window.Html5Qrcode(elementId);
+        // Restrict to the formats retail barcodes actually use (plus QR, in
+        // case a supplier label uses one) — fewer formats to try per frame
+        // means faster, more reliable detection than the library's default
+        // "try everything" behaviour. useBarCodeDetectorIfSupported taps the
+        // browser's native scanner on Chrome/Android when available.
+        const F = window.Html5QrcodeSupportedFormats;
+        instance = new window.Html5Qrcode(elementId, {
+          formatsToSupport: F
+            ? [
+                F.EAN_13,
+                F.EAN_8,
+                F.UPC_A,
+                F.UPC_E,
+                F.CODE_128,
+                F.CODE_39,
+                F.ITF,
+                F.QR_CODE,
+              ]
+            : undefined,
+          useBarCodeDetectorIfSupported: true,
+          verbose: false,
+        });
         return instance.start(
           { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 250, height: 150 } },
+          { fps: 15, qrbox: { width: 280, height: 140 } },
           (decodedText) => {
             if (cancelled) return;
             cancelled = true;
