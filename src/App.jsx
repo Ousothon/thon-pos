@@ -3688,7 +3688,10 @@ function POSApp() {
               setDiscountMode={setDiscountMode}
               khrRate={khrRate}
               onBarcodeScan={handleBarcodeScan}
-              onOpenScanner={() => setScanModalOpen(true)}
+              onOpenScanner={() => {
+                unlockBeepAudio();
+                setScanModalOpen(true);
+              }}
             />
           )}
           {activeTab === "dashboard" && (
@@ -9009,11 +9012,30 @@ const loadHtml5Qrcode = () => {
 // Short "beep" on successful scan, synthesized with the Web Audio API so no
 // sound file needs to be bundled/loaded. Mirrors the single high-pitched
 // beep of a dedicated barcode scanner.
-const playBeep = () => {
+//
+// iOS Safari keeps a freshly-created AudioContext in a "suspended" state
+// (silent) unless resume() is called directly inside a user tap — creating
+// it later, e.g. from the camera's detection callback, is too far removed
+// from the tap to count, so the tone silently does nothing. The fix is to
+// create one shared context and unlock it right when the user taps the
+// camera/scan button, then just reuse that same context to actually play
+// the beep once a barcode is found.
+let sharedAudioCtx = null;
+const unlockBeepAudio = () => {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
-    const ctx = new Ctx();
+    if (!sharedAudioCtx) sharedAudioCtx = new Ctx();
+    if (sharedAudioCtx.state === "suspended") sharedAudioCtx.resume();
+  } catch {
+    /* audio not available — scanning still works fine without the beep */
+  }
+};
+const playBeep = () => {
+  try {
+    const ctx = sharedAudioCtx;
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "square";
@@ -9023,7 +9045,6 @@ const playBeep = () => {
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + 0.09);
-    osc.onended = () => ctx.close();
   } catch {
     /* audio not available — silent fallback, still detects fine */
   }
@@ -9098,6 +9119,13 @@ function BarcodeScanModal({ onClose, onDetected }) {
               const boxWidth = Math.floor(minEdge * 0.8);
               return { width: boxWidth, height: Math.floor(boxWidth * 0.5) };
             },
+            // By default the library also decodes a horizontally-flipped
+            // copy of every frame, since a *front* (selfie) camera mirrors
+            // the image. This scanner only ever uses the back camera
+            // (facingMode: "environment"), which is never mirrored, so that
+            // second decode pass is pure wasted work on every single frame
+            // — turning it off roughly halves the per-frame decode cost.
+            disableFlip: true,
           },
           (decodedText) => {
             if (cancelled) return;
@@ -9579,7 +9607,10 @@ function ProductModal({ data, onClose, onSave }) {
         />
         <button
           type="button"
-          onClick={() => setScanOpen(true)}
+          onClick={() => {
+            unlockBeepAudio();
+            setScanOpen(true);
+          }}
           title={t("scanBarcode")}
           style={{
             width: "42px",
