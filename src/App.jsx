@@ -526,6 +526,21 @@ const STRINGS = {
   },
   archive_single: { km: "Archive", en: "Archive" },
 
+  refund: { km: "សងវិញ", en: "Refund" },
+  refunded: { km: "បានសងវិញ", en: "Refunded" },
+  refund_confirmTitle: {
+    km: "សងទំនិញត្រលប់?",
+    en: "Refund this sale?",
+  },
+  refund_confirmMsg: {
+    km: "ស្តុកទំនិញនឹងត្រូវបានបញ្ចូលមកវិញ ហើយប្រតិបត្តិការនេះនឹងមិនត្រូវបានរាប់ក្នុងចំណូលទៀតទេ។ សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។",
+    en: "Stock will be added back and this sale will no longer count toward revenue. This can't be undone.",
+  },
+  toast_refundSuccess: {
+    km: "សងទំនិញត្រលប់ដោយជោគជ័យ",
+    en: "Sale refunded successfully",
+  },
+
   cust_subtitle: { km: "{count} នាក់", en: "{count} customers" },
   addCustomer: { km: "បន្ថែមអតិថិជន", en: "Add customer" },
   noCustomersYet: { km: "មិនទាន់មានអតិថិជនទេ", en: "No customers yet" },
@@ -812,9 +827,11 @@ const STRINGS = {
   audit_action_delete: { km: "លុប", en: "Deleted" },
   audit_action_enable: { km: "បើកគណនី", en: "Enabled" },
   audit_action_disable: { km: "បិទគណនី", en: "Disabled" },
+  audit_action_refund: { km: "សងវិញ", en: "Refunded" },
   audit_entity_product: { km: "ទំនិញ", en: "Product" },
   audit_entity_customer: { km: "អតិថិជន", en: "Customer" },
   audit_entity_user: { km: "អ្នកប្រើប្រាស់", en: "User" },
+  audit_entity_sale: { km: "ការលក់", en: "Sale" },
   users_subtitle: { km: "{count} គណនី", en: "{count} accounts" },
   addUser: { km: "បន្ថែមអ្នកប្រើប្រាស់", en: "Add user" },
   editUser: { km: "កែប្រែអ្នកប្រើប្រាស់", en: "Edit user" },
@@ -1744,6 +1761,8 @@ function POSApp() {
       customerId: customer ? customer.id : null,
       customerName: customer ? customer.name : null,
       archived: false,
+      refunded: false,
+      refundedAt: null,
     };
     setSales([sale, ...sales]);
     const updatedProducts = products.map((p) => {
@@ -2142,6 +2161,8 @@ function POSApp() {
             change: s.change,
             customer_name: s.customerName || null,
             archived: !!s.archived,
+            refunded: !!s.refunded,
+            refunded_at: s.refundedAt || null,
           })),
           { onConflict: "id" },
         );
@@ -2169,6 +2190,8 @@ function POSApp() {
         change: r.change,
         customerName: r.customer_name || "",
         archived: !!r.archived,
+        refunded: !!r.refunded,
+        refundedAt: r.refunded_at || null,
       }));
       setSales((prev) => mergeById(prev, mapped));
     } catch {
@@ -2610,6 +2633,8 @@ function POSApp() {
           change: 0,
           customerName: order.customer_name || "",
           archived: false,
+          refunded: false,
+          refundedAt: null,
         },
       ]);
       if (supabase)
@@ -2988,6 +3013,56 @@ function POSApp() {
     showToast(t("toast_restored"));
   };
 
+  // Refund a completed sale: restocks the items sold, reverses any points/
+  // spend the linked customer earned from it, and flags the sale so it drops
+  // out of revenue/profit totals — without deleting the record itself.
+  const refundSale = (saleId) => {
+    const sale = sales.find((s) => s.id === saleId);
+    if (!sale || sale.refunded) return;
+
+    const updatedProducts = products.map((p) => {
+      const item = (sale.items || []).find((i) => i.productId === p.id);
+      return item
+        ? { ...p, stock: p.stock + item.qty, updatedAt: Date.now() }
+        : p;
+    });
+    setProducts(updatedProducts);
+    (sale.items || []).forEach((item) => {
+      const p = updatedProducts.find((x) => x.id === item.productId);
+      if (p) pushProductRow(p);
+    });
+
+    if (sale.customerId) {
+      const customer = customers.find((c) => c.id === sale.customerId);
+      if (customer) {
+        const updatedCustomer = {
+          ...customer,
+          totalSpent: Math.max(0, (customer.totalSpent || 0) - sale.total),
+          points: Math.max(0, (customer.points || 0) - Math.floor(sale.total)),
+          updatedAt: Date.now(),
+        };
+        setCustomers(
+          customers.map((c) => (c.id === customer.id ? updatedCustomer : c)),
+        );
+        pushCustomerRow(updatedCustomer);
+      }
+    }
+
+    setSales((prev) =>
+      prev.map((s) =>
+        s.id === saleId
+          ? { ...s, refunded: true, refundedAt: new Date().toISOString() }
+          : s,
+      ),
+    );
+    logAudit(
+      "refund",
+      "sale",
+      `#${saleId.slice(-6).toUpperCase()} — ${fmt(sale.total)}`,
+    );
+    showToast(t("toast_refundSuccess"));
+  };
+
   const restoreAllSales = () => {
     if (archivedSales.length === 0) return;
     setSales((prev) =>
@@ -3032,22 +3107,23 @@ function POSApp() {
   };
 
   const reportSummary = useMemo(() => {
-    const revenue = rangedSales.reduce((s, sale) => s + sale.total, 0);
-    const itemsSold = rangedSales.reduce(
+    const activeSales = rangedSales.filter((s) => !s.refunded);
+    const revenue = activeSales.reduce((s, sale) => s + sale.total, 0);
+    const itemsSold = activeSales.reduce(
       (s, sale) => s + sale.items.reduce((a, i) => a + i.qty, 0),
       0,
     );
-    const profit = rangedSales.reduce((s, sale) => {
+    const profit = activeSales.reduce((s, sale) => {
       const itemProfit = sale.items.reduce(
         (a, i) => a + i.qty * (i.price - (i.cost || 0)),
         0,
       );
       return s + itemProfit - (sale.discount || 0);
     }, 0);
-    const txCount = rangedSales.length;
+    const txCount = activeSales.length;
     const avg = txCount ? revenue / txCount : 0;
     const productMap = {};
-    rangedSales.forEach((sale) =>
+    activeSales.forEach((sale) =>
       sale.items.forEach((i) => {
         productMap[i.name] = (productMap[i.name] || 0) + i.qty;
       }),
@@ -3076,13 +3152,14 @@ function POSApp() {
     const now = new Date();
     const wLabels = WEEKDAY_LABELS[lang] || WEEKDAY_LABELS.km;
     const mLabels = MONTH_LABELS[lang] || MONTH_LABELS.km;
+    const activeSales = rangedSales.filter((s) => !s.refunded);
 
     if (reportRange === "today") {
       const buckets = Array.from({ length: 24 }, (_, h) => ({
         label: h % 3 === 0 ? `${h}h` : "",
         value: 0,
       }));
-      rangedSales.forEach((s) => {
+      activeSales.forEach((s) => {
         buckets[new Date(s.date).getHours()].value += s.total;
       });
       return buckets;
@@ -3098,7 +3175,7 @@ function POSApp() {
           value: 0,
         });
       }
-      rangedSales.forEach((s) => {
+      activeSales.forEach((s) => {
         const key = new Date(s.date).toDateString();
         const bucket = days.find((d) => d.key === key);
         if (bucket) bucket.value += s.total;
@@ -3115,7 +3192,7 @@ function POSApp() {
         label: (i + 1) % 5 === 0 ? String(i + 1) : "",
         value: 0,
       }));
-      rangedSales.forEach((s) => {
+      activeSales.forEach((s) => {
         const d = new Date(s.date);
         if (
           d.getMonth() === now.getMonth() &&
@@ -3127,7 +3204,7 @@ function POSApp() {
     }
     // all-time: group by month
     const map = {};
-    rangedSales.forEach((s) => {
+    activeSales.forEach((s) => {
       const d = new Date(s.date);
       const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
       map[key] = (map[key] || 0) + s.total;
@@ -3150,6 +3227,7 @@ function POSApp() {
       "Total",
       "Paid",
       "Change",
+      "Refunded",
     ];
     const rows = rangedSales.map((s) => [
       new Date(s.date).toLocaleString(),
@@ -3160,6 +3238,7 @@ function POSApp() {
       s.total.toFixed(2),
       s.paid.toFixed(2),
       s.change.toFixed(2),
+      s.refunded ? "Yes" : "No",
     ]);
     const csv = [header, ...rows]
       .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
@@ -3179,7 +3258,9 @@ function POSApp() {
   const todaySales = useMemo(
     () =>
       sales.filter(
-        (s) => new Date(s.date).toDateString() === new Date().toDateString(),
+        (s) =>
+          !s.refunded &&
+          new Date(s.date).toDateString() === new Date().toDateString(),
       ),
     [sales],
   );
@@ -3578,6 +3659,7 @@ function POSApp() {
               onRestoreAll={restoreAllSales}
               onExportArchive={exportArchiveJson}
               onImportArchive={importArchiveJson}
+              onRefund={refundSale}
             />
           )}
           {activeTab === "customers" && (
@@ -5148,7 +5230,10 @@ function DashboardTab({
 }) {
   const { t, lang } = useT();
   const totalStockValue = products.reduce((s, p) => s + p.price * p.stock, 0);
-  const totalRevenue = sales.reduce((s, sale) => s + sale.total, 0);
+  const totalRevenue = sales.reduce(
+    (s, sale) => (sale.refunded ? s : s + sale.total),
+    0,
+  );
 
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
@@ -5694,9 +5779,11 @@ function ReportsTab({
   onRestoreAll,
   onExportArchive,
   onImportArchive,
+  onRefund,
 }) {
   const { t, lang } = useT();
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [refundTarget, setRefundTarget] = useState(null);
   const [archiveView, setArchiveView] = useState("active"); // 'active' | 'archived'
   const [cutoffMonths, setCutoffMonths] = useState(6);
   const importInputRef = useRef(null);
@@ -6140,10 +6227,27 @@ function ReportsTab({
                     fontFamily: "var(--font-mono)",
                     fontWeight: 700,
                     fontSize: "14px",
+                    textDecoration: s.refunded ? "line-through" : "none",
+                    color: s.refunded ? "var(--text-muted)" : "inherit",
                   }}
                 >
                   {fmt(s.total)}
                 </span>
+                {s.refunded && (
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "var(--danger)",
+                      background: "rgba(220,38,38,.1)",
+                      borderRadius: "6px",
+                      padding: "2px 7px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {t("refunded")}
+                  </span>
+                )}
               </button>
               <div
                 style={{
@@ -6153,6 +6257,28 @@ function ReportsTab({
                   padding: "0 0 6px 23px",
                 }}
               >
+                {!s.refunded && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setRefundTarget(s);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      background: "none",
+                      border: "none",
+                      color: "var(--danger)",
+                      fontSize: "11.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    <RotateCcw size={12} /> {t("refund")}
+                  </button>
+                )}
                 {archiveView === "archived" && (
                   <button
                     onClick={(e) => {
@@ -6223,6 +6349,18 @@ function ReportsTab({
           ))}
         </div>
       </div>
+      {refundTarget && (
+        <ConfirmDialog
+          title={t("refund_confirmTitle")}
+          message={t("refund_confirmMsg")}
+          confirmLabel={t("refund")}
+          onCancel={() => setRefundTarget(null)}
+          onConfirm={() => {
+            onRefund(refundTarget.id);
+            setRefundTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -7606,6 +7744,7 @@ function AuditLogTab({ auditLog }) {
     add: "var(--success, #16a34a)",
     edit: "var(--primary)",
     delete: "var(--danger)",
+    refund: "var(--danger)",
   };
   const fmtTime = (iso) => {
     try {
