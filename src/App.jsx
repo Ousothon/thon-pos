@@ -5852,6 +5852,93 @@ function StatCard({ label, value, icon: Icon }) {
 
 // ================= Inventory =================
 
+// Same "⋮ Actions" dropdown as Users — Edit / Delete in one button instead
+// of two separate icon buttons in the row.
+function ProductActionMenu({ t, onEdit, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+  const menuItemStyle = {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "8px 10px",
+    background: "none",
+    border: "none",
+    borderRadius: "7px",
+    fontSize: "13px",
+    fontWeight: 600,
+    color: "var(--text)",
+    cursor: "pointer",
+    textAlign: "left",
+  };
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        title={t("userActions")}
+        style={{
+          ...iconBtnStyle,
+          background: open ? "var(--surface-alt)" : "none",
+        }}
+      >
+        <MoreVertical size={15} />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            zIndex: 55,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "10px",
+            boxShadow: "0 12px 30px rgba(0,0,0,.16)",
+            padding: "5px",
+            minWidth: "160px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onEdit();
+            }}
+            style={menuItemStyle}
+          >
+            <Pencil size={14} /> {t("editUser") /* re-used: "Edit" */}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onDelete();
+            }}
+            style={{ ...menuItemStyle, color: "var(--danger)" }}
+          >
+            <Trash2 size={14} /> {t("deleteUser") /* re-used: "Delete" */}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InventoryTab({
   products,
   prodName,
@@ -5867,6 +5954,7 @@ function InventoryTab({
   openManageCategories,
 }) {
   const { t, categories } = useT();
+  const [expandedId, setExpandedId] = useState(null);
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
@@ -5925,116 +6013,130 @@ function InventoryTab({
         </button>
       </div>
 
-      <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            minWidth: "560px",
-            borderCollapse: "collapse",
-            fontSize: "14px",
-          }}
-        >
-          <thead>
-            <tr
+      <div
+        style={{
+          padding: "16px 26px 26px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+        }}
+      >
+        {products.map((p) => {
+          const isExpanded = expandedId === p.id;
+          const lowStock = p.stock <= 5;
+          return (
+            <div
+              key={p.id}
               style={{
-                textAlign: "left",
-                color: "var(--text-muted)",
-                fontSize: "12.5px",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                background: "var(--surface)",
               }}
             >
-              <th style={thStyle}></th>
-              <th style={thStyle}>{t("th_product")}</th>
-              <th style={thStyle}>{t("th_category")}</th>
-              <th style={thStyle}>{t("th_price")}</th>
-              <th style={thStyle}>{t("th_margin")}</th>
-              <th style={thStyle}>{t("th_stock")}</th>
-              <th style={thStyle}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p) => (
-              <tr key={p.id} style={{ borderTop: "1px solid var(--border)" }}>
-                <td style={{ ...tdStyle, width: "50px" }}>
-                  <ProductThumb image={p.image} size={38} />
-                </td>
-                <td style={tdStyle}>
-                  {prodName(p)}
-                  {p.barcode && (
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        color: "var(--text-muted)",
-                        fontFamily: "var(--font-mono)",
-                        marginTop: "2px",
-                      }}
-                    >
-                      {p.barcode}
-                    </div>
-                  )}
-                </td>
-                <td style={{ ...tdStyle, color: "var(--text-muted)" }}>
-                  {catLabel(p.category)}
-                </td>
-                <td
+              <div
+                onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  padding: "11px 14px",
+                  cursor: "pointer",
+                }}
+              >
+                <ProductThumb image={p.image} size={38} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "14.5px", fontWeight: 700 }}>
+                    {prodName(p)}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: "3px",
+                      fontSize: "12.5px",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {catLabel(p.category)}
+                    {p.barcode && (
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          marginLeft: "8px",
+                        }}
+                      >
+                        · {p.barcode}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div
                   style={{
-                    ...tdStyle,
                     fontFamily: "var(--font-mono)",
                     fontWeight: 700,
+                    fontSize: "14px",
+                    flexShrink: 0,
                   }}
                 >
                   {fmt(p.price)}
-                </td>
-                <td
+                </div>
+                <span
                   style={{
-                    ...tdStyle,
+                    padding: "3px 10px",
+                    borderRadius: "999px",
+                    fontSize: "11.5px",
+                    fontWeight: 700,
+                    flexShrink: 0,
                     fontFamily: "var(--font-mono)",
-                    color: "var(--text-muted)",
+                    background: lowStock
+                      ? "rgba(220,38,38,.12)"
+                      : "var(--surface-alt)",
+                    color: lowStock ? "var(--danger)" : "var(--text)",
                   }}
                 >
-                  {p.cost > 0 ? (
-                    <>
-                      {fmt(p.price - p.cost)}
-                      <span style={{ fontSize: "11px", marginLeft: "3px" }}>
-                        (
-                        {p.price > 0
-                          ? Math.round(((p.price - p.cost) / p.price) * 100)
-                          : 0}
-                        %)
-                      </span>
-                    </>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td style={tdStyle}>
-                  <span
-                    style={{
-                      color: p.stock <= 5 ? "var(--danger)" : "var(--text)",
-                      fontWeight: p.stock <= 5 ? 700 : 500,
-                      fontFamily: "var(--font-mono)",
-                    }}
+                  {p.stock} {prodUnit(p)}
+                </span>
+                <ProductActionMenu
+                  t={t}
+                  onEdit={() => openEdit(p)}
+                  onDelete={() => deleteProduct(p.id)}
+                />
+                <ChevronDown
+                  size={15}
+                  style={{
+                    color: "var(--text-muted)",
+                    flexShrink: 0,
+                    transform: isExpanded ? "rotate(180deg)" : "none",
+                    transition: "transform .15s",
+                  }}
+                />
+              </div>
+              {isExpanded && (
+                <div
+                  style={{
+                    padding: "0 14px 14px 64px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                  }}
+                >
+                  <div
+                    style={{ fontSize: "12.5px", color: "var(--text-muted)" }}
                   >
-                    {p.stock} {prodUnit(p)}
-                  </span>
-                </td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>
-                  <button
-                    onClick={() => openEdit(p)}
-                    style={{ ...iconBtnStyle, marginRight: "7px" }}
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  <button
-                    onClick={() => deleteProduct(p.id)}
-                    style={{ ...iconBtnStyle, color: "var(--danger)" }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    {t("th_margin")}:{" "}
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>
+                      {p.cost > 0
+                        ? `${fmt(p.price - p.cost)} (${
+                            p.price > 0
+                              ? Math.round(((p.price - p.cost) / p.price) * 100)
+                              : 0
+                          }%)`
+                        : "—"}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
         {products.length === 0 && (
           <div
             style={{
