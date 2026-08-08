@@ -495,6 +495,7 @@ const STRINGS = {
   noProducts: { km: "មិនមានទំនិញ", en: "No products" },
 
   editProduct: { km: "កែប្រែទំនិញ", en: "Edit product" },
+  deleteProduct: { km: "លុបទំនិញ", en: "Delete" },
   addProductTitle: { km: "បន្ថែមទំនិញថ្មី", en: "Add new product" },
   fieldName: { km: "ឈ្មោះទំនិញ", en: "Product name" },
   fieldNamePlaceholder: { km: "ឧ. ទឹកសុទ្ធ 500ml", en: "e.g. Water 500ml" },
@@ -4231,6 +4232,12 @@ function FontStyles() {
         filter: none !important;
         transform: none !important;
       }
+      .list-card-row {
+        transition: background-color .15s ease;
+      }
+      .list-card-row:hover {
+        background: var(--surface-alt);
+      }
       .theme-toggle-btn {
         display: flex; align-items: center; justify-content: center;
         width: 38px; height: 38px; border-radius: 8px;
@@ -5920,7 +5927,7 @@ function ProductActionMenu({ t, onEdit, onDelete }) {
             }}
             style={menuItemStyle}
           >
-            <Pencil size={14} /> {t("editUser") /* re-used: "Edit" */}
+            <Pencil size={14} /> {t("editProduct")}
           </button>
           <button
             type="button"
@@ -5931,7 +5938,7 @@ function ProductActionMenu({ t, onEdit, onDelete }) {
             }}
             style={{ ...menuItemStyle, color: "var(--danger)" }}
           >
-            <Trash2 size={14} /> {t("deleteUser") /* re-used: "Delete" */}
+            <Trash2 size={14} /> {t("deleteProduct")}
           </button>
         </div>
       )}
@@ -6035,11 +6042,13 @@ function InventoryTab({
             >
               <div
                 onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                className="list-card-row"
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: "12px",
                   padding: "11px 14px",
+                  borderRadius: "13px",
                   cursor: "pointer",
                 }}
               >
@@ -8306,11 +8315,13 @@ function UsersTab({
               >
                 <div
                   onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
+                  className="list-card-row"
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: "12px",
                     padding: "13px 14px",
+                    borderRadius: "13px",
                     cursor: "pointer",
                   }}
                 >
