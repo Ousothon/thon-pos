@@ -6204,15 +6204,15 @@ function InventoryTab({
                     gap: "6px",
                   }}
                 >
-                  <div
-                    style={{ fontSize: "12.5px", color: "var(--text-muted)" }}
-                  >
+                  <div style={{ fontSize: "12.5px", color: "var(--text-muted)" }}>
                     {t("th_margin")}:{" "}
                     <span style={{ color: "var(--text)", fontWeight: 600 }}>
                       {p.cost > 0
                         ? `${fmt(p.price - p.cost)} (${
                             p.price > 0
-                              ? Math.round(((p.price - p.cost) / p.price) * 100)
+                              ? Math.round(
+                                  ((p.price - p.cost) / p.price) * 100,
+                                )
                               : 0
                           }%)`
                         : "—"}
@@ -7514,9 +7514,7 @@ function OrderReasonModal({ order, actionType, onClose, onConfirm }) {
           background: "var(--danger)",
         }}
       >
-        {t(
-          isReject ? "orderReason_confirmReject" : "orderReason_confirmCancel",
-        )}
+        {t(isReject ? "orderReason_confirmReject" : "orderReason_confirmCancel")}
       </button>
     </ModalShell>
   );
@@ -8521,7 +8519,9 @@ function UsersTab({
                 }}
               >
                 <div
-                  onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
+                  onClick={() =>
+                    setExpandedUserId(isExpanded ? null : u.id)
+                  }
                   className="list-card-row"
                   style={{
                     display: "flex",
