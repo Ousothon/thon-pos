@@ -73,6 +73,12 @@ import {
 //    `shop_settings` so every device shares one copy. If your project was
 //    set up before this existed, run once in the SQL editor:
 //      alter table shop_settings add column if not exists roles_json text;
+// 6. Sales need an `updated_at` column so that a refund/archive done on one
+//    device actually wins the sync against another device's older local
+//    copy of the same sale (without it, two devices can permanently
+//    disagree on whether a sale was refunded). If your project predates
+//    this, run once in the SQL editor:
+//      alter table sales add column if not exists updated_at bigint;
 const SUPABASE_URL = "https://zkstajqlucnvpqxwpuxo.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_jucFEQ_c8EVFcwPkfhWMoQ_K-sSNyzm";
 const supabase =
@@ -2019,6 +2025,7 @@ function POSApp() {
       archived: false,
       refunded: false,
       refundedAt: null,
+      updatedAt: Date.now(),
     };
     setSales([sale, ...sales]);
     const updatedProducts = products.map((p) => {
@@ -2405,6 +2412,11 @@ function POSApp() {
   };
 
   // ---- Push local sales to Supabase so other devices (e.g. your phone) see them ----
+  // Every sale now carries an `updatedAt` timestamp (set on create, and
+  // bumped again on refund/archive/restore) — mergeById below uses it to
+  // decide which device's copy of a sale is newer. Without it, a refund
+  // done on one device could never "win" against another device's older,
+  // still-unrefunded local copy of the same sale.
   useEffect(() => {
     if (loading || !supabase || !sales.length) return;
     const timer = setTimeout(async () => {
@@ -2423,6 +2435,7 @@ function POSApp() {
             archived: !!s.archived,
             refunded: !!s.refunded,
             refunded_at: s.refundedAt || null,
+            updated_at: s.updatedAt || Date.now(),
           })),
           { onConflict: "id" },
         );
@@ -2452,6 +2465,7 @@ function POSApp() {
         archived: !!r.archived,
         refunded: !!r.refunded,
         refundedAt: r.refunded_at || null,
+        updatedAt: r.updated_at || 0,
       }));
       setSales((prev) => mergeById(prev, mapped));
     } catch {
@@ -2933,6 +2947,7 @@ function POSApp() {
           archived: false,
           refunded: false,
           refundedAt: null,
+          updatedAt: Date.now(),
         },
       ]);
       if (supabase)
@@ -3295,7 +3310,12 @@ function POSApp() {
     setSales((prev) =>
       prev.map((s) =>
         idSet.has(s.id)
-          ? { ...s, archived: true, archivedAt: new Date().toISOString() }
+          ? {
+              ...s,
+              archived: true,
+              archivedAt: new Date().toISOString(),
+              updatedAt: Date.now(),
+            }
           : s,
       ),
     );
@@ -3305,7 +3325,9 @@ function POSApp() {
   const restoreSale = (id) => {
     setSales((prev) =>
       prev.map((s) =>
-        s.id === id ? { ...s, archived: false, archivedAt: null } : s,
+        s.id === id
+          ? { ...s, archived: false, archivedAt: null, updatedAt: Date.now() }
+          : s,
       ),
     );
     showToast(t("toast_restored"));
@@ -3349,7 +3371,12 @@ function POSApp() {
     setSales((prev) =>
       prev.map((s) =>
         s.id === saleId
-          ? { ...s, refunded: true, refundedAt: new Date().toISOString() }
+          ? {
+              ...s,
+              refunded: true,
+              refundedAt: new Date().toISOString(),
+              updatedAt: Date.now(),
+            }
           : s,
       ),
     );
@@ -3365,7 +3392,9 @@ function POSApp() {
     if (archivedSales.length === 0) return;
     setSales((prev) =>
       prev.map((s) =>
-        s.archived ? { ...s, archived: false, archivedAt: null } : s,
+        s.archived
+          ? { ...s, archived: false, archivedAt: null, updatedAt: Date.now() }
+          : s,
       ),
     );
     showToast(t("toast_restoredAll"));
