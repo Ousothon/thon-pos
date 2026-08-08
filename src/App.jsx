@@ -9079,43 +9079,54 @@ function BarcodeScanModal({ onClose, onDetected }) {
           useBarCodeDetectorIfSupported: true,
           verbose: false,
         });
-        return instance.start(
-          // Most phones default their camera to a very high resolution
-          // (1080p/4K), and decoding a barcode out of every one of those
-          // frames 20 times a second is what actually causes the "takes
-          // forever to lock on" feeling — it's a CPU/decode bottleneck, not
-          // a detection-accuracy problem. Capping the requested resolution
-          // to 720p keeps the image plenty sharp for a barcode a few inches
-          // from the lens while cutting the per-frame decode cost a lot.
-          {
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          {
-            fps: 20,
-            // A fixed pixel qrbox (e.g. {width:280,height:140}) can exceed the
-            // actual camera frame on some phones — when that happens
-            // html5-qrcode silently scans the *entire* frame instead of a
-            // tight crop, which is slower and more error-prone. Computing the
-            // box from the live viewfinder size keeps it valid on every
-            // screen and keeps detection fast.
-            qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              const boxWidth = Math.floor(minEdge * 0.8);
-              return { width: boxWidth, height: Math.floor(boxWidth * 0.5) };
+        const startWith = (videoConfig) =>
+          instance.start(
+            videoConfig,
+            {
+              fps: 20,
+              // A fixed pixel qrbox (e.g. {width:280,height:140}) can exceed
+              // the actual camera frame on some phones — when that happens
+              // html5-qrcode silently scans the *entire* frame instead of a
+              // tight crop, which is slower and more error-prone. Computing
+              // the box from the live viewfinder size keeps it valid on
+              // every screen and keeps detection fast.
+              qrbox: (viewfinderWidth, viewfinderHeight) => {
+                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                const boxWidth = Math.floor(minEdge * 0.8);
+                return { width: boxWidth, height: Math.floor(boxWidth * 0.5) };
+              },
             },
-          },
-          (decodedText) => {
-            if (cancelled) return;
-            cancelled = true;
-            playBeep();
-            safeStop().finally(() => onDetected(decodedText));
-          },
-          () => {
-            /* per-frame decode miss — ignore, keep scanning */
-          },
-        );
+            (decodedText) => {
+              if (cancelled) return;
+              cancelled = true;
+              playBeep();
+              safeStop().finally(() => onDetected(decodedText));
+            },
+            () => {
+              /* per-frame decode miss — ignore, keep scanning */
+            },
+          );
+        // Most phones default their camera to a very high resolution
+        // (1080p/4K), and decoding a barcode out of every one of those
+        // frames 20 times a second is what actually causes the "takes
+        // forever to lock on" feeling — it's a CPU/decode bottleneck, not
+        // a detection-accuracy problem. Capping the requested resolution to
+        // 720p keeps the image plenty sharp for a barcode a few inches from
+        // the lens while cutting per-frame decode cost a lot.
+        // iOS Safari, though, can reject getUserMedia entirely when
+        // width/height constraints are combined with facingMode (throws
+        // OverconstrainedError, which shows up as "couldn't access the
+        // camera"). So try the capped resolution first, and if the browser
+        // refuses it, fall back to the plain constraint that's known to
+        // work everywhere.
+        return startWith({
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        }).catch(() => {
+          if (cancelled) return Promise.reject(new Error("cancelled"));
+          return startWith({ facingMode: "environment" });
+        });
       })
       .then(() => {
         if (!cancelled) setStatus("scanning");
