@@ -411,6 +411,7 @@ const STRINGS = {
 
   searchProducts: { km: "ស្វែងរកទំនិញ...", en: "Search products..." },
   noProductsFound: { km: "រកមិនឃើញទំនិញ", en: "No products found" },
+  clearSearch: { km: "សម្អាតការស្វែងរក", en: "Clear search" },
   outOfStock: { km: "អស់ស្តុក", en: "Out of stock" },
 
   invoice: { km: "វិក្កយបត្រ", en: "Invoice" },
@@ -659,6 +660,10 @@ const STRINGS = {
   cust_subtitle: { km: "{count} នាក់", en: "{count} customers" },
   addCustomer: { km: "បន្ថែមអតិថិជន", en: "Add customer" },
   noCustomersYet: { km: "មិនទាន់មានអតិថិជនទេ", en: "No customers yet" },
+  noCustomersYetDesc: {
+    km: "បន្ថែមអតិថិជនដំបូងរបស់អ្នក ដើម្បីតាមដានប្រវត្តិទិញ និងពិន្ទុភក្ដីភាព",
+    en: "Add your first customer to track purchase history and loyalty points",
+  },
   noPhone: { km: "គ្មានលេខទូរស័ព្ទ", en: "No phone number" },
   totalSpent: { km: "ចំណាយសរុប", en: "Total spent" },
   visits: { km: "ចំនួនដងមក", en: "Visits" },
@@ -5158,6 +5163,67 @@ function CategoryPill({ active, onClick, label }) {
   );
 }
 
+// Shared empty-state block: icon + title + optional description + optional
+// action button. Used for "nothing here yet" screens across tabs so they
+// read as an intentional invitation instead of a blank/broken page.
+function EmptyState({ icon: Icon, title, description, actionLabel, onAction }) {
+  return (
+    <div
+      style={{
+        gridColumn: "1/-1",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        textAlign: "center",
+        padding: "44px 20px",
+        gap: "4px",
+      }}
+    >
+      {Icon && (
+        <div
+          style={{
+            width: "52px",
+            height: "52px",
+            borderRadius: "14px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--surface-alt)",
+            marginBottom: "10px",
+          }}
+        >
+          <Icon size={24} color="var(--text-muted)" />
+        </div>
+      )}
+      <div
+        style={{ fontSize: "14.5px", fontWeight: 700, color: "var(--text)" }}
+      >
+        {title}
+      </div>
+      {description && (
+        <div
+          style={{
+            fontSize: "13px",
+            color: "var(--text-muted)",
+            maxWidth: "320px",
+            lineHeight: 1.5,
+          }}
+        >
+          {description}
+        </div>
+      )}
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          style={{ ...primaryBtnStyle, marginTop: "12px" }}
+        >
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ProductThumb({ image, size = 40 }) {
   if (image)
     return (
@@ -5328,17 +5394,12 @@ function POSTab(props) {
           }}
         >
           {products.length === 0 && (
-            <div
-              style={{
-                gridColumn: "1/-1",
-                color: "var(--text-muted)",
-                fontSize: "14px",
-                padding: "36px 0",
-                textAlign: "center",
-              }}
-            >
-              {t("noProductsFound")}
-            </div>
+            <EmptyState
+              icon={Search}
+              title={t("noProductsFound")}
+              actionLabel={search ? t("clearSearch") : undefined}
+              onAction={search ? () => setSearch("") : undefined}
+            />
           )}
           {products.map((p) => {
             const inCartQty = cart.find((c) => c.id === p.id)?.qty || 0;
@@ -6540,16 +6601,12 @@ function InventoryTab({
           );
         })}
         {products.length === 0 && (
-          <div
-            style={{
-              color: "var(--text-muted)",
-              fontSize: "14px",
-              textAlign: "center",
-              padding: "34px 0",
-            }}
-          >
-            {t("noProducts")}
-          </div>
+          <EmptyState
+            icon={Package}
+            title={t("noProducts")}
+            actionLabel={t("addProduct")}
+            onAction={openAdd}
+          />
         )}
       </div>
     </div>
@@ -7352,17 +7409,13 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
         }}
       >
         {customers.length === 0 && (
-          <div
-            style={{
-              gridColumn: "1/-1",
-              color: "var(--text-muted)",
-              fontSize: "14px",
-              textAlign: "center",
-              padding: "34px 0",
-            }}
-          >
-            {t("noCustomersYet")}
-          </div>
+          <EmptyState
+            icon={Users}
+            title={t("noCustomersYet")}
+            description={t("noCustomersYetDesc")}
+            actionLabel={t("addCustomer")}
+            onAction={openAdd}
+          />
         )}
         {customers.length > 0 && filtered.length === 0 && (
           <div
@@ -7603,16 +7656,12 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
       </div>
       <div style={{ padding: "18px 26px" }}>
         {sorted.length === 0 && (
-          <div
-            style={{
-              color: "var(--text-muted)",
-              fontSize: "14px",
-              textAlign: "center",
-              padding: "34px 0",
-            }}
-          >
-            {t("exp_empty")}
-          </div>
+          <EmptyState
+            icon={Wallet}
+            title={t("exp_empty")}
+            actionLabel={t("exp_addBtn")}
+            onAction={openAdd}
+          />
         )}
         {sorted.length > 0 && (
           <div
@@ -8223,24 +8272,14 @@ function OnlineOrdersTab({
         }}
       >
         {visibleOrders.length === 0 && (
-          <div
-            style={{
-              gridColumn: "1/-1",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "8px",
-              color: "var(--text-muted)",
-              fontSize: "14px",
-              padding: "30px 0",
-              textAlign: "center",
-            }}
-          >
-            <Receipt size={26} color="var(--border)" />
-            {archiveView === "archived"
-              ? t("archive_ordersEmpty")
-              : t("noOnlineOrders")}
-          </div>
+          <EmptyState
+            icon={Receipt}
+            title={
+              archiveView === "archived"
+                ? t("archive_ordersEmpty")
+                : t("noOnlineOrders")
+            }
+          />
         )}
         {visibleOrders.map((o) => (
           <div
@@ -9037,16 +9076,12 @@ function UsersTab({
             );
           })}
           {users.length === 0 && (
-            <div
-              style={{
-                color: "var(--text-muted)",
-                fontSize: "14px",
-                textAlign: "center",
-                padding: "34px 0",
-              }}
-            >
-              {t("noUsersYet")}
-            </div>
+            <EmptyState
+              icon={UserCog}
+              title={t("noUsersYet")}
+              actionLabel={t("addUser")}
+              onAction={openAdd}
+            />
           )}
         </div>
       ) : (
