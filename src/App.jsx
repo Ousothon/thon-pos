@@ -60,6 +60,7 @@ import {
   RotateCcw,
   Bell,
   BellOff,
+  Camera,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -539,6 +540,33 @@ const STRINGS = {
   toast_refundSuccess: {
     km: "សងទំនិញត្រលប់ដោយជោគជ័យ",
     en: "Sale refunded successfully",
+  },
+
+  fieldBarcode: { km: "លេខបាកូដ", en: "Barcode" },
+  fieldBarcodePlaceholder: {
+    km: "ស្កេន ឬវាយបញ្ចូលដោយដៃ",
+    en: "Scan or type manually",
+  },
+  scanBarcode: { km: "ស្កេនបាកូដ", en: "Scan barcode" },
+  scan_modalTitle: {
+    km: "ស្កេនបាកូដតាមកាមេរ៉ា",
+    en: "Scan barcode with camera",
+  },
+  scan_instructions: {
+    km: "ដាក់បាកូដឲ្យចំកាមេរ៉ា",
+    en: "Point your camera at a barcode",
+  },
+  scan_loadingLib: {
+    km: "កំពុងបើកកាមេរ៉ា...",
+    en: "Starting camera...",
+  },
+  scan_cameraError: {
+    km: "មិនអាចបើកកាមេរ៉ាបានទេ — សូមពិនិត្យការអនុញ្ញាត",
+    en: "Couldn't access the camera — check permissions",
+  },
+  toast_barcodeNotFound: {
+    km: "រកមិនឃើញទំនិញដែលមានបាកូដនេះទេ",
+    en: "No product found with this barcode",
   },
 
   cust_subtitle: { km: "{count} នាក់", en: "{count} customers" },
@@ -1613,9 +1641,9 @@ function POSApp() {
   // ---------- POS ----------
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
-      const matchesSearch = prodName(p)
-        .toLowerCase()
-        .includes(search.toLowerCase());
+      const matchesSearch =
+        prodName(p).toLowerCase().includes(search.toLowerCase()) ||
+        (p.barcode && p.barcode.toLowerCase().includes(search.toLowerCase()));
       const matchesCat =
         categoryFilter === "all" || p.category === categoryFilter;
       return matchesSearch && matchesCat;
@@ -1650,6 +1678,24 @@ function POSApp() {
           image: product.image,
         },
       ]);
+    }
+  };
+
+  // Shared by the USB/Bluetooth scanner (which types into the search box
+  // and sends Enter) and the camera scan modal (which returns decoded text
+  // directly) — looks up the product by exact barcode match and adds it.
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const handleBarcodeScan = (code) => {
+    const trimmed = (code || "").trim();
+    if (!trimmed) return;
+    const product = products.find(
+      (p) => p.barcode && p.barcode.trim() === trimmed,
+    );
+    if (product) {
+      addToCart(product);
+      setSearch("");
+    } else {
+      showToast(t("toast_barcodeNotFound"), "error");
     }
   };
 
@@ -1797,7 +1843,10 @@ function POSApp() {
   // ---------- Inventory ----------
   const invFiltered = useMemo(() => {
     return products.filter((p) => {
-      const m1 = prodName(p).toLowerCase().includes(invSearch.toLowerCase());
+      const m1 =
+        prodName(p).toLowerCase().includes(invSearch.toLowerCase()) ||
+        (p.barcode &&
+          p.barcode.toLowerCase().includes(invSearch.toLowerCase()));
       const m2 = invCategory === "all" || p.category === invCategory;
       return m1 && m2;
     });
@@ -1868,6 +1917,7 @@ function POSApp() {
           unit_km: p.unit_km || "",
           unit_en: p.unit_en || "",
           image: p.image || null,
+          barcode: p.barcode || null,
           updated_at: p.updatedAt || Date.now(),
         },
         { onConflict: "id" },
@@ -2278,6 +2328,7 @@ function POSApp() {
           unit_km: r.unit_km || "",
           unit_en: r.unit_en || "",
           image: r.image || null,
+          barcode: r.barcode || "",
           updatedAt: r.updated_at || 0,
         }));
         setProducts((prev) => mergeById(prev, mapped));
@@ -3613,6 +3664,8 @@ function POSApp() {
               discountMode={discountMode}
               setDiscountMode={setDiscountMode}
               khrRate={khrRate}
+              onBarcodeScan={handleBarcodeScan}
+              onOpenScanner={() => setScanModalOpen(true)}
             />
           )}
           {activeTab === "dashboard" && (
@@ -3811,6 +3864,15 @@ function POSApp() {
             khrRate={khrRate}
             receiptWidth={receiptWidth}
             onClose={() => setReceipt(null)}
+          />
+        )}
+        {scanModalOpen && (
+          <BarcodeScanModal
+            onClose={() => setScanModalOpen(false)}
+            onDetected={(code) => {
+              setScanModalOpen(false);
+              handleBarcodeScan(code);
+            }}
           />
         )}
         {toast && <Toast msg={toast.msg} kind={toast.kind} />}
@@ -4649,6 +4711,8 @@ function POSTab(props) {
     discountMode,
     setDiscountMode,
     khrRate,
+    onBarcodeScan,
+    onOpenScanner,
   } = props;
 
   return (
@@ -4686,16 +4750,41 @@ function POSTab(props) {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onBarcodeScan(search);
+              }}
               placeholder={t("searchProducts")}
               style={{
                 width: "100%",
-                padding: "11px 14px 11px 38px",
+                padding: "11px 40px 11px 38px",
                 borderRadius: "9px",
                 border: "1px solid var(--border)",
                 fontSize: "14px",
                 background: "var(--surface-alt)",
               }}
             />
+            <button
+              onClick={onOpenScanner}
+              title={t("scanBarcode")}
+              style={{
+                position: "absolute",
+                right: "6px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: "28px",
+                height: "28px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "none",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+              }}
+            >
+              <Camera size={16} />
+            </button>
           </div>
           <div style={{ display: "flex", gap: "7px", flexWrap: "wrap" }}>
             <CategoryPill
@@ -5573,7 +5662,21 @@ function InventoryTab({
                 <td style={{ ...tdStyle, width: "50px" }}>
                   <ProductThumb image={p.image} size={38} />
                 </td>
-                <td style={tdStyle}>{prodName(p)}</td>
+                <td style={tdStyle}>
+                  {prodName(p)}
+                  {p.barcode && (
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        fontFamily: "var(--font-mono)",
+                        marginTop: "2px",
+                      }}
+                    >
+                      {p.barcode}
+                    </div>
+                  )}
+                </td>
                 <td style={{ ...tdStyle, color: "var(--text-muted)" }}>
                   {catLabel(p.category)}
                 </td>
@@ -8861,6 +8964,146 @@ function SettingsTab({
 
 // ================= Modals =================
 
+// Loads the html5-qrcode library from a CDN the first time a camera scan is
+// requested, so most installs never pay for it. Cached across calls.
+let html5QrcodeLoadPromise = null;
+const loadHtml5Qrcode = () => {
+  if (window.Html5Qrcode) return Promise.resolve();
+  if (html5QrcodeLoadPromise) return html5QrcodeLoadPromise;
+  html5QrcodeLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => {
+      html5QrcodeLoadPromise = null;
+      reject(new Error("failed to load html5-qrcode"));
+    };
+    document.head.appendChild(script);
+  });
+  return html5QrcodeLoadPromise;
+};
+
+// Camera-based barcode scanner — used both from the POS search bar and the
+// product form. Opens the device camera, decodes the first barcode/QR it
+// sees, and hands the raw text back via onDetected.
+function BarcodeScanModal({ onClose, onDetected }) {
+  const { t } = useT();
+  const [status, setStatus] = useState("loading"); // loading | scanning | error
+  const elementId = "barcode-scan-region";
+
+  useEffect(() => {
+    let cancelled = false;
+    let instance = null;
+    loadHtml5Qrcode()
+      .then(() => {
+        if (cancelled) return Promise.reject(new Error("cancelled"));
+        instance = new window.Html5Qrcode(elementId);
+        return instance.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 150 } },
+          (decodedText) => {
+            if (cancelled) return;
+            cancelled = true;
+            instance
+              .stop()
+              .catch(() => {})
+              .finally(() => onDetected(decodedText));
+          },
+          () => {
+            /* per-frame decode miss — ignore, keep scanning */
+          },
+        );
+      })
+      .then(() => {
+        if (!cancelled) setStatus("scanning");
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("error");
+      });
+    return () => {
+      cancelled = true;
+      if (instance) instance.stop().catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(20,30,27,.65)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 90,
+        padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          borderRadius: "16px",
+          width: "380px",
+          maxWidth: "100%",
+          padding: "18px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "12px",
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: "15px" }}>
+            {t("scan_modalTitle")}
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "4px",
+              color: "var(--text-muted)",
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div
+          id={elementId}
+          style={{
+            width: "100%",
+            minHeight: "220px",
+            borderRadius: "10px",
+            overflow: "hidden",
+            background: "#000",
+          }}
+        />
+        <div
+          style={{
+            marginTop: "10px",
+            fontSize: "12.5px",
+            color: status === "error" ? "var(--danger)" : "var(--text-muted)",
+            textAlign: "center",
+          }}
+        >
+          {status === "loading" && t("scan_loadingLib")}
+          {status === "scanning" && t("scan_instructions")}
+          {status === "error" && t("scan_cameraError")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModalShell({ title, onClose, children, width = "380px" }) {
   return (
     <div
@@ -9048,8 +9291,10 @@ function ProductModal({ data, onClose, onSave }) {
         unit_km: "",
         unit_en: "",
         image: null,
+        barcode: "",
       };
   const [form, setForm] = useState(p);
+  const [scanOpen, setScanOpen] = useState(false);
   const fileRef = useRef(null);
 
   const handleFile = async (e) => {
@@ -9228,12 +9473,51 @@ function ProductModal({ data, onClose, onSave }) {
         </div>
       </div>
 
+      <label style={fieldLabel}>{t("fieldBarcode")}</label>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
+        <input
+          style={{ ...fieldInput, marginBottom: 0, flex: 1 }}
+          value={form.barcode || ""}
+          onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+          placeholder={t("fieldBarcodePlaceholder")}
+        />
+        <button
+          type="button"
+          onClick={() => setScanOpen(true)}
+          title={t("scanBarcode")}
+          style={{
+            width: "42px",
+            height: "42px",
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "9px",
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            cursor: "pointer",
+            color: "var(--text-muted)",
+          }}
+        >
+          <Camera size={16} />
+        </button>
+      </div>
+
       <button
         onClick={() => onSave(form)}
         style={{ ...primaryBtnStyle, width: "100%", justifyContent: "center" }}
       >
         {t("save")}
       </button>
+      {scanOpen && (
+        <BarcodeScanModal
+          onClose={() => setScanOpen(false)}
+          onDetected={(code) => {
+            setScanOpen(false);
+            setForm({ ...form, barcode: code });
+          }}
+        />
+      )}
     </ModalShell>
   );
 }
