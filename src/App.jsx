@@ -8196,7 +8196,10 @@ function UsersTab({
                   borderRadius: "14px",
                   background: "var(--surface)",
                   opacity: disabled ? 0.65 : 1,
-                  overflow: "hidden",
+                  // no overflow:hidden here — the Action menu is an absolutely
+                  // positioned dropdown anchored inside this card, and hidden
+                  // overflow would clip it (cutting off "Delete") instead of
+                  // just rounding the card's corners.
                 }}
               >
                 <div
