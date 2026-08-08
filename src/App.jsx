@@ -62,6 +62,7 @@ import {
   Bell,
   BellOff,
   Camera,
+  MoreVertical,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -937,6 +938,10 @@ const STRINGS = {
   users_subtitle: { km: "{count} គណនី", en: "{count} accounts" },
   addUser: { km: "បន្ថែមអ្នកប្រើប្រាស់", en: "Add user" },
   editUser: { km: "កែប្រែអ្នកប្រើប្រាស់", en: "Edit user" },
+  userActions: { km: "សកម្មភាព", en: "Actions" },
+  deleteUser: { km: "លុបគណនី", en: "Delete" },
+  userLastUpdated: { km: "កែប្រែចុងក្រោយ", en: "Last updated" },
+  userRolePermissions: { km: "សិទ្ធិចូលប្រើ", en: "Access" },
   addUserTitle: { km: "បន្ថែមអ្នកប្រើប្រាស់ថ្មី", en: "Add new user" },
   fieldFullName: { km: "ឈ្មោះពេញ (ខ្មែរ)", en: "Full name (Khmer)" },
   fieldFullNameEn: { km: "ឈ្មោះពេញ (English)", en: "Full name (English)" },
@@ -7916,6 +7921,107 @@ function OnlineOrdersTab({
 
 // ================= Users (admin only) =================
 
+// Single "⋮ Actions" button that opens a small floating menu (Edit /
+// Enable-Disable / Delete) instead of separate icon buttons in the row —
+// closes itself on an outside click, same pattern as the date-picker
+// dropdown above.
+function UserActionMenu({ t, disabled, onEdit, onToggle, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+  const menuItemStyle = {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "8px 10px",
+    background: "none",
+    border: "none",
+    borderRadius: "7px",
+    fontSize: "13px",
+    fontWeight: 600,
+    color: "var(--text)",
+    cursor: "pointer",
+    textAlign: "left",
+  };
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        title={t("userActions")}
+        style={{
+          ...iconBtnStyle,
+          background: open ? "var(--surface-alt)" : "none",
+        }}
+      >
+        <MoreVertical size={15} />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            zIndex: 55,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "10px",
+            boxShadow: "0 12px 30px rgba(0,0,0,.16)",
+            padding: "5px",
+            minWidth: "170px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onEdit();
+            }}
+            style={menuItemStyle}
+          >
+            <Pencil size={14} /> {t("editUser")}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onToggle();
+            }}
+            style={menuItemStyle}
+          >
+            {disabled ? <Power size={14} /> : <Ban size={14} />}
+            {disabled ? t("enableUser") : t("disableUser")}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onDelete();
+            }}
+            style={{ ...menuItemStyle, color: "var(--danger)" }}
+          >
+            <Trash2 size={14} /> {t("deleteUser")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UsersTab({
   users,
   roles,
@@ -7934,6 +8040,7 @@ function UsersTab({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toggleTarget, setToggleTarget] = useState(null);
   const [roleDeleteTarget, setRoleDeleteTarget] = useState(null);
+  const [expandedUserId, setExpandedUserId] = useState(null);
   const roleById = (id) => roles.find((r) => r.id === id);
 
   // Draft copy of the permissions matrix. Checkbox clicks only edit this
@@ -8066,63 +8173,71 @@ function UsersTab({
         </div>
       </div>
       {subTab === "list" ? (
-        <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
-          <table
-            style={{
-              width: "100%",
-              minWidth: "560px",
-              borderCollapse: "collapse",
-              fontSize: "14px",
-            }}
-          >
-            <thead>
-              <tr
+        <div
+          style={{
+            padding: "16px 26px 26px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          {users.map((u) => {
+            const disabled = u.active === false;
+            const role = roleById(u.role);
+            const isExpanded = expandedUserId === u.id;
+            const accessTabs = role
+              ? NAV.filter((n) => roleTabIds(role).includes(n.id))
+              : [];
+            return (
+              <div
+                key={u.id}
                 style={{
-                  textAlign: "left",
-                  color: "var(--text-muted)",
-                  fontSize: "12.5px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "14px",
+                  background: "var(--surface)",
+                  opacity: disabled ? 0.65 : 1,
+                  overflow: "hidden",
                 }}
               >
-                <th style={thStyle}></th>
-                <th style={thStyle}>{t("th_name")}</th>
-                <th style={thStyle}>{t("th_username")}</th>
-                <th style={thStyle}>{t("th_role")}</th>
-                <th style={thStyle}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => {
-                const disabled = u.active === false;
-                const role = roleById(u.role);
-                return (
-                  <tr
-                    key={u.id}
+                <div
+                  onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    padding: "13px 14px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
                     style={{
-                      borderTop: "1px solid var(--border)",
-                      opacity: disabled ? 0.55 : 1,
+                      width: "38px",
+                      height: "38px",
+                      flexShrink: 0,
+                      borderRadius: "999px",
+                      background: "var(--surface-alt)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
                   >
-                    <td style={{ ...tdStyle, width: "46px" }}>
-                      <div
-                        style={{
-                          width: "32px",
-                          height: "32px",
-                          borderRadius: "999px",
-                          background: "var(--surface-alt)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <UserIcon size={15} color="var(--primary)" />
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
+                    <UserIcon size={17} color="var(--primary)" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "7px",
+                        fontSize: "14.5px",
+                        fontWeight: 700,
+                      }}
+                    >
                       {lang === "en" ? u.name_en || u.name_km : u.name_km}
                       {u.id === currentUser.id && (
                         <span
                           style={{
-                            marginLeft: "7px",
                             fontSize: "11px",
                             color: "var(--primary)",
                             fontWeight: 700,
@@ -8134,7 +8249,6 @@ function UsersTab({
                       {disabled && (
                         <span
                           style={{
-                            marginLeft: "7px",
                             padding: "2px 8px",
                             borderRadius: "999px",
                             fontSize: "10.5px",
@@ -8146,65 +8260,91 @@ function UsersTab({
                           {t("status_disabled")}
                         </span>
                       )}
-                    </td>
-                    <td
+                    </div>
+                    <div
                       style={{
-                        ...tdStyle,
+                        marginTop: "3px",
                         fontFamily: "var(--font-mono)",
+                        fontSize: "12.5px",
                         color: "var(--text-muted)",
                       }}
                     >
                       {u.username}
-                    </td>
-                    <td style={tdStyle}>
-                      <span
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: "999px",
+                      fontSize: "11.5px",
+                      fontWeight: 700,
+                      flexShrink: 0,
+                      background:
+                        u.role === "admin"
+                          ? "var(--primary)"
+                          : "var(--surface-alt)",
+                      color: u.role === "admin" ? "#fff" : "var(--text)",
+                    }}
+                  >
+                    {role ? roleLabel(role, lang) : u.role}
+                  </span>
+                  <UserActionMenu
+                    t={t}
+                    disabled={disabled}
+                    onEdit={() => openEdit(u)}
+                    onToggle={() => setToggleTarget(u)}
+                    onDelete={() => setDeleteTarget(u)}
+                  />
+                  <ChevronDown
+                    size={15}
+                    style={{
+                      color: "var(--text-muted)",
+                      flexShrink: 0,
+                      transform: isExpanded ? "rotate(180deg)" : "none",
+                      transition: "transform .15s",
+                    }}
+                  />
+                </div>
+                {isExpanded && (
+                  <div
+                    style={{
+                      padding: "0 14px 14px 64px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px",
+                    }}
+                  >
+                    {u.updatedAt && (
+                      <div
                         style={{
-                          padding: "3px 10px",
-                          borderRadius: "999px",
-                          fontSize: "11.5px",
-                          fontWeight: 700,
-                          background:
-                            u.role === "admin"
-                              ? "var(--primary)"
-                              : "var(--surface-alt)",
-                          color: u.role === "admin" ? "#fff" : "var(--text)",
+                          fontSize: "12.5px",
+                          color: "var(--text-muted)",
                         }}
                       >
-                        {role ? roleLabel(role, lang) : u.role}
+                        {t("userLastUpdated")}:{" "}
+                        {new Date(u.updatedAt).toLocaleString(
+                          lang === "en" ? "en-US" : "km-KH",
+                        )}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        fontSize: "12.5px",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {t("userRolePermissions")}:{" "}
+                      <span style={{ color: "var(--text)", fontWeight: 600 }}>
+                        {accessTabs.length > 0
+                          ? accessTabs.map((n) => t(n.key)).join(" · ")
+                          : "—"}
                       </span>
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>
-                      <button
-                        onClick={() => setToggleTarget(u)}
-                        title={disabled ? t("enableUser") : t("disableUser")}
-                        style={{
-                          ...iconBtnStyle,
-                          marginRight: "7px",
-                          color: disabled
-                            ? "var(--primary)"
-                            : "var(--text-muted)",
-                        }}
-                      >
-                        {disabled ? <Power size={13} /> : <Ban size={13} />}
-                      </button>
-                      <button
-                        onClick={() => openEdit(u)}
-                        style={{ ...iconBtnStyle, marginRight: "7px" }}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(u)}
-                        style={{ ...iconBtnStyle, color: "var(--danger)" }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {users.length === 0 && (
             <div
               style={{
