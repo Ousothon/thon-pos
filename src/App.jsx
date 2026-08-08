@@ -9006,6 +9006,29 @@ const loadHtml5Qrcode = () => {
   return html5QrcodeLoadPromise;
 };
 
+// Short "beep" on successful scan, synthesized with the Web Audio API so no
+// sound file needs to be bundled/loaded. Mirrors the single high-pitched
+// beep of a dedicated barcode scanner.
+const playBeep = () => {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = 1800;
+    gain.gain.value = 0.15;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.09);
+    osc.onended = () => ctx.close();
+  } catch {
+    /* audio not available — silent fallback, still detects fine */
+  }
+};
+
 // Camera-based barcode scanner — used both from the POS search bar and the
 // product form. Opens the device camera, decodes the first barcode/QR it
 // sees, and hands the raw text back via onDetected.
@@ -9057,7 +9080,18 @@ function BarcodeScanModal({ onClose, onDetected }) {
           verbose: false,
         });
         return instance.start(
-          { facingMode: "environment" },
+          // Most phones default their camera to a very high resolution
+          // (1080p/4K), and decoding a barcode out of every one of those
+          // frames 20 times a second is what actually causes the "takes
+          // forever to lock on" feeling — it's a CPU/decode bottleneck, not
+          // a detection-accuracy problem. Capping the requested resolution
+          // to 720p keeps the image plenty sharp for a barcode a few inches
+          // from the lens while cutting the per-frame decode cost a lot.
+          {
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
           {
             fps: 20,
             // A fixed pixel qrbox (e.g. {width:280,height:140}) can exceed the
@@ -9075,6 +9109,7 @@ function BarcodeScanModal({ onClose, onDetected }) {
           (decodedText) => {
             if (cancelled) return;
             cancelled = true;
+            playBeep();
             safeStop().finally(() => onDetected(decodedText));
           },
           () => {
