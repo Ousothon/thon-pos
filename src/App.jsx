@@ -226,51 +226,69 @@ const seedUsers = [
   },
 ];
 
-// which tabs each role may see
-const ROLE_PERMS = {
-  admin: [
-    "pos",
-    "dashboard",
-    "inventory",
-    "reports",
-    "customers",
-    "users",
-    "onlineOrders",
-    "auditLog",
-    "settings",
-    "expenses",
-  ],
-  // manager: sees everything an admin uses to run day-to-day operations
-  // (sales, stock, reports, expenses across branches) but can't touch
-  // user accounts, the audit trail, or system settings — those stay
-  // admin-only so a manager can't grant themselves more access or
-  // cover their tracks.
-  manager: [
-    "pos",
-    "dashboard",
-    "inventory",
-    "reports",
-    "customers",
-    "onlineOrders",
-    "expenses",
-  ],
-  staff: ["pos", "customers", "onlineOrders"],
-};
-
-// Small helper so every place that shows a role name/badge (sidebar,
-// user table, user form) stays in sync — add a role in ROLE_PERMS,
-// its translations, and this map, and every display picks it up.
-const ROLE_LABEL_KEYS = {
-  admin: "role_admin",
-  manager: "role_manager",
-  staff: "role_staff",
-};
-const ROLE_ORDER = ["admin", "manager", "staff"];
+// Default roles seeded on first run. From here on, roles are just data —
+// stored in state (see `roles` in POSApp) and editable from the Roles
+// Management screen — not hardcoded permission sets. "admin" is the one
+// exception: its id and full tab access are locked in code (see the
+// Roles Management UI) so the permission system itself can never be
+// locked out by an accidental checkbox change.
+const seedRoles = [
+  {
+    id: "admin",
+    name_km: "អ្នកគ្រប់គ្រង",
+    name_en: "Admin",
+    builtin: true,
+    locked: true,
+    tabs: [
+      "pos",
+      "dashboard",
+      "inventory",
+      "reports",
+      "customers",
+      "users",
+      "onlineOrders",
+      "auditLog",
+      "settings",
+      "expenses",
+    ],
+  },
+  {
+    id: "manager",
+    name_km: "អ្នកគ្រប់គ្រងសាខា",
+    name_en: "Manager",
+    builtin: true,
+    tabs: [
+      "pos",
+      "dashboard",
+      "inventory",
+      "reports",
+      "customers",
+      "onlineOrders",
+      "expenses",
+    ],
+  },
+  {
+    id: "staff",
+    name_km: "បុគ្គលិក",
+    name_en: "Staff",
+    builtin: true,
+    tabs: ["pos", "customers", "onlineOrders"],
+  },
+];
 
 const SESSION_KEY = "shop-session";
 
 const genId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+// Resolves a role's display name for the current language, with graceful
+// fallbacks: the other language's name, then the raw role id (covers the
+// rare case a user's role was deleted out from under them).
+const roleLabel = (role, lang) => {
+  if (!role) return "";
+  return lang === "en"
+    ? role.name_en || role.name_km || role.id
+    : role.name_km || role.name_en || role.id;
+};
 // Generates a short, easy-to-read random password for the "reset password"
 // button in the user form — avoids ambiguous characters like 0/O, 1/l/I.
 const genPassword = () => {
@@ -939,6 +957,32 @@ const STRINGS = {
     km: "ត្រូវការអ្នកគ្រប់គ្រងយ៉ាងតិចម្នាក់",
     en: "At least one admin account is required",
   },
+  nav_users_sub_list: { km: "អ្នកប្រើប្រាស់", en: "Users" },
+  nav_users_sub_roles: { km: "គ្រប់គ្រងតួនាទី", en: "Role Management" },
+  roles_subtitle: { km: "{count} តួនាទី", en: "{count} roles" },
+  addRole: { km: "បន្ថែមតួនាទីថ្មី", en: "Add role" },
+  addRoleTitle: { km: "បន្ថែមតួនាទីថ្មី", en: "New role" },
+  editRoleTitle: { km: "កែឈ្មោះតួនាទី", en: "Edit role" },
+  fieldRoleNameKm: { km: "ឈ្មោះតួនាទី (ខ្មែរ)", en: "Role name (Khmer)" },
+  fieldRoleNameEn: { km: "ឈ្មោះតួនាទី (English)", en: "Role name (English)" },
+  th_permission: { km: "សិទ្ធិចូលមើល", en: "Permission" },
+  role_admin_locked_note: {
+    km: "អ្នកគ្រប់គ្រង (Admin) មានសិទ្ធិពេញលេញជានិច្ច ដើម្បីកុំឲ្យប្រព័ន្ធជាប់សោ",
+    en: "Admin always keeps full access, so the system can never lock everyone out",
+  },
+  toast_roleAdded: { km: "បន្ថែមតួនាទីរួចរាល់", en: "Role added" },
+  toast_roleUpdated: { km: "កែប្រែតួនាទីរួចរាល់", en: "Role updated" },
+  toast_roleDeleted: { km: "លុបតួនាទីរួចរាល់", en: "Role deleted" },
+  toast_roleNameRequired: {
+    km: "សូមបំពេញឈ្មោះតួនាទី",
+    en: "Please enter a role name",
+  },
+  toast_roleInUse: {
+    km: "មិនអាចលុបបានទេ — មានអ្នកប្រើប្រាស់កំពុងប្រើតួនាទីនេះ",
+    en: "Can't delete — this role is still assigned to a user",
+  },
+  roleDeleteConfirm: { km: "លុបតួនាទីនេះ?", en: "Delete this role?" },
+  audit_entity_role: { km: "តួនាទី", en: "Role" },
   toast_userDisabled: {
     km: "បានបិទគណនីអ្នកប្រើប្រាស់",
     en: "User account disabled",
@@ -1374,8 +1418,10 @@ function POSApp() {
   const [toast, setToast] = useState(null);
 
   const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [sessionUserId, setSessionUserId] = useState(null);
   const [userModal, setUserModal] = useState(null);
+  const [roleModal, setRoleModal] = useState(null);
   const [changePwOpen, setChangePwOpen] = useState(false);
   const [loginError, setLoginError] = useState("");
 
@@ -1469,15 +1515,20 @@ function POSApp() {
         setUsers(
           parsed.users && parsed.users.length ? parsed.users : seedUsers,
         );
+        setRoles(
+          parsed.roles && parsed.roles.length ? parsed.roles : seedRoles,
+        );
       } else {
         setProducts(seedProducts);
         setUsers(seedUsers);
+        setRoles(seedRoles);
       }
       const sess = localStorage.getItem(SESSION_KEY);
       if (sess) setSessionUserId(sess);
     } catch {
       setProducts(seedProducts);
       setUsers(seedUsers);
+      setRoles(seedRoles);
     }
     setLoading(false);
   }, []);
@@ -1502,6 +1553,7 @@ function POSApp() {
             khqrImage,
             lang,
             users,
+            roles,
           }),
         );
       } catch {
@@ -1524,6 +1576,7 @@ function POSApp() {
     khqrImage,
     lang,
     users,
+    roles,
     loading,
   ]);
 
@@ -1543,7 +1596,10 @@ function POSApp() {
 
   // ---------- Auth ----------
   const currentUser = users.find((u) => u.id === sessionUserId) || null;
-  const allowedTabs = currentUser ? ROLE_PERMS[currentUser.role] || [] : [];
+  const currentUserRole = currentUser
+    ? roles.find((r) => r.id === currentUser.role)
+    : null;
+  const allowedTabs = currentUserRole ? currentUserRole.tabs || [] : [];
   const visibleNav = NAV.filter((n) => allowedTabs.includes(n.id));
 
   const login = (username, password) => {
@@ -1562,8 +1618,12 @@ function POSApp() {
     }
     setLoginError("");
     setSessionUserId(match.id);
-    const perms = ROLE_PERMS[match.role] || [];
-    setActiveTab(perms.includes("pos") ? "pos" : perms[0] || "pos");
+    const perms = roles.find((r) => r.id === match.role);
+    setActiveTab(
+      perms && perms.tabs.includes("pos")
+        ? "pos"
+        : (perms && perms.tabs[0]) || "pos",
+    );
   };
   const logout = () => {
     setSessionUserId(null);
@@ -1669,6 +1729,69 @@ function POSApp() {
     // Disabling the account you're currently signed in as should sign you
     // out right away too — the currentUser-watching effect below handles
     // that as soon as `users` re-renders with active: false.
+  };
+
+  // ---------- Roles (admin only) ----------
+  // Saves a role's name (add or rename). Tab permissions are toggled
+  // separately via toggleRoleTab, since each checkbox click should apply
+  // immediately rather than waiting on a form submit.
+  const saveRole = (form) => {
+    const name = (form.name_km || form.name_en || "").trim();
+    if (!name) {
+      showToast(t("toast_roleNameRequired"), "error");
+      return;
+    }
+    if (form.id) {
+      setRoles(
+        roles.map((r) =>
+          r.id === form.id
+            ? { ...r, name_km: form.name_km, name_en: form.name_en }
+            : r,
+        ),
+      );
+      showToast(t("toast_roleUpdated"));
+      logAudit("edit", "role", form.name_km || form.name_en);
+    } else {
+      const created = {
+        id: genId(),
+        name_km: form.name_km,
+        name_en: form.name_en,
+        tabs: [],
+      };
+      setRoles([...roles, created]);
+      showToast(t("toast_roleAdded"));
+      logAudit("add", "role", form.name_km || form.name_en);
+    }
+    setRoleModal(null);
+  };
+
+  // Flips one tab's permission on/off for a role. The admin role is
+  // locked (see seedRoles) so this is a no-op for it even if somehow
+  // triggered — the UI itself also disables those checkboxes.
+  const toggleRoleTab = (roleId, tabId) => {
+    setRoles(
+      roles.map((r) => {
+        if (r.id !== roleId || r.locked) return r;
+        const has = (r.tabs || []).includes(tabId);
+        return {
+          ...r,
+          tabs: has ? r.tabs.filter((x) => x !== tabId) : [...r.tabs, tabId],
+        };
+      }),
+    );
+  };
+
+  const deleteRole = (roleId) => {
+    const target = roles.find((r) => r.id === roleId);
+    if (!target || target.locked) return;
+    const inUse = users.some((u) => u.role === roleId);
+    if (inUse) {
+      showToast(t("toast_roleInUse"), "error");
+      return;
+    }
+    setRoles(roles.filter((r) => r.id !== roleId));
+    showToast(t("toast_roleDeleted"));
+    logAudit("delete", "role", target.name_km || target.name_en);
   };
 
   // Lets any signed-in user (admin or staff) change their own password
@@ -3650,7 +3773,7 @@ function POSApp() {
                     : currentUser.name_km}
                 </div>
                 <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  {t(ROLE_LABEL_KEYS[currentUser.role] || "role_staff")}
+                  {roleLabel(currentUserRole, lang)}
                 </div>
               </div>
               <button
@@ -3803,11 +3926,16 @@ function POSApp() {
           {activeTab === "users" && allowedTabs.includes("users") && (
             <UsersTab
               users={users}
+              roles={roles}
               currentUser={currentUser}
               openAdd={() => setUserModal({ mode: "add" })}
               openEdit={(u) => setUserModal({ mode: "edit", user: u })}
               deleteUser={deleteUser}
               toggleUserActive={toggleUserActive}
+              openAddRole={() => setRoleModal({ mode: "add" })}
+              openEditRole={(r) => setRoleModal({ mode: "edit", role: r })}
+              deleteRole={deleteRole}
+              toggleRoleTab={toggleRoleTab}
             />
           )}
           {activeTab === "auditLog" && allowedTabs.includes("auditLog") && (
@@ -3895,8 +4023,16 @@ function POSApp() {
         {userModal && (
           <UserModal
             data={userModal}
+            roles={roles}
             onClose={() => setUserModal(null)}
             onSave={saveUser}
+          />
+        )}
+        {roleModal && (
+          <RoleModal
+            data={roleModal}
+            onClose={() => setRoleModal(null)}
+            onSave={saveRole}
           />
         )}
         {changePwOpen && (
@@ -7677,184 +7813,352 @@ function OnlineOrdersTab({
 
 function UsersTab({
   users,
+  roles,
   currentUser,
   openAdd,
   openEdit,
   deleteUser,
   toggleUserActive,
+  openAddRole,
+  openEditRole,
+  deleteRole,
+  toggleRoleTab,
 }) {
   const { t, lang } = useT();
+  const [subTab, setSubTab] = useState("list"); // "list" | "roles"
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toggleTarget, setToggleTarget] = useState(null);
+  const [roleDeleteTarget, setRoleDeleteTarget] = useState(null);
+  const roleById = (id) => roles.find((r) => r.id === id);
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
-        title={t("nav_users")}
-        subtitle={t("users_subtitle", { count: users.length })}
+        title={subTab === "list" ? t("nav_users") : t("nav_users_sub_roles")}
+        subtitle={
+          subTab === "list"
+            ? t("users_subtitle", { count: users.length })
+            : t("roles_subtitle", { count: roles.length })
+        }
         action={
-          <button onClick={openAdd} style={primaryBtnStyle}>
-            <UserPlus size={16} /> {t("addUser")}
-          </button>
+          subTab === "list" ? (
+            <button onClick={openAdd} style={primaryBtnStyle}>
+              <UserPlus size={16} /> {t("addUser")}
+            </button>
+          ) : (
+            <button onClick={openAddRole} style={primaryBtnStyle}>
+              <Plus size={16} /> {t("addRole")}
+            </button>
+          )
         }
       />
-      <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
-        <table
+      <div style={{ padding: "12px 26px 0", flexShrink: 0 }}>
+        <div
           style={{
-            width: "100%",
-            minWidth: "560px",
-            borderCollapse: "collapse",
-            fontSize: "14px",
+            display: "flex",
+            gap: "20px",
+            borderBottom: "1px solid var(--border)",
           }}
         >
-          <thead>
-            <tr
+          {[
+            { id: "list", label: t("nav_users_sub_list") },
+            { id: "roles", label: t("nav_users_sub_roles") },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setSubTab(tab.id)}
               style={{
-                textAlign: "left",
-                color: "var(--text-muted)",
-                fontSize: "12.5px",
+                padding: "0 2px 10px",
+                background: "none",
+                border: "none",
+                borderBottom:
+                  subTab === tab.id
+                    ? "2px solid var(--primary)"
+                    : "2px solid transparent",
+                color:
+                  subTab === tab.id ? "var(--primary)" : "var(--text-muted)",
+                fontWeight: 700,
+                fontSize: "13.5px",
+                cursor: "pointer",
               }}
             >
-              <th style={thStyle}></th>
-              <th style={thStyle}>{t("th_name")}</th>
-              <th style={thStyle}>{t("th_username")}</th>
-              <th style={thStyle}>{t("th_role")}</th>
-              <th style={thStyle}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => {
-              const disabled = u.active === false;
-              return (
-                <tr
-                  key={u.id}
-                  style={{
-                    borderTop: "1px solid var(--border)",
-                    opacity: disabled ? 0.55 : 1,
-                  }}
-                >
-                  <td style={{ ...tdStyle, width: "46px" }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {subTab === "list" ? (
+        <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
+          <table
+            style={{
+              width: "100%",
+              minWidth: "560px",
+              borderCollapse: "collapse",
+              fontSize: "14px",
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  textAlign: "left",
+                  color: "var(--text-muted)",
+                  fontSize: "12.5px",
+                }}
+              >
+                <th style={thStyle}></th>
+                <th style={thStyle}>{t("th_name")}</th>
+                <th style={thStyle}>{t("th_username")}</th>
+                <th style={thStyle}>{t("th_role")}</th>
+                <th style={thStyle}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => {
+                const disabled = u.active === false;
+                const role = roleById(u.role);
+                return (
+                  <tr
+                    key={u.id}
+                    style={{
+                      borderTop: "1px solid var(--border)",
+                      opacity: disabled ? 0.55 : 1,
+                    }}
+                  >
+                    <td style={{ ...tdStyle, width: "46px" }}>
+                      <div
+                        style={{
+                          width: "32px",
+                          height: "32px",
+                          borderRadius: "999px",
+                          background: "var(--surface-alt)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <UserIcon size={15} color="var(--primary)" />
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      {lang === "en" ? u.name_en || u.name_km : u.name_km}
+                      {u.id === currentUser.id && (
+                        <span
+                          style={{
+                            marginLeft: "7px",
+                            fontSize: "11px",
+                            color: "var(--primary)",
+                            fontWeight: 700,
+                          }}
+                        >
+                          ({t("loggedInAs")})
+                        </span>
+                      )}
+                      {disabled && (
+                        <span
+                          style={{
+                            marginLeft: "7px",
+                            padding: "2px 8px",
+                            borderRadius: "999px",
+                            fontSize: "10.5px",
+                            fontWeight: 700,
+                            background: "rgba(220,38,38,.12)",
+                            color: "var(--danger)",
+                          }}
+                        >
+                          {t("status_disabled")}
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        fontFamily: "var(--font-mono)",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {u.username}
+                    </td>
+                    <td style={tdStyle}>
+                      <span
+                        style={{
+                          padding: "3px 10px",
+                          borderRadius: "999px",
+                          fontSize: "11.5px",
+                          fontWeight: 700,
+                          background:
+                            u.role === "admin"
+                              ? "var(--primary)"
+                              : "var(--surface-alt)",
+                          color: u.role === "admin" ? "#fff" : "var(--text)",
+                        }}
+                      >
+                        {role ? roleLabel(role, lang) : u.role}
+                      </span>
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <button
+                        onClick={() => setToggleTarget(u)}
+                        title={disabled ? t("enableUser") : t("disableUser")}
+                        style={{
+                          ...iconBtnStyle,
+                          marginRight: "7px",
+                          color: disabled
+                            ? "var(--primary)"
+                            : "var(--text-muted)",
+                        }}
+                      >
+                        {disabled ? <Power size={13} /> : <Ban size={13} />}
+                      </button>
+                      <button
+                        onClick={() => openEdit(u)}
+                        style={{ ...iconBtnStyle, marginRight: "7px" }}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(u)}
+                        style={{ ...iconBtnStyle, color: "var(--danger)" }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {users.length === 0 && (
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: "14px",
+                textAlign: "center",
+                padding: "34px 0",
+              }}
+            >
+              {t("noUsersYet")}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ padding: "16px 26px 26px", overflowX: "auto" }}>
+          <table
+            style={{
+              width: "100%",
+              minWidth: `${360 + roles.length * 150}px`,
+              borderCollapse: "collapse",
+              fontSize: "13.5px",
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  textAlign: "left",
+                  color: "var(--text-muted)",
+                  fontSize: "12.5px",
+                }}
+              >
+                <th style={{ ...thStyle, minWidth: "180px" }}>
+                  {t("th_permission")}
+                </th>
+                {roles.map((r) => (
+                  <th
+                    key={r.id}
+                    style={{
+                      ...thStyle,
+                      textAlign: "center",
+                      minWidth: "140px",
+                    }}
+                  >
                     <div
                       style={{
-                        width: "32px",
-                        height: "32px",
-                        borderRadius: "999px",
-                        background: "var(--surface-alt)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        gap: "6px",
                       }}
                     >
-                      <UserIcon size={15} color="var(--primary)" />
+                      <span
+                        style={{ color: "var(--text)", fontWeight: 700 }}
+                        title={r.locked ? t("role_admin_locked_note") : ""}
+                      >
+                        {roleLabel(r, lang)}
+                      </span>
+                      {r.locked ? (
+                        <Lock size={12} color="var(--text-muted)" />
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => openEditRole(r)}
+                            style={{ ...iconBtnStyle, padding: "3px" }}
+                            title={t("editRoleTitle")}
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            onClick={() => setRoleDeleteTarget(r)}
+                            style={{
+                              ...iconBtnStyle,
+                              padding: "3px",
+                              color: "var(--danger)",
+                            }}
+                            title={t("roleDeleteConfirm")}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </>
+                      )}
                     </div>
-                  </td>
-                  <td style={tdStyle}>
-                    {lang === "en" ? u.name_en || u.name_km : u.name_km}
-                    {u.id === currentUser.id && (
-                      <span
-                        style={{
-                          marginLeft: "7px",
-                          fontSize: "11px",
-                          color: "var(--primary)",
-                          fontWeight: 700,
-                        }}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {NAV.map((navItem) => (
+                <tr
+                  key={navItem.id}
+                  style={{ borderTop: "1px solid var(--border)" }}
+                >
+                  <td style={tdStyle}>{t(navItem.key)}</td>
+                  {roles.map((r) => {
+                    const checked = (r.tabs || []).includes(navItem.id);
+                    return (
+                      <td
+                        key={r.id}
+                        style={{ ...tdStyle, textAlign: "center" }}
                       >
-                        ({t("loggedInAs")})
-                      </span>
-                    )}
-                    {disabled && (
-                      <span
-                        style={{
-                          marginLeft: "7px",
-                          padding: "2px 8px",
-                          borderRadius: "999px",
-                          fontSize: "10.5px",
-                          fontWeight: 700,
-                          background: "rgba(220,38,38,.12)",
-                          color: "var(--danger)",
-                        }}
-                      >
-                        {t("status_disabled")}
-                      </span>
-                    )}
-                  </td>
-                  <td
-                    style={{
-                      ...tdStyle,
-                      fontFamily: "var(--font-mono)",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    {u.username}
-                  </td>
-                  <td style={tdStyle}>
-                    <span
-                      style={{
-                        padding: "3px 10px",
-                        borderRadius: "999px",
-                        fontSize: "11.5px",
-                        fontWeight: 700,
-                        background:
-                          u.role === "admin"
-                            ? "var(--primary)"
-                            : u.role === "manager"
-                              ? "color-mix(in srgb, var(--primary) 18%, transparent)"
-                              : "var(--surface-alt)",
-                        color:
-                          u.role === "admin"
-                            ? "#fff"
-                            : u.role === "manager"
-                              ? "var(--primary)"
-                              : "var(--text)",
-                      }}
-                    >
-                      {t(ROLE_LABEL_KEYS[u.role] || "role_staff")}
-                    </span>
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>
-                    <button
-                      onClick={() => setToggleTarget(u)}
-                      title={disabled ? t("enableUser") : t("disableUser")}
-                      style={{
-                        ...iconBtnStyle,
-                        marginRight: "7px",
-                        color: disabled
-                          ? "var(--primary)"
-                          : "var(--text-muted)",
-                      }}
-                    >
-                      {disabled ? <Power size={13} /> : <Ban size={13} />}
-                    </button>
-                    <button
-                      onClick={() => openEdit(u)}
-                      style={{ ...iconBtnStyle, marginRight: "7px" }}
-                    >
-                      <Pencil size={13} />
-                    </button>
-                    <button
-                      onClick={() => setDeleteTarget(u)}
-                      style={{ ...iconBtnStyle, color: "var(--danger)" }}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </td>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={r.locked}
+                          onChange={() => toggleRoleTab(r.id, navItem.id)}
+                          style={{
+                            width: "16px",
+                            height: "16px",
+                            cursor: r.locked ? "not-allowed" : "pointer",
+                            accentColor: "var(--primary)",
+                          }}
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {users.length === 0 && (
+              ))}
+            </tbody>
+          </table>
           <div
             style={{
+              marginTop: "12px",
+              fontSize: "12px",
               color: "var(--text-muted)",
-              fontSize: "14px",
-              textAlign: "center",
-              padding: "34px 0",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
             }}
           >
-            {t("noUsersYet")}
+            <Lock size={12} /> {t("role_admin_locked_note")}
           </div>
-        )}
-      </div>
+        </div>
+      )}
       {deleteTarget && (
         <ConfirmDialog
           title={t("user_deleteConfirm")}
@@ -7890,6 +8194,18 @@ function UsersTab({
           onConfirm={() => {
             toggleUserActive(toggleTarget.id);
             setToggleTarget(null);
+          }}
+        />
+      )}
+      {roleDeleteTarget && (
+        <ConfirmDialog
+          title={t("roleDeleteConfirm")}
+          message={roleLabel(roleDeleteTarget, lang)}
+          danger
+          onCancel={() => setRoleDeleteTarget(null)}
+          onConfirm={() => {
+            deleteRole(roleDeleteTarget.id);
+            setRoleDeleteTarget(null);
           }}
         />
       )}
@@ -10173,12 +10489,19 @@ function CategoryModal({ categories, products, onClose, onAdd, onDelete }) {
   );
 }
 
-function UserModal({ data, onClose, onSave }) {
-  const { t } = useT();
+function UserModal({ data, roles, onClose, onSave }) {
+  const { t, lang } = useT();
   const editing = data.mode === "edit";
+  const defaultRole = roles.find((r) => r.id === "staff") || roles[0];
   const u = editing
     ? data.user
-    : { name_km: "", name_en: "", username: "", password: "", role: "staff" };
+    : {
+        name_km: "",
+        name_en: "",
+        username: "",
+        password: "",
+        role: defaultRole ? defaultRole.id : "",
+      };
   const [form, setForm] = useState(u);
   const [showPw, setShowPw] = useState(false);
 
@@ -10272,33 +10595,75 @@ function UserModal({ data, onClose, onSave }) {
       )}
       {!editing && <div style={{ marginBottom: "14px" }} />}
       <label style={fieldLabel}>{t("fieldRole")}</label>
-      <div style={{ display: "flex", gap: "9px", marginBottom: "18px" }}>
-        {ROLE_ORDER.map((r) => (
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px",
+          marginBottom: "18px",
+        }}
+      >
+        {roles.map((r) => (
           <button
-            key={r}
-            onClick={() => setForm({ ...form, role: r })}
+            key={r.id}
+            type="button"
+            onClick={() => setForm({ ...form, role: r.id })}
             style={{
-              flex: 1,
-              padding: "9px 10px",
+              padding: "9px 14px",
               borderRadius: "9px",
               cursor: "pointer",
               fontSize: "13.5px",
               fontWeight: 700,
               border:
-                form.role === r
+                form.role === r.id
                   ? "1.5px solid var(--primary)"
                   : "1px solid var(--border)",
               background:
-                form.role === r ? "var(--primary)" : "var(--surface-alt)",
-              color: form.role === r ? "#fff" : "var(--text)",
+                form.role === r.id ? "var(--primary)" : "var(--surface-alt)",
+              color: form.role === r.id ? "#fff" : "var(--text)",
             }}
           >
-            {t(ROLE_LABEL_KEYS[r] || "role_staff")}
+            {roleLabel(r, lang)}
           </button>
         ))}
       </div>
       <button
         onClick={() => onSave(editing ? { ...form, id: data.user.id } : form)}
+        style={{ ...primaryBtnStyle, width: "100%", justifyContent: "center" }}
+      >
+        {t("save")}
+      </button>
+    </ModalShell>
+  );
+}
+
+// Add/rename a role. Tab permissions themselves are toggled directly from
+// the Role Management matrix (see UsersTab) — this modal only handles the
+// role's name, both for a brand-new role and for renaming an existing one.
+function RoleModal({ data, onClose, onSave }) {
+  const { t } = useT();
+  const editing = data.mode === "edit";
+  const r = editing ? data.role : { name_km: "", name_en: "" };
+  const [form, setForm] = useState(r);
+  return (
+    <ModalShell
+      title={editing ? t("editRoleTitle") : t("addRoleTitle")}
+      onClose={onClose}
+    >
+      <label style={fieldLabel}>{t("fieldRoleNameKm")}</label>
+      <input
+        style={fieldInput}
+        value={form.name_km || ""}
+        onChange={(e) => setForm({ ...form, name_km: e.target.value })}
+      />
+      <label style={fieldLabel}>{t("fieldRoleNameEn")}</label>
+      <input
+        style={fieldInput}
+        value={form.name_en || ""}
+        onChange={(e) => setForm({ ...form, name_en: e.target.value })}
+      />
+      <button
+        onClick={() => onSave(editing ? { ...form, id: data.role.id } : form)}
         style={{ ...primaryBtnStyle, width: "100%", justifyContent: "center" }}
       >
         {t("save")}
