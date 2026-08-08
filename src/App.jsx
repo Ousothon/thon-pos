@@ -69,6 +69,10 @@ import {
 // 2. In the SQL editor, run the schema from the setup guide (products + online_orders tables)
 // 3. Project Settings > API — copy your Project URL and "anon public" key below
 // 4. Database > Replication — turn on realtime for the `online_orders` table (optional but recommended)
+// 5. Role permissions (who can see which tab) are stored as a JSON blob on
+//    `shop_settings` so every device shares one copy. If your project was
+//    set up before this existed, run once in the SQL editor:
+//      alter table shop_settings add column if not exists roles_json text;
 const SUPABASE_URL = "https://zkstajqlucnvpqxwpuxo.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_jucFEQ_c8EVFcwPkfhWMoQ_K-sSNyzm";
 const supabase =
@@ -982,6 +986,19 @@ const STRINGS = {
     en: "Can't delete — this role is still assigned to a user",
   },
   roleDeleteConfirm: { km: "លុបតួនាទីនេះ?", en: "Delete this role?" },
+  saveRolePermissions: { km: "រក្សាទុកសិទ្ធិ", en: "Save permissions" },
+  rolePermissions_unsaved: {
+    km: "មានការផ្លាស់ប្តូរមិនទាន់រក្សាទុក",
+    en: "You have unsaved changes",
+  },
+  toast_rolePermissionsSaved: {
+    km: "រក្សាទុកសិទ្ធិចូលមើលរួចរាល់",
+    en: "Permissions saved",
+  },
+  toast_rolePermissionsSyncFailed: {
+    km: "រក្សាទុកនៅលើ Cloud បរាជ័យ — ប្រហែលជាតារាង shop_settings មិនទាន់មាន column ចាំបាច់ទេ (សូមពិនិត្យ Supabase) ប៉ុន្តែបានរក្សាទុកនៅលើឧបករណ៍នេះរួចហើយ",
+    en: "Cloud sync failed — shop_settings may be missing a required column (check Supabase). Saved on this device though.",
+  },
   audit_entity_role: { km: "តួនាទី", en: "Role" },
   toast_userDisabled: {
     km: "បានបិទគណនីអ្នកប្រើប្រាស់",
@@ -1732,22 +1749,21 @@ function POSApp() {
   };
 
   // ---------- Roles (admin only) ----------
-  // Saves a role's name (add or rename). Tab permissions are toggled
-  // separately via toggleRoleTab, since each checkbox click should apply
-  // immediately rather than waiting on a form submit.
+  // Saves a role's name (add or rename). Tab permissions are edited
+  // separately via the Save button in Role Management (saveRolePermissions
+  // below), which commits the whole matrix and syncs it to the cloud.
   const saveRole = (form) => {
     const name = (form.name_km || form.name_en || "").trim();
     if (!name) {
       showToast(t("toast_roleNameRequired"), "error");
       return;
     }
+    let nextRoles;
     if (form.id) {
-      setRoles(
-        roles.map((r) =>
-          r.id === form.id
-            ? { ...r, name_km: form.name_km, name_en: form.name_en }
-            : r,
-        ),
+      nextRoles = roles.map((r) =>
+        r.id === form.id
+          ? { ...r, name_km: form.name_km, name_en: form.name_en }
+          : r,
       );
       showToast(t("toast_roleUpdated"));
       logAudit("edit", "role", form.name_km || form.name_en);
@@ -1758,27 +1774,37 @@ function POSApp() {
         name_en: form.name_en,
         tabs: [],
       };
-      setRoles([...roles, created]);
+      nextRoles = [...roles, created];
       showToast(t("toast_roleAdded"));
       logAudit("add", "role", form.name_km || form.name_en);
     }
+    setRoles(nextRoles);
+    pushRoles(nextRoles);
     setRoleModal(null);
   };
 
-  // Flips one tab's permission on/off for a role. The admin role is
-  // locked (see seedRoles) so this is a no-op for it even if somehow
-  // triggered — the UI itself also disables those checkboxes.
-  const toggleRoleTab = (roleId, tabId) => {
-    setRoles(
-      roles.map((r) => {
-        if (r.id !== roleId || r.locked) return r;
-        const has = (r.tabs || []).includes(tabId);
-        return {
-          ...r,
-          tabs: has ? r.tabs.filter((x) => x !== tabId) : [...r.tabs, tabId],
-        };
-      }),
+  // Commits the whole permissions matrix in one shot: local state + a
+  // single Cloud push + one clear toast, instead of syncing per checkbox
+  // click. This is what the Save button in Role Management calls — the
+  // matrix UI itself only edits a local draft copy until this runs, so
+  // admins get one explicit "did this actually save" signal, and other
+  // signed-in devices pick it up via the shop_settings realtime/poll sync.
+  // The admin role is locked (see seedRoles) so its tabs never change here
+  // even if a stale draft somehow included an edit for it.
+  const saveRolePermissions = async (updatedRoles) => {
+    const safeRoles = updatedRoles.map((r) => {
+      const original = roles.find((x) => x.id === r.id);
+      return original && original.locked ? original : r;
+    });
+    setRoles(safeRoles);
+    const ok = await pushRoles(safeRoles);
+    showToast(
+      ok
+        ? t("toast_rolePermissionsSaved")
+        : t("toast_rolePermissionsSyncFailed"),
+      ok ? "ok" : "error",
     );
+    logAudit("edit", "role", t("nav_users_sub_roles"));
   };
 
   const deleteRole = (roleId) => {
@@ -1789,7 +1815,9 @@ function POSApp() {
       showToast(t("toast_roleInUse"), "error");
       return;
     }
-    setRoles(roles.filter((r) => r.id !== roleId));
+    const nextRoles = roles.filter((r) => r.id !== roleId);
+    setRoles(nextRoles);
+    pushRoles(nextRoles);
     showToast(t("toast_roleDeleted"));
     logAudit("delete", "role", target.name_km || target.name_en);
   };
@@ -2553,6 +2581,20 @@ function POSApp() {
         setPayKhqrEnabled(data.pay_khqr_enabled);
       if (data && typeof data.khqr_image === "string")
         setKhqrImage(data.khqr_image);
+      if (data && typeof data.roles_json === "string") {
+        try {
+          const cloudRoles = JSON.parse(data.roles_json);
+          // Only replace local roles once we actually have a non-empty
+          // array back — an empty/blank column (fresh project, or a
+          // device that hasn't saved permissions yet) should never wipe
+          // out what's already on screen.
+          if (Array.isArray(cloudRoles) && cloudRoles.length) {
+            setRoles(cloudRoles);
+          }
+        } catch {
+          /* malformed roles payload — keep local roles as-is */
+        }
+      }
     } catch {
       /* ignore, local cache still works */
     }
@@ -2604,6 +2646,29 @@ function POSApp() {
       );
     } catch {
       showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  // Role permissions are pushed as one JSON blob (not row-by-row like
+  // users/products) since the whole matrix is edited and saved together —
+  // this is what makes changes on one device actually show up for other
+  // signed-in devices, which was missing before. Returns true/false so
+  // callers can tell the admin whether the cloud save actually worked.
+  const pushRoles = async (rolesList) => {
+    if (!supabase) return true;
+    try {
+      const { error } = await supabase.from("shop_settings").upsert(
+        {
+          id: "default",
+          roles_json: JSON.stringify(rolesList),
+          updated_at: Date.now(),
+        },
+        { onConflict: "id" },
+      );
+      if (error) return false;
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -3935,7 +4000,7 @@ function POSApp() {
               openAddRole={() => setRoleModal({ mode: "add" })}
               openEditRole={(r) => setRoleModal({ mode: "edit", role: r })}
               deleteRole={deleteRole}
-              toggleRoleTab={toggleRoleTab}
+              saveRolePermissions={saveRolePermissions}
             />
           )}
           {activeTab === "auditLog" && allowedTabs.includes("auditLog") && (
@@ -7822,7 +7887,7 @@ function UsersTab({
   openAddRole,
   openEditRole,
   deleteRole,
-  toggleRoleTab,
+  saveRolePermissions,
 }) {
   const { t, lang } = useT();
   const [subTab, setSubTab] = useState("list"); // "list" | "roles"
@@ -7830,6 +7895,53 @@ function UsersTab({
   const [toggleTarget, setToggleTarget] = useState(null);
   const [roleDeleteTarget, setRoleDeleteTarget] = useState(null);
   const roleById = (id) => roles.find((r) => r.id === id);
+
+  // Draft copy of the permissions matrix. Checkbox clicks only edit this
+  // local copy — nothing reaches the app state or the cloud until the
+  // admin presses "Save permissions". Re-synced from the real `roles`
+  // whenever it changes from outside (a fresh cloud pull, a rename/add/
+  // delete via the modal, or right after our own save completes) as long
+  // as there's no unsaved edit in progress, so an incoming sync never
+  // silently wipes out what the admin is mid-editing.
+  const [draftRoles, setDraftRoles] = useState(roles);
+  const [rolesDirty, setRolesDirty] = useState(false);
+  useEffect(() => {
+    if (!rolesDirty) {
+      setDraftRoles(roles);
+      return;
+    }
+    // A rename/add/delete came in from elsewhere (the role modal, or a
+    // cloud sync) while permission checkboxes are still unsaved — adopt
+    // the new role list but keep whatever tabs are currently checked in
+    // the draft for roles that still exist, instead of discarding them.
+    setDraftRoles((prevDraft) =>
+      roles.map((r) => {
+        const draftMatch = prevDraft.find((d) => d.id === r.id);
+        return draftMatch ? { ...r, tabs: draftMatch.tabs } : r;
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roles]);
+
+  const toggleDraftTab = (roleId, tabId) => {
+    setDraftRoles((prev) =>
+      prev.map((r) => {
+        if (r.id !== roleId || r.locked) return r;
+        const has = (r.tabs || []).includes(tabId);
+        return {
+          ...r,
+          tabs: has ? r.tabs.filter((x) => x !== tabId) : [...r.tabs, tabId],
+        };
+      }),
+    );
+    setRolesDirty(true);
+  };
+
+  const handleSavePermissions = () => {
+    saveRolePermissions(draftRoles);
+    setRolesDirty(false);
+  };
+
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
@@ -7845,9 +7957,36 @@ function UsersTab({
               <UserPlus size={16} /> {t("addUser")}
             </button>
           ) : (
-            <button onClick={openAddRole} style={primaryBtnStyle}>
-              <Plus size={16} /> {t("addRole")}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {rolesDirty && (
+                <span
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "var(--danger)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                  }}
+                >
+                  <AlertTriangle size={13} /> {t("rolePermissions_unsaved")}
+                </span>
+              )}
+              <button
+                onClick={handleSavePermissions}
+                disabled={!rolesDirty}
+                style={{
+                  ...primaryBtnStyle,
+                  opacity: rolesDirty ? 1 : 0.5,
+                  cursor: rolesDirty ? "pointer" : "not-allowed",
+                }}
+              >
+                <CheckCircle2 size={16} /> {t("saveRolePermissions")}
+              </button>
+              <button onClick={openAddRole} style={secondaryBtnStyle}>
+                <Plus size={16} /> {t("addRole")}
+              </button>
+            </div>
           )
         }
       />
@@ -8044,7 +8183,7 @@ function UsersTab({
           <table
             style={{
               width: "100%",
-              minWidth: `${360 + roles.length * 150}px`,
+              minWidth: `${360 + draftRoles.length * 150}px`,
               borderCollapse: "collapse",
               fontSize: "13.5px",
             }}
@@ -8060,7 +8199,7 @@ function UsersTab({
                 <th style={{ ...thStyle, minWidth: "180px" }}>
                   {t("th_permission")}
                 </th>
-                {roles.map((r) => (
+                {draftRoles.map((r) => (
                   <th
                     key={r.id}
                     style={{
@@ -8119,7 +8258,7 @@ function UsersTab({
                   style={{ borderTop: "1px solid var(--border)" }}
                 >
                   <td style={tdStyle}>{t(navItem.key)}</td>
-                  {roles.map((r) => {
+                  {draftRoles.map((r) => {
                     const checked = (r.tabs || []).includes(navItem.id);
                     return (
                       <td
@@ -8130,7 +8269,7 @@ function UsersTab({
                           type="checkbox"
                           checked={checked}
                           disabled={r.locked}
-                          onChange={() => toggleRoleTab(r.id, navItem.id)}
+                          onChange={() => toggleDraftTab(r.id, navItem.id)}
                           style={{
                             width: "16px",
                             height: "16px",
