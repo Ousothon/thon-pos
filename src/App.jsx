@@ -4329,6 +4329,20 @@ function FontStyles() {
       .pos-product-card:active:not(:disabled) {
         transform: translateY(0) scale(.98);
       }
+      .stat-card {
+        transition: transform .12s ease, box-shadow .12s ease;
+      }
+      .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(15, 30, 26, .08);
+      }
+      .dash-row {
+        transition: background-color .12s ease;
+        border-radius: 8px;
+      }
+      .dash-row:hover {
+        background: var(--surface-alt);
+      }
       .cart-line-row {
         position: relative;
         transition: background-color .12s ease;
@@ -5917,17 +5931,25 @@ function DashboardTab({
           label={t("stat_todayRevenue")}
           value={fmt(todayRevenue)}
           icon={TrendingUp}
+          tone="primary"
         />
-        <StatCard label={t("stat_todayTx")} value={todayCount} icon={Receipt} />
+        <StatCard
+          label={t("stat_todayTx")}
+          value={todayCount}
+          icon={Receipt}
+          tone="accent"
+        />
         <StatCard
           label={t("stat_totalRevenue")}
           value={fmt(totalRevenue)}
           icon={BarChart3}
+          tone="primary"
         />
         <StatCard
           label={t("stat_stockValue")}
           value={fmt(totalStockValue)}
           icon={Package}
+          tone="accent"
         />
       </div>
 
@@ -5972,12 +5994,13 @@ function DashboardTab({
               {lowStock.map((p) => (
                 <div
                   key={p.id}
+                  className="dash-row"
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
                     fontSize: "13.5px",
-                    padding: "6px 0",
+                    padding: "6px",
                     borderBottom: "1px solid var(--border)",
                   }}
                 >
@@ -6007,9 +6030,13 @@ function DashboardTab({
               cursor: "pointer",
               fontWeight: 600,
               padding: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
             }}
           >
             {t("manageStock")}
+            <ChevronDown size={13} style={{ transform: "rotate(-90deg)" }} />
           </button>
         </div>
 
@@ -6045,11 +6072,12 @@ function DashboardTab({
               {sales.slice(0, 5).map((s) => (
                 <div
                   key={s.id}
+                  className="dash-row"
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
                     fontSize: "13.5px",
-                    padding: "6px 0",
+                    padding: "6px",
                     borderBottom: "1px solid var(--border)",
                   }}
                 >
@@ -6080,9 +6108,13 @@ function DashboardTab({
               cursor: "pointer",
               fontWeight: 600,
               padding: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
             }}
           >
             {t("viewReports")}
+            <ChevronDown size={13} style={{ transform: "rotate(-90deg)" }} />
           </button>
         </div>
       </div>
@@ -6090,9 +6122,11 @@ function DashboardTab({
   );
 }
 
-function StatCard({ label, value, icon: Icon }) {
+function StatCard({ label, value, icon: Icon, tone = "primary" }) {
+  const toneColor = tone === "accent" ? "var(--accent)" : "var(--primary)";
   return (
     <div
+      className="stat-card"
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
@@ -6116,14 +6150,27 @@ function StatCard({ label, value, icon: Icon }) {
         >
           {label}
         </span>
-        <Icon size={17} color="var(--primary)" />
+        <div
+          style={{
+            width: "30px",
+            height: "30px",
+            borderRadius: "9px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: `color-mix(in srgb, ${toneColor} 14%, transparent)`,
+            flexShrink: 0,
+          }}
+        >
+          <Icon size={16} color={toneColor} />
+        </div>
       </div>
       <div
         style={{
           fontFamily: "var(--font-mono)",
           fontWeight: 800,
           fontSize: "21px",
-          marginTop: "8px",
+          marginTop: "10px",
         }}
       >
         {value}
@@ -12530,94 +12577,136 @@ function StorefrontApp() {
                   marginBottom: "90px",
                 }}
               >
-                {filtered.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => addToCart(p)}
-                    disabled={p.stock <= 0}
-                    style={{
-                      textAlign: "left",
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "12px",
-                      padding: "10px",
-                      cursor: p.stock > 0 ? "pointer" : "not-allowed",
-                      opacity: p.stock > 0 ? 1 : 0.5,
-                    }}
-                  >
-                    <div
+                {filtered.map((p) => {
+                  const inCartQty = cart.find((c) => c.id === p.id)?.qty || 0;
+                  return (
+                    <button
+                      key={p.id}
+                      className="pos-product-card"
+                      onClick={() => addToCart(p)}
+                      disabled={p.stock <= 0}
                       style={{
-                        width: "100%",
-                        aspectRatio: "1",
-                        borderRadius: "9px",
-                        overflow: "hidden",
-                        marginBottom: "8px",
-                        background: "var(--surface-alt)",
+                        position: "relative",
+                        textAlign: "left",
+                        background: "var(--surface)",
+                        border:
+                          "1px solid " +
+                          (inCartQty > 0 ? "var(--primary)" : "var(--border)"),
+                        borderRadius: "12px",
+                        padding: "10px",
+                        cursor: p.stock > 0 ? "pointer" : "not-allowed",
+                        opacity: p.stock > 0 ? 1 : 0.5,
                       }}
                     >
-                      {p.image ? (
-                        <img
-                          src={p.image}
-                          alt=""
+                      {inCartQty > 0 && (
+                        <span
                           style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
+                            position: "absolute",
+                            top: "-7px",
+                            right: "-7px",
+                            minWidth: "20px",
+                            height: "20px",
+                            padding: "0 5px",
+                            borderRadius: "999px",
+                            background: "var(--primary)",
+                            color: "#fff",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            fontFamily: "var(--font-mono)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
+                            boxShadow: "0 2px 6px rgba(0,0,0,.18)",
+                            zIndex: 1,
                           }}
                         >
-                          <Package size={26} color="var(--text-muted)" />
-                        </div>
+                          {inCartQty}
+                        </span>
                       )}
-                    </div>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: "13px",
-                        marginBottom: "3px",
-                      }}
-                    >
-                      {prodName(p)}
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <span
+                      <div
                         style={{
-                          fontFamily: "var(--font-mono)",
-                          color: "var(--primary)",
+                          width: "100%",
+                          aspectRatio: "1",
+                          borderRadius: "9px",
+                          overflow: "hidden",
+                          marginBottom: "8px",
+                          background: "var(--surface-alt)",
+                        }}
+                      >
+                        {p.image ? (
+                          <img
+                            src={p.image}
+                            alt=""
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Package size={26} color="var(--text-muted)" />
+                          </div>
+                        )}
+                      </div>
+                      <div
+                        style={{
                           fontWeight: 700,
                           fontSize: "13px",
+                          marginBottom: "3px",
                         }}
                       >
-                        {fmt(p.price)}
-                      </span>
-                      <span
+                        {prodName(p)}
+                      </div>
+                      <div
                         style={{
-                          fontSize: "10.5px",
-                          color: "var(--text-muted)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
                         }}
                       >
-                        {p.stock > 0
-                          ? `${p.stock} ${prodUnit(p)}`
-                          : t("storefront_outOfStock")}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            color: "var(--primary)",
+                            fontWeight: 700,
+                            fontSize: "13px",
+                          }}
+                        >
+                          {fmt(p.price)}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            padding: "2px 6px",
+                            borderRadius: "999px",
+                            background:
+                              p.stock > 0 && p.stock <= 5
+                                ? "color-mix(in srgb, var(--danger) 14%, transparent)"
+                                : "var(--surface-alt)",
+                            color:
+                              p.stock > 0 && p.stock <= 5
+                                ? "var(--danger)"
+                                : "var(--text-muted)",
+                          }}
+                        >
+                          {p.stock > 0
+                            ? `${p.stock} ${prodUnit(p)}`
+                            : t("storefront_outOfStock")}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* floating cart panel — collapsible so it never blocks product browsing */}
@@ -12659,8 +12748,20 @@ function StorefrontApp() {
                         }}
                       >
                         <ShoppingCart size={16} color="var(--primary)" />
-                        {t("storefront_cartTitle")}{" "}
-                        {`(${cart.reduce((s, c) => s + c.qty, 0)})`}
+                        {t("storefront_cartTitle")}
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            color: "#fff",
+                            background: "var(--primary)",
+                            borderRadius: "999px",
+                            padding: "2px 7px",
+                          }}
+                        >
+                          {cart.reduce((s, c) => s + c.qty, 0)}
+                        </span>
                       </div>
                       <div
                         style={{
@@ -12700,38 +12801,26 @@ function StorefrontApp() {
                         {cart.map((c) => (
                           <div
                             key={c.id}
+                            className="cart-line-row"
                             style={{
                               display: "flex",
                               alignItems: "center",
                               gap: "8px",
-                              padding: "6px 0",
+                              padding: "7px 6px",
                             }}
                           >
                             <div style={{ flex: 1, fontSize: "13px" }}>
                               {c.name}
                             </div>
-                            <button
-                              onClick={() => changeQty(c.id, -1)}
-                              style={iconBtnStyle}
-                            >
-                              <Minus size={12} />
-                            </button>
-                            <span
-                              style={{
-                                fontFamily: "var(--font-mono)",
-                                fontSize: "13px",
-                                minWidth: "18px",
-                                textAlign: "center",
-                              }}
-                            >
-                              {c.qty}
-                            </span>
-                            <button
-                              onClick={() => changeQty(c.id, 1)}
-                              style={iconBtnStyle}
-                            >
-                              <Plus size={12} />
-                            </button>
+                            <div className="cart-line-qty">
+                              <button onClick={() => changeQty(c.id, -1)}>
+                                <Minus size={12} />
+                              </button>
+                              <span>{c.qty}</span>
+                              <button onClick={() => changeQty(c.id, 1)}>
+                                <Plus size={12} />
+                              </button>
+                            </div>
                             <span
                               style={{
                                 fontFamily: "var(--font-mono)",
@@ -12743,6 +12832,7 @@ function StorefrontApp() {
                               {fmt(c.price * c.qty)}
                             </span>
                             <button
+                              className="cart-line-remove"
                               onClick={() => removeFromCart(c.id)}
                               style={{
                                 ...iconBtnStyle,
