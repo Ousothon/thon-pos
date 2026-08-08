@@ -5,6 +5,7 @@ import {
   useContext,
   createContext,
   useRef,
+  Component,
 } from "react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -8994,6 +8995,20 @@ function BarcodeScanModal({ onClose, onDetected }) {
   useEffect(() => {
     let cancelled = false;
     let instance = null;
+    let stopped = false;
+    // html5-qrcode throws synchronously if you call stop() on a scanner
+    // that's already stopped/never started — guard against calling it twice
+    // (once on successful detection, once on unmount) and against a
+    // synchronous throw crashing the whole React tree during cleanup.
+    const safeStop = () => {
+      if (stopped || !instance) return Promise.resolve();
+      stopped = true;
+      try {
+        return instance.stop().catch(() => {});
+      } catch {
+        return Promise.resolve();
+      }
+    };
     loadHtml5Qrcode()
       .then(() => {
         if (cancelled) return Promise.reject(new Error("cancelled"));
@@ -9025,10 +9040,7 @@ function BarcodeScanModal({ onClose, onDetected }) {
           (decodedText) => {
             if (cancelled) return;
             cancelled = true;
-            instance
-              .stop()
-              .catch(() => {})
-              .finally(() => onDetected(decodedText));
+            safeStop().finally(() => onDetected(decodedText));
           },
           () => {
             /* per-frame decode miss — ignore, keep scanning */
@@ -9043,7 +9055,7 @@ function BarcodeScanModal({ onClose, onDetected }) {
       });
     return () => {
       cancelled = true;
-      if (instance) instance.stop().catch(() => {});
+      safeStop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -11581,9 +11593,73 @@ function StorefrontApp() {
 
 // ================= Root =================
 
+// Root-level safety net: if anything below throws during render (a rare
+// library bug, a bad state, etc), show a recoverable screen instead of a
+// blank white page that looks like the app vanished.
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error) {
+    console.error("App crashed:", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          style={{
+            height: "100vh",
+            width: "100vw",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "14px",
+            padding: "24px",
+            textAlign: "center",
+            fontFamily: "sans-serif",
+          }}
+        >
+          <div style={{ fontSize: "17px", fontWeight: 700 }}>
+            មានបញ្ហាបច្ចេកទេសកើតឡើង — Something went wrong
+          </div>
+          <div style={{ fontSize: "13.5px", color: "#666", maxWidth: "320px" }}>
+            សូមចុចប៊ូតុងខាងក្រោមដើម្បីផ្ទុកឡើងវិញ — Tap the button below to
+            reload the app. Your saved data is not affected.
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: "10px 22px",
+              borderRadius: "9px",
+              border: "none",
+              background: "#0f6e56",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            Reload / ផ្ទុកឡើងវិញ
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const isStorefront =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("order") === "1";
-  return isStorefront ? <StorefrontApp /> : <POSApp />;
+  return (
+    <ErrorBoundary>
+      {isStorefront ? <StorefrontApp /> : <POSApp />}
+    </ErrorBoundary>
+  );
 }
