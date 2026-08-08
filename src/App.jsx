@@ -480,6 +480,10 @@ const STRINGS = {
   stat_todayTx: { km: "ចំនួនប្រតិបត្តិការថ្ងៃនេះ", en: "Today's transactions" },
   stat_totalRevenue: { km: "ចំណូលសរុប", en: "Total revenue" },
   stat_stockValue: { km: "តម្លៃស្តុកសរុប", en: "Total stock value" },
+  dash_salesTrend: {
+    km: "និន្នាការលក់ ៧ថ្ងៃចុងក្រោយ",
+    en: "Sales trend (last 7 days)",
+  },
   lowStockTitle: { km: "ស្តុកជិតអស់", en: "Low stock alert" },
   noLowStock: {
     km: "គ្មានទំនិញជិតអស់ស្តុកទេ 🎉",
@@ -3637,6 +3641,30 @@ function POSApp() {
       });
   }, [rangedSales, reportRange, lang]);
 
+  // Always-last-7-days trend for the Dashboard card, independent of the
+  // Reports tab's range filter above.
+  const dashboardChartData = useMemo(() => {
+    const now = new Date();
+    const wLabels = WEEKDAY_LABELS[lang] || WEEKDAY_LABELS.km;
+    const activeSales = sales.filter((s) => !s.refunded);
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - i);
+      days.push({
+        key: d.toDateString(),
+        label: wLabels[d.getDay()],
+        value: 0,
+      });
+    }
+    activeSales.forEach((s) => {
+      const key = new Date(s.date).toDateString();
+      const bucket = days.find((d) => d.key === key);
+      if (bucket) bucket.value += s.total;
+    });
+    return days.map(({ label, value }) => ({ label, value }));
+  }, [sales, lang]);
+
   const exportCsv = () => {
     const header = [
       "Date",
@@ -4046,6 +4074,7 @@ function POSApp() {
               lowStock={lowStock}
               products={products}
               sales={sales}
+              weekChartData={dashboardChartData}
               setActiveTab={setActiveTab}
               prodName={prodName}
             />
@@ -5920,6 +5949,7 @@ function DashboardTab({
   lowStock,
   products,
   sales,
+  weekChartData,
   setActiveTab,
   prodName,
 }) {
@@ -5966,6 +5996,32 @@ function DashboardTab({
           icon={Package}
           tone="accent"
         />
+      </div>
+
+      <div style={{ padding: "4px 26px 20px" }}>
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "14px",
+            padding: "18px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "9px",
+              marginBottom: "8px",
+            }}
+          >
+            <TrendingUp size={17} color="var(--primary)" />
+            <span style={{ fontWeight: 700, fontSize: "14.5px" }}>
+              {t("dash_salesTrend")}
+            </span>
+          </div>
+          <RevenueChart data={weekChartData} />
+        </div>
       </div>
 
       <div
