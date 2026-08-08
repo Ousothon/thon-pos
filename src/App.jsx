@@ -10550,6 +10550,14 @@ function BarcodeScanModal({ onClose, onDetected }) {
   const elementId = "barcode-scan-region";
 
   useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
     let cancelled = false;
     let instance = null;
     let stopped = false;
@@ -10720,8 +10728,18 @@ function BarcodeScanModal({ onClose, onDetected }) {
 }
 
 function ModalShell({ title, onClose, children, width = "380px" }) {
+  // Esc closes the modal, matching standard dialog behavior.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
+      onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -10730,13 +10748,18 @@ function ModalShell({ title, onClose, children, width = "380px" }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 50,
+        padding: "16px",
       }}
     >
       <div
+        // Stop the click from bubbling to the backdrop above, so clicking
+        // inside the modal never closes it.
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
           borderRadius: "16px",
           width,
+          maxWidth: "100%",
           maxHeight: "88%",
           overflowY: "auto",
           boxShadow: "0 20px 50px rgba(0,0,0,.25)",
@@ -10784,6 +10807,13 @@ function ConfirmDialog({
   onCancel,
 }) {
   const { t } = useT();
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
   return (
     <div
       role="alertdialog"
@@ -11927,8 +11957,16 @@ function ReceiptModal({
   const { t, lang } = useT();
   const isNarrow = receiptWidth === "58mm";
   const areaWidthPx = isNarrow ? "220px" : "300px";
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div
+      onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -11937,15 +11975,18 @@ function ReceiptModal({
         alignItems: "center",
         justifyContent: "center",
         zIndex: 50,
+        padding: "16px",
         "--receipt-print-width": areaWidthPx,
       }}
     >
       <div
         id="receipt-print-area"
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
           borderRadius: "12px",
           width: areaWidthPx,
+          maxWidth: "100%",
           boxShadow: "0 20px 50px rgba(0,0,0,.25)",
         }}
       >
