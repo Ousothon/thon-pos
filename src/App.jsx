@@ -4344,6 +4344,13 @@ function FontStyles() {
         transform: translateY(-2px);
         box-shadow: 0 6px 16px rgba(15, 30, 26, .08);
       }
+      .order-card {
+        transition: transform .12s ease, box-shadow .12s ease;
+      }
+      .order-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(15, 30, 26, .08);
+      }
       .dash-row {
         transition: background-color .12s ease;
         border-radius: 8px;
@@ -7796,9 +7803,14 @@ function OnlineOrdersTab({
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [archiveView, setArchiveView] = useState("active"); // 'active' | 'archived'
+  const [statusFilter, setStatusFilter] = useState("all");
   const [undoTarget, setUndoTarget] = useState(null);
   const [reasonTarget, setReasonTarget] = useState(null); // { order, actionType: 'reject'|'cancel' }
-  const visibleOrders = archiveView === "archived" ? archivedOrders : orders;
+  const allVisibleOrders = archiveView === "archived" ? archivedOrders : orders;
+  const visibleOrders =
+    statusFilter === "all"
+      ? allVisibleOrders
+      : allVisibleOrders.filter((o) => o.status === statusFilter);
 
   const storeUrl =
     typeof window !== "undefined"
@@ -8121,6 +8133,33 @@ function OnlineOrdersTab({
 
       <div
         style={{
+          padding: "14px 26px 0",
+          display: "flex",
+          gap: "7px",
+          flexWrap: "wrap",
+        }}
+      >
+        <CategoryPill
+          active={statusFilter === "all"}
+          onClick={() => setStatusFilter("all")}
+          label={`${t("cat_all")} (${allVisibleOrders.length})`}
+        />
+        {Array.from(new Set(allVisibleOrders.map((o) => o.status))).map(
+          (st) => (
+            <CategoryPill
+              key={st}
+              active={statusFilter === st}
+              onClick={() => setStatusFilter(st)}
+              label={`${t("status_" + st)} (${
+                allVisibleOrders.filter((o) => o.status === st).length
+              })`}
+            />
+          ),
+        )}
+      </div>
+
+      <div
+        style={{
           padding: "16px 26px 26px",
           display: "grid",
           gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
@@ -8128,7 +8167,20 @@ function OnlineOrdersTab({
         }}
       >
         {visibleOrders.length === 0 && (
-          <div style={{ color: "var(--text-muted)", fontSize: "14px" }}>
+          <div
+            style={{
+              gridColumn: "1/-1",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "8px",
+              color: "var(--text-muted)",
+              fontSize: "14px",
+              padding: "30px 0",
+              textAlign: "center",
+            }}
+          >
+            <Receipt size={26} color="var(--border)" />
             {archiveView === "archived"
               ? t("archive_ordersEmpty")
               : t("noOnlineOrders")}
@@ -8137,9 +8189,16 @@ function OnlineOrdersTab({
         {visibleOrders.map((o) => (
           <div
             key={o.id}
+            className="order-card"
             style={{
               background: "var(--surface)",
-              border: "1px solid var(--border)",
+              border:
+                "1px solid " +
+                (o.status === "pending" ? "var(--accent)" : "var(--border)"),
+              borderLeft:
+                o.status === "pending"
+                  ? "4px solid var(--accent)"
+                  : "1px solid var(--border)",
               borderRadius: "14px",
               padding: "16px",
               display: "flex",
