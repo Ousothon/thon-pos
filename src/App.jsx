@@ -1402,6 +1402,20 @@ const NAV = [
   { id: "settings", key: "nav_settings", icon: SettingsIcon },
 ];
 
+// Role Management (see UsersTab) reads NAV to build its permission rows,
+// so any new tab added above shows up there automatically — nothing else
+// to wire up for that part.
+//
+// The other half: a `locked: true` role (currently just "admin", see
+// seedRoles) always gets every tab in NAV here, no matter what's actually
+// saved in its `tabs` array. Without this, a shop that was already running
+// before a new tab got added would have an admin whose stored tabs array
+// simply doesn't mention the new tab — and since locked rows can't be
+// checked by hand in Role Management, there'd be no way for that admin to
+// ever unlock it. This keeps admin's access always complete by definition.
+const roleTabIds = (role) =>
+  role && role.locked ? NAV.map((n) => n.id) : (role && role.tabs) || [];
+
 function POSApp() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState([]);
@@ -1616,7 +1630,7 @@ function POSApp() {
   const currentUserRole = currentUser
     ? roles.find((r) => r.id === currentUser.role)
     : null;
-  const allowedTabs = currentUserRole ? currentUserRole.tabs || [] : [];
+  const allowedTabs = roleTabIds(currentUserRole);
   const visibleNav = NAV.filter((n) => allowedTabs.includes(n.id));
 
   const login = (username, password) => {
@@ -1636,11 +1650,8 @@ function POSApp() {
     setLoginError("");
     setSessionUserId(match.id);
     const perms = roles.find((r) => r.id === match.role);
-    setActiveTab(
-      perms && perms.tabs.includes("pos")
-        ? "pos"
-        : (perms && perms.tabs[0]) || "pos",
-    );
+    const permTabs = roleTabIds(perms);
+    setActiveTab(permTabs.includes("pos") ? "pos" : permTabs[0] || "pos");
   };
   const logout = () => {
     setSessionUserId(null);
@@ -8259,7 +8270,7 @@ function UsersTab({
                 >
                   <td style={tdStyle}>{t(navItem.key)}</td>
                   {draftRoles.map((r) => {
-                    const checked = (r.tabs || []).includes(navItem.id);
+                    const checked = roleTabIds(r).includes(navItem.id);
                     return (
                       <td
                         key={r.id}
