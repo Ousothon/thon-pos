@@ -240,8 +240,32 @@ const ROLE_PERMS = {
     "settings",
     "expenses",
   ],
+  // manager: sees everything an admin uses to run day-to-day operations
+  // (sales, stock, reports, expenses across branches) but can't touch
+  // user accounts, the audit trail, or system settings — those stay
+  // admin-only so a manager can't grant themselves more access or
+  // cover their tracks.
+  manager: [
+    "pos",
+    "dashboard",
+    "inventory",
+    "reports",
+    "customers",
+    "onlineOrders",
+    "expenses",
+  ],
   staff: ["pos", "customers", "onlineOrders"],
 };
+
+// Small helper so every place that shows a role name/badge (sidebar,
+// user table, user form) stays in sync — add a role in ROLE_PERMS,
+// its translations, and this map, and every display picks it up.
+const ROLE_LABEL_KEYS = {
+  admin: "role_admin",
+  manager: "role_manager",
+  staff: "role_staff",
+};
+const ROLE_ORDER = ["admin", "manager", "staff"];
 
 const SESSION_KEY = "shop-session";
 
@@ -890,6 +914,7 @@ const STRINGS = {
   fieldFullNameEn: { km: "ឈ្មោះពេញ (English)", en: "Full name (English)" },
   fieldRole: { km: "តួនាទី", en: "Role" },
   role_admin: { km: "អ្នកគ្រប់គ្រង (Admin)", en: "Admin" },
+  role_manager: { km: "អ្នកគ្រប់គ្រងសាខា (Manager)", en: "Manager" },
   role_staff: { km: "បុគ្គលិក (Staff)", en: "Staff" },
   th_username: { km: "ឈ្មោះគណនី", en: "Username" },
   th_role: { km: "តួនាទី", en: "Role" },
@@ -3625,9 +3650,7 @@ function POSApp() {
                     : currentUser.name_km}
                 </div>
                 <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  {currentUser.role === "admin"
-                    ? t("role_admin")
-                    : t("role_staff")}
+                  {t(ROLE_LABEL_KEYS[currentUser.role] || "role_staff")}
                 </div>
               </div>
               <button
@@ -7773,11 +7796,18 @@ function UsersTab({
                         background:
                           u.role === "admin"
                             ? "var(--primary)"
-                            : "var(--surface-alt)",
-                        color: u.role === "admin" ? "#fff" : "var(--text)",
+                            : u.role === "manager"
+                              ? "color-mix(in srgb, var(--primary) 18%, transparent)"
+                              : "var(--surface-alt)",
+                        color:
+                          u.role === "admin"
+                            ? "#fff"
+                            : u.role === "manager"
+                              ? "var(--primary)"
+                              : "var(--text)",
                       }}
                     >
-                      {u.role === "admin" ? t("role_admin") : t("role_staff")}
+                      {t(ROLE_LABEL_KEYS[u.role] || "role_staff")}
                     </span>
                   </td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
@@ -10243,7 +10273,7 @@ function UserModal({ data, onClose, onSave }) {
       {!editing && <div style={{ marginBottom: "14px" }} />}
       <label style={fieldLabel}>{t("fieldRole")}</label>
       <div style={{ display: "flex", gap: "9px", marginBottom: "18px" }}>
-        {["admin", "staff"].map((r) => (
+        {ROLE_ORDER.map((r) => (
           <button
             key={r}
             onClick={() => setForm({ ...form, role: r })}
@@ -10263,7 +10293,7 @@ function UserModal({ data, onClose, onSave }) {
               color: form.role === r ? "#fff" : "var(--text)",
             }}
           >
-            {r === "admin" ? t("role_admin") : t("role_staff")}
+            {t(ROLE_LABEL_KEYS[r] || "role_staff")}
           </button>
         ))}
       </div>
