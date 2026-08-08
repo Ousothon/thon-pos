@@ -80,6 +80,11 @@ import {
 //    disagree on whether a sale was refunded). If your project predates
 //    this, run once in the SQL editor:
 //      alter table sales add column if not exists updated_at bigint;
+// 7. Rejecting/cancelling an online order now requires a reason, and
+//    records which staff member did it. If your project predates this,
+//    run once in the SQL editor:
+//      alter table online_orders add column if not exists status_reason text;
+//      alter table online_orders add column if not exists status_by text;
 const SUPABASE_URL = "https://zkstajqlucnvpqxwpuxo.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_jucFEQ_c8EVFcwPkfhWMoQ_K-sSNyzm";
 const supabase =
@@ -932,10 +937,13 @@ const STRINGS = {
   audit_action_enable: { km: "បើកគណនី", en: "Enabled" },
   audit_action_disable: { km: "បិទគណនី", en: "Disabled" },
   audit_action_refund: { km: "សងវិញ", en: "Refunded" },
+  audit_action_cancel: { km: "លុបចោលការបញ្ជាទិញ", en: "Cancelled order" },
+  audit_action_reject: { km: "បដិសេធការបញ្ជាទិញ", en: "Rejected order" },
   audit_entity_product: { km: "ទំនិញ", en: "Product" },
   audit_entity_customer: { km: "អតិថិជន", en: "Customer" },
   audit_entity_user: { km: "អ្នកប្រើប្រាស់", en: "User" },
   audit_entity_sale: { km: "ការលក់", en: "Sale" },
+  audit_entity_order: { km: "ការបញ្ជាទិញអនឡាញ", en: "Online order" },
   users_subtitle: { km: "{count} គណនី", en: "{count} accounts" },
   addUser: { km: "បន្ថែមអ្នកប្រើប្រាស់", en: "Add user" },
   editUser: { km: "កែប្រែអ្នកប្រើប្រាស់", en: "Edit user" },
@@ -1145,6 +1153,26 @@ const STRINGS = {
     en: "Order accepted and stock updated",
   },
   toast_orderRejected: { km: "បានបដិសេធការបញ្ជាទិញ", en: "Order rejected" },
+  orderReason_titleReject: {
+    km: "ហេតុផលបដិសេធការបញ្ជាទិញ",
+    en: "Reason for rejecting this order",
+  },
+  orderReason_titleCancel: {
+    km: "ហេតុផលលុបចោលការបញ្ជាទិញ",
+    en: "Reason for cancelling this order",
+  },
+  orderReason_placeholder: {
+    km: "ឧ. អតិថិជនមិនទទួលទូរស័ព្ទ / ទំនិញអស់ស្តុក...",
+    en: "e.g. customer unreachable, item out of stock...",
+  },
+  orderReason_required: {
+    km: "សូមបញ្ចូលហេតុផលមុននឹងបន្ត",
+    en: "Please enter a reason to continue",
+  },
+  orderReason_confirmReject: { km: "បញ្ជាក់បដិសេធ", en: "Confirm reject" },
+  orderReason_confirmCancel: { km: "បញ្ជាក់លុបចោល", en: "Confirm cancel" },
+  order_reasonLabel: { km: "ហេតុផល", en: "Reason" },
+  order_byLabel: { km: "ដោយ", en: "By" },
   toast_supabaseError: {
     km: "មានបញ្ហាក្នុងការភ្ជាប់ទៅ Supabase",
     en: "There was a problem connecting to Supabase",
@@ -2993,10 +3021,13 @@ function POSApp() {
     }
   };
 
-  const cancelAcceptedOrder = async (order) => {
+  const cancelAcceptedOrder = async (order, reason) => {
     try {
       // customer never paid / no-show — restore the reserved stock
       const items = order.items || [];
+      const byName = currentUser
+        ? currentUser.name_km || currentUser.name_en || currentUser.username
+        : "";
       setProducts((prev) =>
         prev.map((p) => {
           const line = items.find((i) => i.id === p.id);
@@ -3006,30 +3037,59 @@ function POSApp() {
       if (supabase)
         await supabase
           .from("online_orders")
-          .update({ status: "cancelled" })
+          .update({
+            status: "cancelled",
+            status_reason: reason,
+            status_by: byName,
+          })
           .eq("id", order.id);
       setOnlineOrders((prev) =>
         prev.map((o) =>
-          o.id === order.id ? { ...o, status: "cancelled" } : o,
+          o.id === order.id
+            ? {
+                ...o,
+                status: "cancelled",
+                status_reason: reason,
+                status_by: byName,
+              }
+            : o,
         ),
       );
       showToast(t("toast_orderCancelled"));
+      logAudit("cancel", "order", order.customer_name || order.id);
     } catch {
       showToast(t("toast_supabaseError"), "error");
     }
   };
 
-  const rejectOnlineOrder = async (order) => {
+  const rejectOnlineOrder = async (order, reason) => {
     try {
+      const byName = currentUser
+        ? currentUser.name_km || currentUser.name_en || currentUser.username
+        : "";
       if (supabase)
         await supabase
           .from("online_orders")
-          .update({ status: "rejected" })
+          .update({
+            status: "rejected",
+            status_reason: reason,
+            status_by: byName,
+          })
           .eq("id", order.id);
       setOnlineOrders((prev) =>
-        prev.map((o) => (o.id === order.id ? { ...o, status: "rejected" } : o)),
+        prev.map((o) =>
+          o.id === order.id
+            ? {
+                ...o,
+                status: "rejected",
+                status_reason: reason,
+                status_by: byName,
+              }
+            : o,
+        ),
       );
       showToast(t("toast_orderRejected"));
+      logAudit("reject", "order", order.customer_name || order.id);
     } catch {
       showToast(t("toast_supabaseError"), "error");
     }
@@ -7362,6 +7422,89 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
 
 // ================= Online Orders =================
 
+// Required-reason prompt shown before a pending order can be rejected, or
+// an accepted order cancelled — captures why, and (via onConfirm in the
+// parent) who did it, so the order keeps a record instead of just
+// disappearing into "Rejected"/"Cancelled" with no explanation.
+function OrderReasonModal({ order, actionType, onClose, onConfirm }) {
+  const { t } = useT();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState(false);
+  const isReject = actionType === "reject";
+
+  const submit = () => {
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      setError(true);
+      return;
+    }
+    onConfirm(trimmed);
+  };
+
+  return (
+    <ModalShell
+      title={t(
+        isReject ? "orderReason_titleReject" : "orderReason_titleCancel",
+      )}
+      onClose={onClose}
+    >
+      <div
+        style={{
+          fontSize: "13px",
+          color: "var(--text-muted)",
+          marginBottom: "12px",
+        }}
+      >
+        {order.customer_name || "—"}
+        {order.customer_phone ? ` · ${order.customer_phone}` : ""}
+      </div>
+      <label style={fieldLabel}>{t("order_reasonLabel")}</label>
+      <textarea
+        autoFocus
+        value={reason}
+        onChange={(e) => {
+          setReason(e.target.value);
+          if (error) setError(false);
+        }}
+        placeholder={t("orderReason_placeholder")}
+        rows={3}
+        style={{
+          ...fieldInput,
+          fontFamily: "var(--font-body)",
+          resize: "vertical",
+          marginBottom: error ? "6px" : "14px",
+          borderColor: error ? "var(--danger)" : "var(--border)",
+        }}
+      />
+      {error && (
+        <div
+          style={{
+            color: "var(--danger)",
+            fontSize: "12.5px",
+            fontWeight: 600,
+            marginBottom: "12px",
+          }}
+        >
+          {t("orderReason_required")}
+        </div>
+      )}
+      <button
+        onClick={submit}
+        style={{
+          ...primaryBtnStyle,
+          width: "100%",
+          justifyContent: "center",
+          background: "var(--danger)",
+        }}
+      >
+        {t(
+          isReject ? "orderReason_confirmReject" : "orderReason_confirmCancel",
+        )}
+      </button>
+    </ModalShell>
+  );
+}
+
 function OnlineOrdersTab({
   orders,
   archivedOrders,
@@ -7384,6 +7527,7 @@ function OnlineOrdersTab({
   const [showQr, setShowQr] = useState(false);
   const [archiveView, setArchiveView] = useState("active"); // 'active' | 'archived'
   const [undoTarget, setUndoTarget] = useState(null);
+  const [reasonTarget, setReasonTarget] = useState(null); // { order, actionType: 'reject'|'cancel' }
   const visibleOrders = archiveView === "archived" ? archivedOrders : orders;
 
   const storeUrl =
@@ -7871,6 +8015,33 @@ function OnlineOrdersTab({
                   {o.note}
                 </div>
               )}
+              {(o.status === "rejected" || o.status === "cancelled") &&
+                o.status_reason && (
+                  <div
+                    style={{
+                      fontFamily: "var(--font-body)",
+                      marginTop: "6px",
+                      padding: "7px 9px",
+                      borderRadius: "8px",
+                      background: "var(--surface-alt)",
+                      fontSize: "12px",
+                    }}
+                  >
+                    <div style={{ color: "var(--text)", fontWeight: 600 }}>
+                      {t("order_reasonLabel")}: {o.status_reason}
+                    </div>
+                    {o.status_by && (
+                      <div
+                        style={{
+                          color: "var(--text-muted)",
+                          marginTop: "2px",
+                        }}
+                      >
+                        {t("order_byLabel")}: {o.status_by}
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
             <div
               style={{
@@ -7941,7 +8112,9 @@ function OnlineOrdersTab({
               {archiveView === "active" && o.status === "pending" && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
                   <button
-                    onClick={() => onReject(o)}
+                    onClick={() =>
+                      setReasonTarget({ order: o, actionType: "reject" })
+                    }
                     style={{
                       ...iconBtnStyle,
                       width: "auto",
@@ -7976,7 +8149,9 @@ function OnlineOrdersTab({
               {o.status === "accepted" && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
                   <button
-                    onClick={() => onCancel(o)}
+                    onClick={() =>
+                      setReasonTarget({ order: o, actionType: "cancel" })
+                    }
                     style={{
                       ...iconBtnStyle,
                       width: "auto",
@@ -8024,6 +8199,21 @@ function OnlineOrdersTab({
             setUndoTarget(null);
           }}
           onCancel={() => setUndoTarget(null)}
+        />
+      )}
+      {reasonTarget && (
+        <OrderReasonModal
+          order={reasonTarget.order}
+          actionType={reasonTarget.actionType}
+          onClose={() => setReasonTarget(null)}
+          onConfirm={(reason) => {
+            if (reasonTarget.actionType === "reject") {
+              onReject(reasonTarget.order, reason);
+            } else {
+              onCancel(reasonTarget.order, reason);
+            }
+            setReasonTarget(null);
+          }}
         />
       )}
     </div>
