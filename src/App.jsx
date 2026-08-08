@@ -1486,6 +1486,23 @@ function POSApp() {
       /* ignore */
     }
   }, [activeTab]);
+
+  // Keeps the browser tab's title and icon (favicon) in sync with the shop
+  // logo/name set in Settings, so the tab shows the shop's own branding
+  // instead of the generic globe icon — no separate image file needed,
+  // it just points the tab at whatever logo is already stored.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.title = shopName || "POS";
+    if (!shopLogo) return;
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.href = shopLogo;
+  }, [shopName, shopLogo]);
   const [toast, setToast] = useState(null);
 
   const [users, setUsers] = useState([]);
