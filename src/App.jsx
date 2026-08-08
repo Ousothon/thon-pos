@@ -257,6 +257,27 @@ const genPassword = () => {
   }
   return out;
 };
+// Normalizes a barcode for comparison purposes only (never for storage/display).
+// Two real-world quirks cause "I scanned it once to save the product, then
+// scanned it again at the register and it wasn't found" bugs:
+//  1. Whitespace/control characters some scanners or the camera decoder
+//     tack onto the end of the decoded text.
+//  2. UPC-A vs EAN-13 ambiguity — a 12-digit UPC-A barcode is really just an
+//     EAN-13 with a leading zero dropped, and different decode paths (native
+//     browser BarcodeDetector vs the JS fallback decoder) don't always agree
+//     on which one they hand back for the same physical barcode.
+// Stripping non-digit characters and dropping leading zeros makes "0500123456789"
+// and "500123456789" compare as equal, which is what a cashier actually expects.
+const normalizeBarcode = (code) => {
+  const trimmed = (code || "").trim();
+  const digitsOnly = trimmed.replace(/\D/g, "");
+  // Only apply leading-zero stripping to plain numeric barcodes (UPC/EAN).
+  // Non-numeric codes (e.g. CODE_128 with letters) are compared as-is.
+  if (digitsOnly && digitsOnly === trimmed.replace(/\s/g, "")) {
+    return digitsOnly.replace(/^0+(?=\d)/, "");
+  }
+  return trimmed;
+};
 const fmt = (n) => "$" + (Number(n) || 0).toFixed(2);
 // Riel exchange rate — the shop-wide default; editable live from Settings.
 const KHR_PER_USD_DEFAULT = 4100;
@@ -1689,8 +1710,9 @@ function POSApp() {
   const handleBarcodeScan = (code) => {
     const trimmed = (code || "").trim();
     if (!trimmed) return;
+    const target = normalizeBarcode(trimmed);
     const product = products.find(
-      (p) => p.barcode && p.barcode.trim() === trimmed,
+      (p) => p.barcode && normalizeBarcode(p.barcode) === target,
     );
     if (product) {
       addToCart(product);
@@ -9036,7 +9058,20 @@ function BarcodeScanModal({ onClose, onDetected }) {
         });
         return instance.start(
           { facingMode: "environment" },
-          { fps: 15, qrbox: { width: 280, height: 140 } },
+          {
+            fps: 20,
+            // A fixed pixel qrbox (e.g. {width:280,height:140}) can exceed the
+            // actual camera frame on some phones — when that happens
+            // html5-qrcode silently scans the *entire* frame instead of a
+            // tight crop, which is slower and more error-prone. Computing the
+            // box from the live viewfinder size keeps it valid on every
+            // screen and keeps detection fast.
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+              const boxWidth = Math.floor(minEdge * 0.8);
+              return { width: boxWidth, height: Math.floor(boxWidth * 0.5) };
+            },
+          },
           (decodedText) => {
             if (cancelled) return;
             cancelled = true;
