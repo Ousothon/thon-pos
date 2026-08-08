@@ -416,6 +416,7 @@ const STRINGS = {
   invoice: { km: "វិក្កយបត្រ", en: "Invoice" },
   walkInCustomer: { km: "អតិថិជនធម្មតា (មិនកំណត់)", en: "Walk-in customer" },
   emptyCart: { km: "មិនទាន់មានទំនិញនៅឡើយ", en: "No items added yet" },
+  clearCart: { km: "សម្អាតកន្ត្រក", en: "Clear cart" },
   subtotal: { km: "សរុបរង", en: "Subtotal" },
   discountAmount: { km: "បញ្ចុះតម្លៃ ($)", en: "Discount ($)" },
   discountLabel: { km: "បញ្ចុះតម្លៃ", en: "Discount" },
@@ -433,6 +434,7 @@ const STRINGS = {
   chartNoData: { km: "មិនទាន់មានទិន្នន័យលក់នៅឡើយ", en: "No sales data yet" },
   total: { km: "សរុប", en: "Total" },
   paymentReceived: { km: "ប្រាក់ទទួល", en: "Cash received" },
+  exactAmount: { km: "គ្រប់ចំនួន", en: "Exact" },
   changeDue: { km: "ប្រាក់អាប់", en: "Change due" },
   completeSale: { km: "បញ្ចប់ការលក់", en: "Complete sale" },
 
@@ -4005,6 +4007,7 @@ function POSApp() {
               addToCart={addToCart}
               changeQty={changeQty}
               removeFromCart={removeFromCart}
+              clearCart={() => setCart([])}
               subtotal={subtotal}
               discount={discount}
               setDiscount={setDiscount}
@@ -4314,6 +4317,79 @@ function FontStyles() {
       }
       .list-card-row:hover {
         background: var(--surface-alt);
+      }
+      .pos-product-card {
+        transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease !important;
+      }
+      .pos-product-card:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(15, 30, 26, .1);
+        filter: none;
+      }
+      .pos-product-card:active:not(:disabled) {
+        transform: translateY(0) scale(.98);
+      }
+      .cart-line-row {
+        position: relative;
+        transition: background-color .12s ease;
+        border-radius: 8px;
+      }
+      .cart-line-row:hover {
+        background: var(--surface-alt);
+      }
+      .cart-line-qty {
+        display: flex;
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      .cart-line-qty button {
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: var(--surface);
+        cursor: pointer;
+        color: var(--text);
+      }
+      .cart-line-qty button:hover:not(:disabled) {
+        background: var(--surface-alt);
+        filter: none;
+      }
+      .cart-line-qty span {
+        min-width: 22px;
+        text-align: center;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        font-weight: 700;
+      }
+      .cart-line-remove {
+        opacity: 0;
+        transition: opacity .12s ease;
+      }
+      .cart-line-row:hover .cart-line-remove,
+      .cart-line-row:focus-within .cart-line-remove {
+        opacity: 1;
+      }
+      .quick-cash-btn {
+        padding: 6px 4px;
+        border-radius: 7px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .quick-cash-btn:hover:not(:disabled) {
+        border-color: var(--primary);
+        color: var(--primary);
+        filter: none;
       }
       .theme-toggle-btn {
         display: flex; align-items: center; justify-content: center;
@@ -5074,6 +5150,7 @@ function POSTab(props) {
     addToCart,
     changeQty,
     removeFromCart,
+    clearCart,
     subtotal,
     discount,
     setDiscount,
@@ -5205,98 +5282,138 @@ function POSTab(props) {
               {t("noProductsFound")}
             </div>
           )}
-          {products.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => addToCart(p)}
-              disabled={p.stock === 0}
-              style={{
-                textAlign: "left",
-                padding: "12px",
-                borderRadius: "12px",
-                border: "1px solid var(--border)",
-                background:
-                  p.stock === 0 ? "var(--surface-alt)" : "var(--surface)",
-                cursor: p.stock === 0 ? "not-allowed" : "pointer",
-                opacity: p.stock === 0 ? 0.5 : 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-              }}
-            >
-              <div
+          {products.map((p) => {
+            const inCartQty = cart.find((c) => c.id === p.id)?.qty || 0;
+            return (
+              <button
+                key={p.id}
+                className="pos-product-card"
+                onClick={() => addToCart(p)}
+                disabled={p.stock === 0}
                 style={{
-                  width: "100%",
-                  aspectRatio: "16/10",
-                  borderRadius: "8px",
-                  overflow: "hidden",
-                  background: "var(--surface-alt)",
+                  position: "relative",
+                  textAlign: "left",
+                  padding: "12px",
+                  borderRadius: "12px",
+                  border:
+                    "1px solid " +
+                    (inCartQty > 0 ? "var(--primary)" : "var(--border)"),
+                  background:
+                    p.stock === 0 ? "var(--surface-alt)" : "var(--surface)",
+                  cursor: p.stock === 0 ? "not-allowed" : "pointer",
+                  opacity: p.stock === 0 ? 0.5 : 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
                 }}
               >
-                {p.image ? (
-                  <img
-                    src={p.image}
-                    alt=""
+                {inCartQty > 0 && (
+                  <span
                     style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
+                      position: "absolute",
+                      top: "-7px",
+                      right: "-7px",
+                      minWidth: "20px",
+                      height: "20px",
+                      padding: "0 5px",
+                      borderRadius: "999px",
+                      background: "var(--primary)",
+                      color: "#fff",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      fontFamily: "var(--font-mono)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      boxShadow: "0 2px 6px rgba(0,0,0,.18)",
+                      zIndex: 1,
                     }}
                   >
-                    <Package size={22} color="var(--text-muted)" />
-                  </div>
+                    {inCartQty}
+                  </span>
                 )}
-              </div>
-              <div
-                style={{
-                  fontSize: "13.5px",
-                  fontWeight: 600,
-                  lineHeight: 1.35,
-                  minHeight: "36px",
-                }}
-              >
-                {prodName(p)}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <span
+                <div
                   style={{
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: 700,
-                    fontSize: "15px",
-                    color: "var(--primary)",
+                    width: "100%",
+                    aspectRatio: "16/10",
+                    borderRadius: "8px",
+                    overflow: "hidden",
+                    background: "var(--surface-alt)",
                   }}
                 >
-                  {fmt(p.price)}
-                </span>
-                <span
+                  {p.image ? (
+                    <img
+                      src={p.image}
+                      alt=""
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Package size={22} color="var(--text-muted)" />
+                    </div>
+                  )}
+                </div>
+                <div
                   style={{
-                    fontSize: "11.5px",
-                    color: p.stock <= 5 ? "var(--danger)" : "var(--text-muted)",
+                    fontSize: "13.5px",
+                    fontWeight: 600,
+                    lineHeight: 1.35,
+                    minHeight: "36px",
                   }}
                 >
-                  {p.stock === 0
-                    ? t("outOfStock")
-                    : `${p.stock} ${prodUnit(p)}`}
-                </span>
-              </div>
-            </button>
-          ))}
+                  {prodName(p)}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                      fontSize: "15px",
+                      color: "var(--primary)",
+                    }}
+                  >
+                    {fmt(p.price)}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "10.5px",
+                      fontWeight: 600,
+                      padding: "2px 7px",
+                      borderRadius: "999px",
+                      background:
+                        p.stock <= 5
+                          ? "color-mix(in srgb, var(--danger) 14%, transparent)"
+                          : "var(--surface-alt)",
+                      color:
+                        p.stock <= 5 ? "var(--danger)" : "var(--text-muted)",
+                    }}
+                  >
+                    {p.stock === 0
+                      ? t("outOfStock")
+                      : `${p.stock} ${prodUnit(p)}`}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -5318,15 +5435,57 @@ function POSTab(props) {
         >
           <div
             style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 700,
-              fontSize: "16px",
               display: "flex",
               alignItems: "center",
+              justifyContent: "space-between",
               gap: "9px",
             }}
           >
-            <Receipt size={18} color="var(--primary)" /> {t("invoice")}
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                fontSize: "16px",
+                display: "flex",
+                alignItems: "center",
+                gap: "9px",
+              }}
+            >
+              <Receipt size={18} color="var(--primary)" /> {t("invoice")}
+              {cart.length > 0 && (
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "var(--primary)",
+                    background:
+                      "color-mix(in srgb, var(--primary) 12%, transparent)",
+                    borderRadius: "999px",
+                    padding: "2px 8px",
+                  }}
+                >
+                  {cart.reduce((n, c) => n + c.qty, 0)}
+                </span>
+              )}
+            </div>
+            {cart.length > 0 && (
+              <button
+                onClick={clearCart}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  fontSize: "11.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: "4px 2px",
+                  textDecoration: "underline",
+                }}
+              >
+                {t("clearCart")}
+              </button>
+            )}
           </div>
           <select
             value={selectedCustomerId}
@@ -5357,24 +5516,30 @@ function POSTab(props) {
           {cart.length === 0 && (
             <div
               style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "8px",
                 color: "var(--text-muted)",
                 fontSize: "13.5px",
                 textAlign: "center",
                 padding: "44px 0",
               }}
             >
+              <ShoppingCart size={26} color="var(--border)" />
               {t("emptyCart")}
             </div>
           )}
           {cart.map((c) => (
             <div
               key={c.id}
+              className="cart-line-row"
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "10px",
-                padding: "10px 0",
-                borderBottom: "1px solid var(--border)",
+                padding: "8px 6px",
+                marginBottom: "2px",
               }}
             >
               <ProductThumb image={c.image} size={34} />
@@ -5397,27 +5562,23 @@ function POSTab(props) {
                     color: "var(--text-muted)",
                   }}
                 >
-                  {fmt(c.price)} × {c.qty}
+                  {fmt(c.price)} × {c.qty} ={" "}
+                  <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                    {fmt(c.price * c.qty)}
+                  </span>
                 </div>
               </div>
-              <button onClick={() => changeQty(c.id, -1)} style={iconBtnStyle}>
-                <Minus size={13} />
-              </button>
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  minWidth: "18px",
-                  textAlign: "center",
-                }}
-              >
-                {c.qty}
-              </span>
-              <button onClick={() => changeQty(c.id, 1)} style={iconBtnStyle}>
-                <Plus size={13} />
-              </button>
+              <div className="cart-line-qty">
+                <button onClick={() => changeQty(c.id, -1)}>
+                  <Minus size={12} />
+                </button>
+                <span>{c.qty}</span>
+                <button onClick={() => changeQty(c.id, 1)}>
+                  <Plus size={12} />
+                </button>
+              </div>
               <button
+                className="cart-line-remove"
                 onClick={() => removeFromCart(c.id)}
                 style={{ ...iconBtnStyle, color: "var(--danger)" }}
               >
@@ -5599,6 +5760,43 @@ function POSTab(props) {
               }}
             />
           </div>
+          {total > 0 && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(5, 1fr)",
+                gap: "5px",
+                marginBottom: "9px",
+              }}
+            >
+              <button
+                type="button"
+                className="quick-cash-btn"
+                onClick={() => setPayment(total.toFixed(2))}
+              >
+                {t("exactAmount")}
+              </button>
+              {Array.from(
+                new Set(
+                  [1, 5, 10, 20]
+                    .map((step) => Math.ceil(total / step) * step)
+                    .filter((v) => v > 0),
+                ),
+              )
+                .sort((a, b) => a - b)
+                .slice(0, 4)
+                .map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className="quick-cash-btn"
+                    onClick={() => setPayment(String(v))}
+                  >
+                    ${v}
+                  </button>
+                ))}
+            </div>
+          )}
           <Row
             label={t("changeDue")}
             value={fmt(Math.max(change, 0))}
@@ -6204,15 +6402,15 @@ function InventoryTab({
                     gap: "6px",
                   }}
                 >
-                  <div style={{ fontSize: "12.5px", color: "var(--text-muted)" }}>
+                  <div
+                    style={{ fontSize: "12.5px", color: "var(--text-muted)" }}
+                  >
                     {t("th_margin")}:{" "}
                     <span style={{ color: "var(--text)", fontWeight: 600 }}>
                       {p.cost > 0
                         ? `${fmt(p.price - p.cost)} (${
                             p.price > 0
-                              ? Math.round(
-                                  ((p.price - p.cost) / p.price) * 100,
-                                )
+                              ? Math.round(((p.price - p.cost) / p.price) * 100)
                               : 0
                           }%)`
                         : "—"}
@@ -7514,7 +7712,9 @@ function OrderReasonModal({ order, actionType, onClose, onConfirm }) {
           background: "var(--danger)",
         }}
       >
-        {t(isReject ? "orderReason_confirmReject" : "orderReason_confirmCancel")}
+        {t(
+          isReject ? "orderReason_confirmReject" : "orderReason_confirmCancel",
+        )}
       </button>
     </ModalShell>
   );
@@ -8519,9 +8719,7 @@ function UsersTab({
                 }}
               >
                 <div
-                  onClick={() =>
-                    setExpandedUserId(isExpanded ? null : u.id)
-                  }
+                  onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
                   className="list-card-row"
                   style={{
                     display: "flex",
