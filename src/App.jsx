@@ -92,6 +92,23 @@ const supabase =
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
 
+// ================= Shop identity (multi-tenant RLS) =================
+// The database now enforces "each shop only sees its own data" using Row
+// Level Security tied to a real Supabase Auth session (see the `shops` /
+// `profiles` / `auth_shop_id()` setup). That means this app must sign in
+// to Supabase once per device with a shop-level account before any read
+// or write to products/sales/customers/etc. will be allowed — otherwise
+// every request is "anonymous" and RLS blocks it.
+//
+// This is NOT the staff PIN login screen (that stays local, per-till, for
+// clocking in a cashier). This is a single background credential for the
+// whole shop/device. Fill in the password you set for this account in
+// Supabase Dashboard > Authentication > Users (the admin@myshop.pos.local
+// user already created there).
+const SHOP_SLUG = "myshop";
+const SHOP_AUTH_EMAIL = "admin@myshop.pos.local";
+const SHOP_AUTH_PASSWORD = "thon168$"; // <-- put the account's password here
+
 const STORAGE_KEY = "shop-data";
 const CATEGORY_KEYS = ["beverage", "food", "household", "snack", "other"];
 
@@ -1693,6 +1710,42 @@ function POSApp() {
     setLoading(false);
   }, []);
 
+  // ---------- Shop-level Supabase Auth session (required by RLS) ----------
+  // Every product/sale/customer/etc. row is now scoped by shop_id, and the
+  // database only allows access to rows matching the signed-in account's
+  // shop. This device-wide sign-in runs once on load (a saved session is
+  // reused automatically on later visits) so all the existing cloud sync
+  // code below keeps working without needing every staff member to log
+  // into Supabase individually.
+  const [shopId, setShopId] = useState(null);
+  useEffect(() => {
+    if (!supabase) return;
+    (async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        let session = sessionData?.session || null;
+        if (!session && SHOP_AUTH_EMAIL && SHOP_AUTH_PASSWORD) {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: SHOP_AUTH_EMAIL,
+            password: SHOP_AUTH_PASSWORD,
+          });
+          if (error) throw error;
+          session = data.session;
+        }
+        if (!session) return; // not configured yet — app still works locally
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("shop_id")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        if (profileError) throw profileError;
+        if (profile) setShopId(profile.shop_id);
+      } catch {
+        /* offline, or credentials not filled in yet — local mode still works */
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     if (loading) return;
     const timer = setTimeout(() => {
@@ -2243,11 +2296,12 @@ function POSApp() {
   // and (combined with the updatedAt-based merge above) still converges
   // correctly across devices even if a push is briefly in flight.
   const pushProductRow = async (p) => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
       await supabase.from("products").upsert(
         {
           id: p.id,
+          shop_id: shopId,
           name_km: p.name_km,
           name_en: p.name_en || "",
           category: p.category,
@@ -2310,11 +2364,12 @@ function POSApp() {
     }
   };
   const pushCustomerRow = async (c) => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
       await supabase.from("customers").upsert(
         {
           id: c.id,
+          shop_id: shopId,
           name: c.name,
           phone: c.phone || "",
           discount_percent: c.discount_percent || 0,
@@ -2338,11 +2393,12 @@ function POSApp() {
     }
   };
   const pushExpenseRow = async (e) => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
       await supabase.from("expenses").upsert(
         {
           id: e.id,
+          shop_id: shopId,
           date: e.date,
           category: e.category,
           amount: e.amount,
@@ -2366,11 +2422,12 @@ function POSApp() {
     }
   };
   const pushCategoryRow = async (c) => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
       await supabase.from("categories").upsert(
         {
           key: c.key,
+          shop_id: shopId,
           label_km: c.label_km || "",
           label_en: c.label_en || "",
           updated_at: c.updatedAt || Date.now(),
@@ -2541,12 +2598,13 @@ function POSApp() {
   // done on one device could never "win" against another device's older,
   // still-unrefunded local copy of the same sale.
   useEffect(() => {
-    if (loading || !supabase || !sales.length) return;
+    if (loading || !supabase || !shopId || !sales.length) return;
     const timer = setTimeout(async () => {
       try {
         await supabase.from("sales").upsert(
           sales.map((s) => ({
             id: s.id,
+            shop_id: shopId,
             date: s.date,
             items: s.items,
             subtotal: s.subtotal,
@@ -2567,7 +2625,7 @@ function POSApp() {
       }
     }, 900);
     return () => clearTimeout(timer);
-  }, [sales, loading]);
+  }, [sales, loading, shopId]);
 
   // ---- Pull sales/customers from Supabase so this device picks up what other devices recorded ----
   const fetchCloudSales = async () => {
@@ -2749,11 +2807,12 @@ function POSApp() {
   };
 
   const pushPaymentSettings = async (cashEnabled, khqrEnabled, khqrImg) => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
       await supabase.from("shop_settings").upsert(
         {
           id: "default",
+          shop_id: shopId,
           pay_cash_enabled: cashEnabled,
           pay_khqr_enabled: khqrEnabled,
           khqr_image: khqrImg || null,
@@ -2767,25 +2826,29 @@ function POSApp() {
   };
 
   const pushKhrRate = async (rate) => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
-      await supabase
-        .from("shop_settings")
-        .upsert(
-          { id: "default", khr_rate: rate, updated_at: Date.now() },
-          { onConflict: "id" },
-        );
+      await supabase.from("shop_settings").upsert(
+        {
+          id: "default",
+          shop_id: shopId,
+          khr_rate: rate,
+          updated_at: Date.now(),
+        },
+        { onConflict: "id" },
+      );
     } catch {
       showToast(t("toast_supabaseError"), "error");
     }
   };
 
   const pushShopInfo = async (name, logo) => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
       await supabase.from("shop_settings").upsert(
         {
           id: "default",
+          shop_id: shopId,
           shop_name: name || null,
           shop_logo: logo || null,
           updated_at: Date.now(),
@@ -2803,11 +2866,12 @@ function POSApp() {
   // signed-in devices, which was missing before. Returns true/false so
   // callers can tell the admin whether the cloud save actually worked.
   const pushRoles = async (rolesList) => {
-    if (!supabase) return true;
+    if (!supabase || !shopId) return true;
     try {
       const { error } = await supabase.from("shop_settings").upsert(
         {
           id: "default",
+          shop_id: shopId,
           roles_json: JSON.stringify(rolesList),
           updated_at: Date.now(),
         },
@@ -2886,7 +2950,7 @@ function POSApp() {
       if (channel) supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, shopId]);
 
   const fetchOnlineOrders = async () => {
     if (!supabase) return;
@@ -3019,9 +3083,9 @@ function POSApp() {
       created_at: new Date().toISOString(),
     };
     setAuditLog((prev) => [entry, ...prev]);
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
-      await supabase.from("audit_log").insert(entry);
+      await supabase.from("audit_log").insert({ ...entry, shop_id: shopId });
     } catch {
       /* offline or table missing — local list above still shows it this session */
     }
@@ -3072,10 +3136,11 @@ function POSApp() {
         stock: 0,
         updatedAt: Date.now(),
       }));
-      if (supabase) {
+      if (supabase && shopId) {
         const { error } = await supabase.from("products").upsert(
           updated.map((p) => ({
             id: p.id,
+            shop_id: shopId,
             name_km: p.name_km,
             name_en: p.name_en || "",
             category: p.category,
@@ -12568,6 +12633,7 @@ function StorefrontApp() {
     lang === "en" ? p.unit_en || "pcs" : p.unit_km || "ដុំ";
 
   const [status, setStatus] = useState(supabase ? "loading" : "unconfigured"); // loading | ready | error | unconfigured
+  const [shopRowId, setShopRowId] = useState(null);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState(
     CATEGORY_KEYS.map((k) => ({
@@ -12697,6 +12763,19 @@ function StorefrontApp() {
     if (!supabase) return;
     (async () => {
       try {
+        const { data } = await supabase
+          .from("shops")
+          .select("id")
+          .eq("slug", SHOP_SLUG)
+          .maybeSingle();
+        if (data) setShopRowId(data.id);
+      } catch {
+        /* order submission falls back to no shop_id — staff dashboard
+           filtering may not pick it up, but the order still saves */
+      }
+    })();
+    (async () => {
+      try {
         const { data, error } = await supabase
           .from("products")
           .select("*")
@@ -12790,6 +12869,7 @@ function StorefrontApp() {
       const { data, error } = await supabase
         .from("online_orders")
         .insert({
+          shop_id: shopRowId,
           customer_name: name.trim(),
           customer_phone: phone.trim(),
           note: note.trim() || null,
