@@ -85,6 +85,29 @@ import {
 //    run once in the SQL editor:
 //      alter table online_orders add column if not exists status_reason text;
 //      alter table online_orders add column if not exists status_by text;
+// 8. Super Admin (you, the app's owner) — one account that can see and
+//    manage every shop and turn paid features on/off per shop, separate
+//    from each shop's own admin/staff PIN logins. Run once in the SQL
+//    editor:
+//      alter table profiles add column if not exists is_super_admin boolean not null default false;
+//      alter table profiles alter column shop_id drop not null;
+//      alter table shop_settings add column if not exists features_json text;
+//      create or replace function is_super_admin() returns boolean
+//        language sql stable as $$
+//          select coalesce((select p.is_super_admin from profiles p where p.id = auth.uid()), false);
+//        $$;
+//      -- add `OR is_super_admin()` to the existing RLS policies on
+//      -- shops, shop_settings, products, sales, customers, expenses,
+//      -- online_orders, audit_log (everywhere they currently check
+//      -- shop_id = auth_shop_id()), then mark your own account:
+//      update profiles set is_super_admin = true, shop_id = null
+//        where id = (select id from auth.users where email = 'you@yourdomain.com');
+//    IMPORTANT for shops already live before this: features_json starts
+//    empty, and every premium feature defaults OFF (see DEFAULT_FEATURES
+//    below) until a Super Admin turns it on — so right after running the
+//    migration, sign in as Super Admin and turn back on whatever features
+//    your existing shops were already using, or they'll lose access to
+//    those tabs immediately.
 const SUPABASE_URL = "https://zkstajqlucnvpqxwpuxo.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_jucFEQ_c8EVFcwPkfhWMoQ_K-sSNyzm";
 const supabase =
@@ -93,23 +116,25 @@ const supabase =
     : null;
 
 // ================= Shop identity (multi-tenant RLS) =================
-// The database now enforces "each shop only sees its own data" using Row
-// Level Security tied to a real Supabase Auth session (see the `shops` /
-// `profiles` / `auth_shop_id()` setup). That means this app must sign in
-// to Supabase once per device with a shop-level account before any read
-// or write to products/sales/customers/etc. will be allowed — otherwise
-// every request is "anonymous" and RLS blocks it.
+// The database enforces "each shop only sees its own data" using Row Level
+// Security tied to a real Supabase Auth session (see the `shops` /
+// `profiles` / `auth_shop_id()` setup). That means this device must sign
+// in to Supabase with a shop-level account before any read or write to
+// products/sales/customers/etc. is allowed — otherwise every request is
+// "anonymous" and RLS blocks it.
 //
 // This is NOT the staff PIN login screen (that stays local, per-till, for
-// clocking in a cashier). This is a single background credential for the
-// whole shop/device. Fill in the password you set for this account in
-// Supabase Dashboard > Authentication > Users (the admin@myshop.pos.local
-// user already created there).
-const SHOP_SLUG = "myshop";
-const SHOP_AUTH_EMAIL = "admin@myshop.pos.local";
-const SHOP_AUTH_PASSWORD = "thon168$"; // <-- put the account's password here
-
-const STORAGE_KEY = "shop-data";
+// clocking a cashier in/out). This is a one-time-per-device sign-in that
+// identifies WHICH SHOP this device belongs to — see <ShopLoginScreen>
+// below. Once signed in, the session is remembered on this device (via
+// Supabase's own session storage) so this screen only appears again after
+// a manual "switch shop" / sign-out, or on a brand-new device/browser.
+// Local cache keys are scoped per shop (see storageKeyFor/sessionKeyFor
+// below). LEGACY_STORAGE_KEY/LEGACY_SESSION_KEY are the old, unscoped keys
+// used before multi-shop devices existed — kept only so a device's existing
+// cache can be migrated into the right shop-scoped slot the first time it
+// signs in, instead of silently losing it.
+const LEGACY_STORAGE_KEY = "shop-data";
 const CATEGORY_KEYS = ["beverage", "food", "household", "snack", "other"];
 
 const WEEKDAY_LABELS = {
@@ -309,7 +334,76 @@ const seedRoles = [
   },
 ];
 
-const SESSION_KEY = "shop-session";
+// Premium / paid features. A shop only sees the matching tab or option once
+// a Super Admin turns it on for that shop (see `features_json` on
+// `shop_settings`, mirroring how `roles_json` already works). Add new
+// entries here as new things become paywalled — nothing else needs to
+// change for it to show up in the Super Admin panel's toggle list.
+const PREMIUM_FEATURES = [
+  {
+    id: "onlineOrders",
+    name_km: "កម្មង់លក់អនឡាញ",
+    name_en: "Online Ordering",
+    tab: "onlineOrders",
+  },
+  {
+    id: "khqr",
+    name_km: "ការទូទាត់ KHQR",
+    name_en: "KHQR Payment",
+  },
+  {
+    id: "reports",
+    name_km: "របាយការណ៍ និងក្រាហ្វិក",
+    name_en: "Reports & Analytics",
+    tab: "reports",
+  },
+  {
+    id: "multiUser",
+    name_km: "អ្នកប្រើប្រាស់ច្រើននាក់ & សិទ្ធិ",
+    name_en: "Multi-user & Roles",
+    tab: "users",
+  },
+];
+// Every feature defaults OFF for a shop until a Super Admin explicitly
+// turns it on — a brand-new shop (or a shop_settings row with no
+// features_json yet) should never accidentally get paid features for free.
+const DEFAULT_FEATURES = PREMIUM_FEATURES.reduce(
+  (acc, f) => ({ ...acc, [f.id]: false }),
+  {},
+);
+// Maps a NAV tab id to the feature that gates it. Tabs not listed here are
+// always available (not part of the paid-feature system).
+const FEATURE_BY_TAB = PREMIUM_FEATURES.reduce(
+  (acc, f) => (f.tab ? { ...acc, [f.tab]: f.id } : acc),
+  {},
+);
+
+// Virtual local (till-PIN) user representing a signed-in Super Admin. Super
+// Admins never have a PIN in any shop's local `users` list — they skip that
+// screen entirely (see the `isSuperAdmin` checks in POSApp) and act through
+// this synthetic identity instead, which is why it isn't in `seedUsers`.
+const SUPER_ADMIN_USER = {
+  id: "__super_admin__",
+  username: "superadmin",
+  name_km: "អ្នកគ្រប់គ្រងជាន់ខ្ពស់",
+  name_en: "Super Admin",
+  role: "admin",
+  active: true,
+};
+
+const LEGACY_SESSION_KEY = "shop-session";
+
+// Every device can be signed into a different shop at different times (e.g.
+// managing shop1 and shop2 from the same browser), so the cache MUST be
+// keyed by which shop is currently signed in — otherwise one shop's staff
+// list/products/sales can leak into another shop's login screen and local
+// state. When there's no Supabase (pure local/offline mode, no shop
+// concept), fall back to the legacy unscoped key so single-shop setups
+// keep working exactly as before.
+const storageKeyFor = (shopId) =>
+  shopId ? `shop-data:${shopId}` : LEGACY_STORAGE_KEY;
+const sessionKeyFor = (shopId) =>
+  shopId ? `shop-session:${shopId}` : LEGACY_SESSION_KEY;
 
 const genId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -764,9 +858,64 @@ const STRINGS = {
   logout: { km: "ចាកចេញ", en: "Log out" },
   loggedInAs: { km: "កំពុងប្រើប្រាស់ដោយ", en: "Signed in as" },
 
+  shopLogin_title: { km: "ចូលគណនីហាង", en: "Shop sign-in" },
+  shopLogin_subtitle: {
+    km: "ចូលម្តងគត់ក្នុងឧបករណ៍នេះ ដើម្បីភ្ជាប់ទៅហាងរបស់អ្នក",
+    en: "Sign in once on this device to connect it to your shop",
+  },
+  shopLogin_email: { km: "អ៊ីមែលហាង", en: "Shop email" },
+  shopLogin_password: { km: "លេខសម្ងាត់", en: "Password" },
+  shopLogin_submit: { km: "ភ្ជាប់ឧបករណ៍នេះ", en: "Connect this device" },
+  shopLogin_submitting: { km: "កំពុងភ្ជាប់...", en: "Connecting..." },
+  shopLogin_invalid: {
+    km: "អ៊ីមែល ឬលេខសម្ងាត់មិនត្រឹមត្រូវ",
+    en: "Incorrect email or password",
+  },
+  shopLogin_failed: {
+    km: "មិនអាចភ្ជាប់បានទេ សូមឆែកអ៊ីនធឺណិត",
+    en: "Couldn't connect — check your internet connection",
+  },
+  shopLogin_checking: { km: "កំពុងផ្ទៀងផ្ទាត់...", en: "Checking session..." },
+  settings_switchShop: {
+    km: "ប្តូរ / ផ្តាច់ហាង",
+    en: "Switch / disconnect shop",
+  },
+  settings_switchShopConfirm: {
+    km: "ឧបករណ៍នេះនឹងផ្តាច់ចេញពីហាងបច្ចុប្បន្ន ហើយត្រូវការចូលគណនីហាងម្តងទៀត។ បន្ត?",
+    en: "This device will disconnect from the current shop and need shop sign-in again. Continue?",
+  },
+
   nav_users: { km: "អ្នកប្រើប្រាស់", en: "Users" },
   nav_auditLog: { km: "កំណត់ត្រាសកម្មភាព", en: "Audit Log" },
   nav_settings: { km: "ការកំណត់", en: "Settings" },
+  nav_superAdmin: { km: "អ្នកគ្រប់គ្រងជាន់ខ្ពស់", en: "Super Admin" },
+
+  shopPicker_title: { km: "ជ្រើសរើសហាង", en: "Choose a shop" },
+  shopPicker_subtitle: {
+    km: "អ្នកកំពុងចូលជាអ្នកគ្រប់គ្រងជាន់ខ្ពស់ — ជ្រើសរើសហាងមួយដើម្បីគ្រប់គ្រង",
+    en: "Signed in as Super Admin — pick a shop to manage",
+  },
+  shopPicker_empty: {
+    km: "មិនទាន់មានហាងនៅឡើយទេ",
+    en: "No shops yet",
+  },
+  shopPicker_refresh: { km: "ផ្ទុកឡើងវិញ", en: "Refresh" },
+  shopPicker_signOut: { km: "ចាកចេញ", en: "Sign out" },
+  superAdmin_title: {
+    km: "គ្រប់គ្រងមុខងារបង់ប្រាក់",
+    en: "Manage paid features",
+  },
+  superAdmin_subtitle: {
+    km: "បើក/បិទមុខងារពិសេសសម្រាប់ហាងនេះ — ហាងនឹងឃើញ tab/មុខងារនោះភ្លាមៗ",
+    en: "Turn premium features on or off for this shop — they show up for the shop right away",
+  },
+  superAdmin_currentShop: { km: "ហាងកំពុងគ្រប់គ្រង", en: "Currently managing" },
+  superAdmin_switchShop: { km: "ប្តូរហាង", en: "Switch shop" },
+  superAdmin_saved: { km: "បានរក្សាទុក", en: "Saved" },
+  superAdmin_saveFailed: {
+    km: "រក្សាទុកបរាជ័យ — សូមព្យាយាមម្តងទៀត",
+    en: "Save failed — please try again",
+  },
   nav_expenses: { km: "ចំណាយ", en: "Expenses" },
 
   exp_title: { km: "តាមដានចំណាយ", en: "Expense tracking" },
@@ -944,6 +1093,10 @@ const STRINGS = {
   settings_paymentSaved: {
     km: "បានរក្សាទុកការកំណត់ការទូទាត់",
     en: "Payment settings saved",
+  },
+  settings_khqrLocked: {
+    km: "មុខងារ KHQR មិនទាន់បើកសម្រាប់ហាងនេះទេ — សូមទាក់ទងអ្នកគ្រប់គ្រងជាន់ខ្ពស់",
+    en: "KHQR isn't turned on for this shop yet — contact your Super Admin",
   },
   settings_khqrNeedsImageWarning: {
     km: "សូមផ្ទុករូបភាព QR សិន មុននឹងបើកមុខងារនេះ",
@@ -1302,6 +1455,14 @@ const STRINGS = {
   },
   storefront_newOrder: { km: "ដាក់ការបញ្ជាទិញថ្មី", en: "Place another order" },
   storefront_loading: { km: "កំពុងផ្ទុកទំនិញ...", en: "Loading products..." },
+  storefront_orderingDisabled: {
+    km: "ហាងនេះមិនទាន់បើកមុខងារកម្មង់អនឡាញនៅឡើយទេ",
+    en: "This shop hasn't turned on online ordering yet",
+  },
+  storefront_notFound: {
+    km: "រកមិនឃើញហាងនេះទេ ឬមានបញ្ហាបច្ចេកទេស",
+    en: "Shop not found, or something went wrong",
+  },
   storefront_outOfStock: { km: "អស់ស្តុក", en: "Out of stock" },
   storefront_fieldsRequired: {
     km: "សូមបំពេញឈ្មោះ និងលេខទូរស័ព្ទ",
@@ -1529,6 +1690,11 @@ const NAV = [
   { id: "users", key: "nav_users", icon: UserCog },
   { id: "auditLog", key: "nav_auditLog", icon: History },
   { id: "settings", key: "nav_settings", icon: SettingsIcon },
+  // Not a shop role permission — only ever shown to a signed-in Super
+  // Admin (see allowedTabs in POSApp), and deliberately excluded from
+  // roleTabIds' "locked admin gets everything" rule below so a shop's own
+  // admin can never see or reach it.
+  { id: "superAdmin", key: "nav_superAdmin", icon: Crown },
 ];
 
 // Role Management (see UsersTab) reads NAV to build its permission rows,
@@ -1543,7 +1709,9 @@ const NAV = [
 // checked by hand in Role Management, there'd be no way for that admin to
 // ever unlock it. This keeps admin's access always complete by definition.
 const roleTabIds = (role) =>
-  role && role.locked ? NAV.map((n) => n.id) : (role && role.tabs) || [];
+  role && role.locked
+    ? NAV.filter((n) => n.id !== "superAdmin").map((n) => n.id)
+    : (role && role.tabs) || [];
 
 function POSApp() {
   const [loading, setLoading] = useState(true);
@@ -1564,6 +1732,11 @@ function POSApp() {
   const [payCashEnabled, setPayCashEnabled] = useState(true);
   const [payKhqrEnabled, setPayKhqrEnabled] = useState(false);
   const [khqrImage, setKhqrImage] = useState("");
+  // Which premium features this shop currently has turned on — only a
+  // Super Admin can change these (see pushFeatures / SuperAdminTab below).
+  // Defaults closed until the cloud settings load confirms otherwise, so a
+  // shop never briefly flashes access to something it hasn't paid for.
+  const [features, setFeatures] = useState(DEFAULT_FEATURES);
   const [lang, setLang] = useState("km");
   const [activeTab, setActiveTab] = useState(
     () => localStorage.getItem("shop-activeTab") || "pos",
@@ -1666,9 +1839,183 @@ function POSApp() {
     lang === "en" ? p.name_en || p.name_km || "" : p.name_km || p.name_en || "";
   const prodUnit = (p) => (lang === "en" ? p.unit_en || p.unit_km : p.unit_km);
 
-  useEffect(() => {
+  // ---------- Shop-level Supabase Auth session (required by RLS) ----------
+  // Every product/sale/customer/etc. row is scoped by shop_id, and the
+  // database only allows access to rows matching the signed-in account's
+  // shop. `shopAuthChecking` is true only while we check for an existing
+  // (remembered) session on load — once resolved, either `shopId` gets set
+  // (already signed in) or the app shows <ShopLoginScreen>.
+  //
+  // This must be declared BEFORE the local-cache load effect below, because
+  // that effect now keys its localStorage reads/writes off `shopId` — the
+  // whole point being that each shop gets its own local cache on this
+  // device instead of every shop sharing one global cache (which is what
+  // let one shop's cached staff logins/products bleed into another shop's
+  // screen when both were signed into on the same device).
+  const [shopId, setShopId] = useState(null);
+  const [shopSlug, setShopSlug] = useState("");
+  const [shopAuthChecking, setShopAuthChecking] = useState(!!supabase);
+  const [shopAuthError, setShopAuthError] = useState("");
+  // Super Admin = a platform-owner Supabase Auth account (profiles.shop_id
+  // is NULL, profiles.is_super_admin is true) that isn't tied to any one
+  // shop. Instead of landing straight in a shop, it lands on
+  // <ShopPickerScreen>, picks which shop to manage, and everything below
+  // (products/sales/settings/etc.) works exactly as it does for that
+  // shop's own admin — the only difference is where shopId came from and
+  // that the local PIN screen is skipped (see SUPER_ADMIN_USER below).
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [superAdminShops, setSuperAdminShops] = useState([]);
+  const [superAdminShopsLoading, setSuperAdminShopsLoading] = useState(false);
+
+  const loadShopProfile = async (userId) => {
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("shop_id, is_super_admin, shops:shop_id (slug, name)")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (profile) {
+      setIsSuperAdmin(!!profile.is_super_admin);
+      setShopId(profile.shop_id || null);
+      setShopSlug((profile.shops && profile.shops.slug) || "");
+    }
+  };
+
+  // Loads every shop for the Super Admin's shop picker. Relies on an RLS
+  // policy that grants `is_super_admin()` accounts read access to the
+  // `shops` table (see setup guide) — for anyone else this simply returns
+  // nothing, so it's safe to only ever call it once `isSuperAdmin` is true.
+  const loadSuperAdminShops = async () => {
+    setSuperAdminShopsLoading(true);
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const { data, error } = await supabase
+        .from("shops")
+        .select("id, slug, name")
+        .order("name", { ascending: true });
+      if (error) throw error;
+      setSuperAdminShops(data || []);
+    } catch {
+      /* offline, or RLS not set up yet — picker will just show empty */
+    }
+    setSuperAdminShopsLoading(false);
+  };
+
+  useEffect(() => {
+    if (isSuperAdmin && !shopId) loadSuperAdminShops();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, shopId]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    (async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const session = sessionData?.session || null;
+        if (session) await loadShopProfile(session.user.id);
+      } catch {
+        /* no remembered session, or offline — ShopLoginScreen will show */
+      }
+      setShopAuthChecking(false);
+    })();
+  }, []);
+
+  const signInShop = async (email, password) => {
+    setShopAuthError("");
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) throw error;
+      await loadShopProfile(data.user.id);
+    } catch (err) {
+      setShopAuthError(
+        err && err.message === "Invalid login credentials"
+          ? t("shopLogin_invalid")
+          : t("shopLogin_failed"),
+      );
+    }
+  };
+  // A Super Admin picking a shop from the picker, or leaving one to pick a
+  // different one — NOT a full sign-out, so the Supabase Auth session (and
+  // is_super_admin) is left alone. Mirrors the local-state reset in
+  // signOutShop below so nothing from the previous shop bleeds into the
+  // next one.
+  const enterShopAsSuperAdmin = (id, slug) => {
+    setLoading(true);
+    setShopId(id);
+    setShopSlug(slug || "");
+  };
+  const leaveShopAsSuperAdmin = () => {
+    setLoading(true);
+    setShopId(null);
+    setShopSlug("");
+    setSessionUserId(null);
+    setProducts([]);
+    setSales([]);
+    setCustomers([]);
+    setExpenses([]);
+    setUsers([]);
+    setRoles(seedRoles);
+    setFeatures(DEFAULT_FEATURES);
+  };
+  const signOutShop = async () => {
+    if (!supabase) return;
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      /* ignore */
+    }
+    // Reset in-memory state right away rather than waiting for the load
+    // effect to catch up — otherwise, for a moment after signing out, this
+    // shop's products/users/etc. are still sitting in state, and if the
+    // save effect fires in that window it would write this shop's data
+    // into whatever key comes next (legacy/local key) and cross-contaminate
+    // the next shop signed in on this device.
+    setLoading(true);
+    setShopId(null);
+    setShopSlug("");
+    setIsSuperAdmin(false);
+    setSuperAdminShops([]);
+    setSessionUserId(null);
+    setProducts([]);
+    setSales([]);
+    setCustomers([]);
+    setExpenses([]);
+    setUsers([]);
+    setRoles(seedRoles);
+    setFeatures(DEFAULT_FEATURES);
+  };
+
+  // ---------- Local cache (per-shop) ----------
+  // Waits for the shop-auth check above to resolve before touching
+  // localStorage, since we don't know which shop's cache key to use until
+  // then. Re-runs whenever the signed-in shop changes (sign-out/sign back
+  // into a different shop on the same device), so each shop always loads
+  // its own data instead of inheriting whatever the previously-signed-in
+  // shop left behind.
+  useEffect(() => {
+    if (shopAuthChecking) return;
+    const key = storageKeyFor(shopId);
+    try {
+      let raw = localStorage.getItem(key);
+      if (!raw) {
+        // Nothing cached yet under this shop's own key. If this device has
+        // old, unscoped data from before multi-shop support existed,
+        // adopt it for this shop (the common case: only one shop has ever
+        // used this device) and retire the legacy key so a second shop
+        // signing in later on this device won't also inherit it.
+        const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (legacy) {
+          raw = legacy;
+          try {
+            localStorage.setItem(key, legacy);
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
       if (raw) {
         const parsed = JSON.parse(raw);
         setProducts(parsed.products || []);
@@ -1695,63 +2042,31 @@ function POSApp() {
         setRoles(
           parsed.roles && parsed.roles.length ? parsed.roles : seedRoles,
         );
+        setFeatures({ ...DEFAULT_FEATURES, ...(parsed.features || {}) });
       } else {
         setProducts(seedProducts);
         setUsers(seedUsers);
         setRoles(seedRoles);
+        setFeatures(DEFAULT_FEATURES);
       }
-      const sess = localStorage.getItem(SESSION_KEY);
-      if (sess) setSessionUserId(sess);
+      const sess = localStorage.getItem(sessionKeyFor(shopId));
+      setSessionUserId(sess || null);
     } catch {
       setProducts(seedProducts);
       setUsers(seedUsers);
       setRoles(seedRoles);
     }
     setLoading(false);
-  }, []);
-
-  // ---------- Shop-level Supabase Auth session (required by RLS) ----------
-  // Every product/sale/customer/etc. row is now scoped by shop_id, and the
-  // database only allows access to rows matching the signed-in account's
-  // shop. This device-wide sign-in runs once on load (a saved session is
-  // reused automatically on later visits) so all the existing cloud sync
-  // code below keeps working without needing every staff member to log
-  // into Supabase individually.
-  const [shopId, setShopId] = useState(null);
-  useEffect(() => {
-    if (!supabase) return;
-    (async () => {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        let session = sessionData?.session || null;
-        if (!session && SHOP_AUTH_EMAIL && SHOP_AUTH_PASSWORD) {
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email: SHOP_AUTH_EMAIL,
-            password: SHOP_AUTH_PASSWORD,
-          });
-          if (error) throw error;
-          session = data.session;
-        }
-        if (!session) return; // not configured yet — app still works locally
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("shop_id")
-          .eq("id", session.user.id)
-          .maybeSingle();
-        if (profileError) throw profileError;
-        if (profile) setShopId(profile.shop_id);
-      } catch {
-        /* offline, or credentials not filled in yet — local mode still works */
-      }
-    })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopAuthChecking, shopId]);
 
   useEffect(() => {
     if (loading) return;
+    const key = storageKeyFor(shopId);
     const timer = setTimeout(() => {
       try {
         localStorage.setItem(
-          STORAGE_KEY,
+          key,
           JSON.stringify({
             products,
             sales,
@@ -1767,6 +2082,7 @@ function POSApp() {
             lang,
             users,
             roles,
+            features,
           }),
         );
       } catch {
@@ -1790,17 +2106,20 @@ function POSApp() {
     lang,
     users,
     roles,
+    features,
     loading,
+    shopId,
   ]);
 
   useEffect(() => {
     try {
-      if (sessionUserId) localStorage.setItem(SESSION_KEY, sessionUserId);
-      else localStorage.removeItem(SESSION_KEY);
+      const key = sessionKeyFor(shopId);
+      if (sessionUserId) localStorage.setItem(key, sessionUserId);
+      else localStorage.removeItem(key);
     } catch {
       /* ignore */
     }
-  }, [sessionUserId]);
+  }, [sessionUserId, shopId]);
 
   const showToast = (msg, kind = "ok") => {
     setToast({ msg, kind });
@@ -1808,11 +2127,36 @@ function POSApp() {
   };
 
   // ---------- Auth ----------
-  const currentUser = users.find((u) => u.id === sessionUserId) || null;
+  // A Super Admin never has a PIN in this shop's local `users` list — they
+  // skip the till-PIN <LoginScreen> entirely (see the render logic further
+  // down) and act as this synthetic identity instead.
+  const currentUser = isSuperAdmin
+    ? SUPER_ADMIN_USER
+    : users.find((u) => u.id === sessionUserId) || null;
   const currentUserRole = currentUser
     ? roles.find((r) => r.id === currentUser.role)
     : null;
-  const allowedTabs = roleTabIds(currentUserRole);
+  // A user whose account role is literally the reserved "admin" id must
+  // always get full access, even if `roles` (loaded from local cache or
+  // synced from the cloud) is missing an "admin" entry, hasn't synced yet,
+  // or has one that's missing `locked: true` for some reason (e.g. an
+  // older save from before that field existed). Without this fallback, a
+  // roles-data hiccup could lock every admin out of the very screens
+  // (Users, Settings) needed to fix it.
+  // A tab gated by a premium feature (see FEATURE_BY_TAB) only shows once
+  // that feature is on for this shop. Super Admin always sees everything —
+  // including tabs no feature has been turned on for yet — since they're
+  // the one who turns features on in the first place.
+  const featureAllowsTab = (tabId) => {
+    const featureId = FEATURE_BY_TAB[tabId];
+    return !featureId || isSuperAdmin || !!features[featureId];
+  };
+  const allowedTabs = isSuperAdmin
+    ? NAV.map((n) => n.id)
+    : (currentUser && currentUser.role === "admin"
+        ? NAV.filter((n) => n.id !== "superAdmin").map((n) => n.id)
+        : roleTabIds(currentUserRole)
+      ).filter(featureAllowsTab);
   const visibleNav = NAV.filter((n) => allowedTabs.includes(n.id));
 
   const login = (username, password) => {
@@ -1831,8 +2175,10 @@ function POSApp() {
     }
     setLoginError("");
     setSessionUserId(match.id);
-    const perms = roles.find((r) => r.id === match.role);
-    const permTabs = roleTabIds(perms);
+    const permTabs =
+      match.role === "admin"
+        ? NAV.map((n) => n.id)
+        : roleTabIds(roles.find((r) => r.id === match.role));
     setActiveTab(permTabs.includes("pos") ? "pos" : permTabs[0] || "pos");
   };
   const logout = () => {
@@ -2298,7 +2644,7 @@ function POSApp() {
   const pushProductRow = async (p) => {
     if (!supabase || !shopId) return;
     try {
-      await supabase.from("products").upsert(
+      const { error } = await supabase.from("products").upsert(
         {
           id: p.id,
           shop_id: shopId,
@@ -2316,6 +2662,14 @@ function POSApp() {
         },
         { onConflict: "id" },
       );
+      if (error) {
+        // Supabase's upsert() resolves (doesn't throw) even when the table
+        // rejects the write — e.g. an RLS policy blocking this role. Surface
+        // it, because a silently-failed push here means the product looks
+        // saved locally but never reaches other devices or the storefront.
+        showToast(t("toast_supabaseError"), "error");
+        console.error("pushProductRow failed:", error);
+      }
     } catch {
       /* offline — local copy still safe, will retry on next change */
     }
@@ -2323,17 +2677,22 @@ function POSApp() {
   const deleteProductRow = async (id) => {
     if (!supabase) return;
     try {
-      await supabase.from("products").delete().eq("id", id);
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("deleteProductRow failed:", error);
+      }
     } catch {
       /* offline */
     }
   };
   const pushUserRow = async (u) => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
       const { error } = await supabase.from("users").upsert(
         {
           id: u.id,
+          shop_id: shopId,
           username: u.username,
           password: u.password,
           name_km: u.name_km || "",
@@ -2358,7 +2717,11 @@ function POSApp() {
   const deleteUserRow = async (id) => {
     if (!supabase) return;
     try {
-      await supabase.from("users").delete().eq("id", id);
+      const { error } = await supabase.from("users").delete().eq("id", id);
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("deleteUserRow failed:", error);
+      }
     } catch {
       /* offline */
     }
@@ -2366,7 +2729,7 @@ function POSApp() {
   const pushCustomerRow = async (c) => {
     if (!supabase || !shopId) return;
     try {
-      await supabase.from("customers").upsert(
+      const { error } = await supabase.from("customers").upsert(
         {
           id: c.id,
           shop_id: shopId,
@@ -2380,6 +2743,10 @@ function POSApp() {
         },
         { onConflict: "id" },
       );
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("pushCustomerRow failed:", error);
+      }
     } catch {
       /* offline */
     }
@@ -2387,7 +2754,11 @@ function POSApp() {
   const deleteCustomerRow = async (id) => {
     if (!supabase) return;
     try {
-      await supabase.from("customers").delete().eq("id", id);
+      const { error } = await supabase.from("customers").delete().eq("id", id);
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("deleteCustomerRow failed:", error);
+      }
     } catch {
       /* offline */
     }
@@ -2395,7 +2766,7 @@ function POSApp() {
   const pushExpenseRow = async (e) => {
     if (!supabase || !shopId) return;
     try {
-      await supabase.from("expenses").upsert(
+      const { error } = await supabase.from("expenses").upsert(
         {
           id: e.id,
           shop_id: shopId,
@@ -2409,6 +2780,10 @@ function POSApp() {
         },
         { onConflict: "id" },
       );
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("pushExpenseRow failed:", error);
+      }
     } catch {
       /* offline */
     }
@@ -2416,7 +2791,11 @@ function POSApp() {
   const deleteExpenseRow = async (id) => {
     if (!supabase) return;
     try {
-      await supabase.from("expenses").delete().eq("id", id);
+      const { error } = await supabase.from("expenses").delete().eq("id", id);
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("deleteExpenseRow failed:", error);
+      }
     } catch {
       /* offline */
     }
@@ -2424,7 +2803,7 @@ function POSApp() {
   const pushCategoryRow = async (c) => {
     if (!supabase || !shopId) return;
     try {
-      await supabase.from("categories").upsert(
+      const { error } = await supabase.from("categories").upsert(
         {
           key: c.key,
           shop_id: shopId,
@@ -2432,8 +2811,12 @@ function POSApp() {
           label_en: c.label_en || "",
           updated_at: c.updatedAt || Date.now(),
         },
-        { onConflict: "key" },
+        { onConflict: "shop_id,key" },
       );
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("pushCategoryRow failed:", error);
+      }
     } catch {
       /* offline */
     }
@@ -2441,7 +2824,14 @@ function POSApp() {
   const deleteCategoryRow = async (key) => {
     if (!supabase) return;
     try {
-      await supabase.from("categories").delete().eq("key", key);
+      const { error } = await supabase
+        .from("categories")
+        .delete()
+        .eq("key", key);
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("deleteCategoryRow failed:", error);
+      }
     } catch {
       /* offline */
     }
@@ -2601,7 +2991,7 @@ function POSApp() {
     if (loading || !supabase || !shopId || !sales.length) return;
     const timer = setTimeout(async () => {
       try {
-        await supabase.from("sales").upsert(
+        const { error } = await supabase.from("sales").upsert(
           sales.map((s) => ({
             id: s.id,
             shop_id: shopId,
@@ -2620,6 +3010,13 @@ function POSApp() {
           })),
           { onConflict: "id" },
         );
+        if (error) {
+          // Same silent-failure risk as product/user pushes: if RLS or a
+          // schema mismatch rejects this, sales stay stuck on this device
+          // only unless the error is surfaced.
+          showToast(t("toast_supabaseError"), "error");
+          console.error("sales sync failed:", error);
+        }
       } catch {
         /* offline — local copy still safe, will retry on next change */
       }
@@ -2628,10 +3025,16 @@ function POSApp() {
   }, [sales, loading, shopId]);
 
   // ---- Pull sales/customers from Supabase so this device picks up what other devices recorded ----
+  // Bug fix: none of the fetchCloud* functions below filtered by shop_id, so
+  // every device pulled every shop's rows and merged them together locally.
+  // Each now scopes its query to the signed-in shop.
   const fetchCloudSales = async () => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
-      const { data, error } = await supabase.from("sales").select("*");
+      const { data, error } = await supabase
+        .from("sales")
+        .select("*")
+        .eq("shop_id", shopId);
       if (error) throw error;
       const mapped = (data || []).map((r) => ({
         id: r.id,
@@ -2655,9 +3058,12 @@ function POSApp() {
   };
 
   const fetchCloudCustomers = async () => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
-      const { data, error } = await supabase.from("customers").select("*");
+      const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("shop_id", shopId);
       if (error) throw error;
       const mapped = (data || []).map((r) => ({
         id: r.id,
@@ -2676,9 +3082,12 @@ function POSApp() {
   };
 
   const fetchCloudExpenses = async () => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
-      const { data, error } = await supabase.from("expenses").select("*");
+      const { data, error } = await supabase
+        .from("expenses")
+        .select("*")
+        .eq("shop_id", shopId);
       if (error) throw error;
       const mapped = (data || []).map((r) => ({
         id: r.id,
@@ -2697,9 +3106,12 @@ function POSApp() {
   };
 
   const fetchCloudCategories = async () => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
-      const { data, error } = await supabase.from("categories").select("*");
+      const { data, error } = await supabase
+        .from("categories")
+        .select("*")
+        .eq("shop_id", shopId);
       if (error) throw error;
       if (data && data.length) {
         const mapped = data.map((r) => ({
@@ -2717,9 +3129,12 @@ function POSApp() {
 
   // ---- Pull products/users from Supabase so every device shares the same catalog + accounts ----
   const fetchCloudProducts = async () => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
-      const { data, error } = await supabase.from("products").select("*");
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("shop_id", shopId);
       if (error) throw error;
       if (data && data.length) {
         const mapped = data.map((r) => ({
@@ -2744,9 +3159,12 @@ function POSApp() {
   };
 
   const fetchCloudUsers = async () => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
-      const { data, error } = await supabase.from("users").select("*");
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("shop_id", shopId);
       if (error) throw error;
       if (data && data.length) {
         const mapped = data.map((r) => ({
@@ -2768,12 +3186,12 @@ function POSApp() {
 
   // ---- Shop-wide settings (e.g. KHR rate) shared across every device ----
   const fetchCloudSettings = async () => {
-    if (!supabase) return;
+    if (!supabase || !shopId) return;
     try {
       const { data, error } = await supabase
         .from("shop_settings")
         .select("*")
-        .eq("id", "default")
+        .eq("id", shopId)
         .maybeSingle();
       if (error) throw error;
       if (data && data.khr_rate) setKhrRate(data.khr_rate);
@@ -2801,6 +3219,20 @@ function POSApp() {
           /* malformed roles payload — keep local roles as-is */
         }
       }
+      if (data && typeof data.features_json === "string") {
+        try {
+          const cloudFeatures = JSON.parse(data.features_json);
+          if (cloudFeatures && typeof cloudFeatures === "object") {
+            // Merge over the defaults (not a plain replace) so a shop
+            // that predates a newly-added premium feature treats it as
+            // off, rather than the JSON.parse result simply omitting the
+            // key and some other code path treating "undefined" as truthy.
+            setFeatures({ ...DEFAULT_FEATURES, ...cloudFeatures });
+          }
+        } catch {
+          /* malformed features payload — keep local features as-is */
+        }
+      }
     } catch {
       /* ignore, local cache still works */
     }
@@ -2811,7 +3243,7 @@ function POSApp() {
     try {
       await supabase.from("shop_settings").upsert(
         {
-          id: "default",
+          id: shopId,
           shop_id: shopId,
           pay_cash_enabled: cashEnabled,
           pay_khqr_enabled: khqrEnabled,
@@ -2830,7 +3262,7 @@ function POSApp() {
     try {
       await supabase.from("shop_settings").upsert(
         {
-          id: "default",
+          id: shopId,
           shop_id: shopId,
           khr_rate: rate,
           updated_at: Date.now(),
@@ -2847,7 +3279,7 @@ function POSApp() {
     try {
       await supabase.from("shop_settings").upsert(
         {
-          id: "default",
+          id: shopId,
           shop_id: shopId,
           shop_name: name || null,
           shop_logo: logo || null,
@@ -2870,7 +3302,7 @@ function POSApp() {
     try {
       const { error } = await supabase.from("shop_settings").upsert(
         {
-          id: "default",
+          id: shopId,
           shop_id: shopId,
           roles_json: JSON.stringify(rolesList),
           updated_at: Date.now(),
@@ -2884,8 +3316,31 @@ function POSApp() {
     }
   };
 
+  // Same one-JSON-blob pattern as pushRoles above, but this one is only
+  // ever called from the Super Admin panel — a shop's own admin has no UI
+  // that can reach this, since paid features are Super Admin's call, not
+  // theirs.
+  const pushFeatures = async (featuresObj) => {
+    if (!supabase || !shopId) return true;
+    try {
+      const { error } = await supabase.from("shop_settings").upsert(
+        {
+          id: shopId,
+          shop_id: shopId,
+          features_json: JSON.stringify(featuresObj),
+          updated_at: Date.now(),
+        },
+        { onConflict: "id" },
+      );
+      if (error) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   useEffect(() => {
-    if (!supabase || loading) return;
+    if (!supabase || loading || !shopId) return;
     fetchCloudSales();
     fetchCloudCustomers();
     fetchCloudProducts();
@@ -2908,37 +3363,72 @@ function POSApp() {
         .channel("pos_data_changes")
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "sales" },
+          {
+            event: "*",
+            schema: "public",
+            table: "sales",
+            filter: `shop_id=eq.${shopId}`,
+          },
           fetchCloudSales,
         )
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "customers" },
+          {
+            event: "*",
+            schema: "public",
+            table: "customers",
+            filter: `shop_id=eq.${shopId}`,
+          },
           fetchCloudCustomers,
         )
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "products" },
+          {
+            event: "*",
+            schema: "public",
+            table: "products",
+            filter: `shop_id=eq.${shopId}`,
+          },
           fetchCloudProducts,
         )
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "users" },
+          {
+            event: "*",
+            schema: "public",
+            table: "users",
+            filter: `shop_id=eq.${shopId}`,
+          },
           fetchCloudUsers,
         )
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "shop_settings" },
+          {
+            event: "*",
+            schema: "public",
+            table: "shop_settings",
+            filter: `id=eq.${shopId}`,
+          },
           fetchCloudSettings,
         )
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "expenses" },
+          {
+            event: "*",
+            schema: "public",
+            table: "expenses",
+            filter: `shop_id=eq.${shopId}`,
+          },
           fetchCloudExpenses,
         )
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "categories" },
+          {
+            event: "*",
+            schema: "public",
+            table: "categories",
+            filter: `shop_id=eq.${shopId}`,
+          },
           fetchCloudCategories,
         )
         .subscribe();
@@ -2953,11 +3443,15 @@ function POSApp() {
   }, [loading, shopId]);
 
   const fetchOnlineOrders = async () => {
-    if (!supabase) return;
+    // Bug fix: this used to select every row in online_orders with no
+    // shop filter, so every shop saw every other shop's online orders
+    // (and their line items) mixed together. Scope it to this shop.
+    if (!supabase || !shopId) return;
     try {
       const { data, error } = await supabase
         .from("online_orders")
         .select("*")
+        .eq("shop_id", shopId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       setOnlineOrders(data || []);
@@ -2968,7 +3462,7 @@ function POSApp() {
   };
 
   useEffect(() => {
-    if (!supabase || loading) return;
+    if (!supabase || loading || !shopId) return;
     fetchOnlineOrders();
     const poll = setInterval(fetchOnlineOrders, 15000); // fallback in case realtime isn't enabled
     let channel;
@@ -2977,12 +3471,22 @@ function POSApp() {
         .channel("online_orders_changes")
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "online_orders" },
+          {
+            event: "*",
+            schema: "public",
+            table: "online_orders",
+            filter: `shop_id=eq.${shopId}`,
+          },
           fetchOnlineOrders,
         )
         .on(
           "postgres_changes",
-          { event: "INSERT", schema: "public", table: "online_orders" },
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "online_orders",
+            filter: `shop_id=eq.${shopId}`,
+          },
           (payload) => {
             const soundOn = localStorage.getItem("notifySoundOn") !== "off";
             if (soundOn)
@@ -3024,16 +3528,19 @@ function POSApp() {
       if (channel) supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, shopId]);
 
   // ---------- Audit log (who added/edited/deleted what) ----------
   const [auditLog, setAuditLog] = useState([]);
   const fetchAuditLog = async () => {
-    if (!supabase) return;
+    // Same bug as online_orders: no shop filter meant every shop saw every
+    // other shop's audit trail. Scope it to this shop.
+    if (!supabase || !shopId) return;
     try {
       const { data, error } = await supabase
         .from("audit_log")
         .select("*")
+        .eq("shop_id", shopId)
         .order("created_at", { ascending: false })
         .limit(300);
       if (error) throw error;
@@ -3044,7 +3551,8 @@ function POSApp() {
   };
 
   useEffect(() => {
-    if (!supabase || loading || !allowedTabs.includes("auditLog")) return;
+    if (!supabase || loading || !shopId || !allowedTabs.includes("auditLog"))
+      return;
     fetchAuditLog();
     const poll = setInterval(fetchAuditLog, 15000);
     let channel;
@@ -3053,7 +3561,12 @@ function POSApp() {
         .channel("audit_log_changes")
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "audit_log" },
+          {
+            event: "*",
+            schema: "public",
+            table: "audit_log",
+            filter: `shop_id=eq.${shopId}`,
+          },
           fetchAuditLog,
         )
         .subscribe();
@@ -3065,7 +3578,7 @@ function POSApp() {
       if (channel) supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, currentUser && currentUser.id]);
+  }, [loading, shopId, currentUser && currentUser.id]);
 
   // Records who did what, for accountability. Best-effort: if it fails (e.g.
   // offline, or the audit_log table doesn't exist yet) it never blocks the
@@ -3099,19 +3612,24 @@ function POSApp() {
   // Security silently filtered down to 0 affected rows — so we don't just
   // trust the absence of an error. We chain .select("id") to see exactly
   // which rows were removed, then re-count the table to confirm nothing
-  // was left behind by a partial/blocked delete.
+  // was left behind by a partial/blocked delete. That re-count MUST be
+  // scoped to this shop_id — the read policy on these tables allows
+  // reading every shop's rows, so an unscoped count includes other shops'
+  // untouched data and would falsely report "blocked by RLS" even when
+  // this shop's own delete fully succeeded.
   const resetSalesData = async () => {
     try {
-      if (supabase) {
+      if (supabase && shopId) {
         const { error } = await supabase
           .from("sales")
           .delete()
-          .not("id", "is", null)
+          .eq("shop_id", shopId)
           .select("id");
         if (error) throw error;
         const { count, error: countError } = await supabase
           .from("sales")
-          .select("id", { count: "exact", head: true });
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", shopId);
         if (countError) throw countError;
         if (count && count > 0) {
           showToast(t("settings_resetBlockedByRls"), "error");
@@ -3158,9 +3676,14 @@ function POSApp() {
         if (error) throw error;
         // Confirm the write actually landed — RLS can block an UPDATE
         // (via upsert) silently too, leaving stock untouched server-side.
+        // Scoped to this shop_id: the read policy allows seeing every
+        // shop's rows, so an unscoped count would include other shops'
+        // still-nonzero stock and falsely report this shop's update as
+        // blocked.
         const { count, error: countError } = await supabase
           .from("products")
           .select("id", { count: "exact", head: true })
+          .eq("shop_id", shopId)
           .gt("stock", 0);
         if (countError) throw countError;
         if (count && count > 0) {
@@ -3180,16 +3703,20 @@ function POSApp() {
   // (not just their stock numbers). Sales history is untouched.
   const deleteAllProducts = async () => {
     try {
-      if (supabase) {
+      if (supabase && shopId) {
         const { error } = await supabase
           .from("products")
           .delete()
-          .not("id", "is", null)
+          .eq("shop_id", shopId)
           .select("id");
         if (error) throw error;
+        // Scoped to this shop_id — see note in resetSalesData above on why
+        // an unscoped count here would falsely report a successful,
+        // shop-scoped delete as "blocked by RLS".
         const { count, error: countError } = await supabase
           .from("products")
-          .select("id", { count: "exact", head: true });
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", shopId);
         if (countError) throw countError;
         if (count && count > 0) {
           showToast(t("settings_resetBlockedByRls"), "error");
@@ -3976,6 +4503,66 @@ function POSApp() {
     );
   }
 
+  if (supabase && shopAuthChecking) {
+    return (
+      <div
+        style={{
+          height: "100vh",
+          width: "100vw",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--bg)",
+        }}
+      >
+        <FontStyles />
+        <div
+          style={{
+            color: "var(--text-muted)",
+            fontFamily: "var(--font-body)",
+            fontSize: "15px",
+          }}
+        >
+          {t("shopLogin_checking")}
+        </div>
+      </div>
+    );
+  }
+
+  if (supabase && !shopId && isSuperAdmin) {
+    return (
+      <LangContext.Provider value={{ lang, t, catLabel, categories }}>
+        <ShopPickerScreen
+          shops={superAdminShops}
+          loading={superAdminShopsLoading}
+          onPick={enterShopAsSuperAdmin}
+          onRefresh={loadSuperAdminShops}
+          onSignOut={signOutShop}
+          lang={lang}
+          setLang={setLang}
+          theme={theme}
+          setTheme={setTheme}
+        />
+      </LangContext.Provider>
+    );
+  }
+
+  if (supabase && !shopId) {
+    return (
+      <LangContext.Provider value={{ lang, t, catLabel, categories }}>
+        <ShopLoginScreen
+          onSubmit={signInShop}
+          error={shopAuthError}
+          clearError={() => setShopAuthError("")}
+          lang={lang}
+          setLang={setLang}
+          theme={theme}
+          setTheme={setTheme}
+        />
+      </LangContext.Provider>
+    );
+  }
+
   if (!currentUser) {
     return (
       <LangContext.Provider value={{ lang, t, catLabel, categories }}>
@@ -4244,6 +4831,19 @@ function POSApp() {
               >
                 <Key size={13} />
               </button>
+              {supabase && currentUser.role === "admin" && (
+                <button
+                  onClick={() => {
+                    if (window.confirm(t("settings_switchShopConfirm"))) {
+                      signOutShop();
+                    }
+                  }}
+                  title={t("settings_switchShop")}
+                  style={{ ...iconBtnStyle, marginRight: "2px" }}
+                >
+                  <Store size={13} />
+                </button>
+              )}
               <button
                 onClick={logout}
                 title={t("logout")}
@@ -4373,6 +4973,7 @@ function POSApp() {
                 archivedOrders={archivedOnlineOrders}
                 products={products}
                 supabaseStatus={supabaseStatus}
+                shopSlug={shopSlug}
                 onAccept={acceptOnlineOrder}
                 onReject={rejectOnlineOrder}
                 onMarkPaid={markOrderPaid}
@@ -4439,6 +5040,20 @@ function POSApp() {
               onResetSalesData={resetSalesData}
               onResetStockQty={resetStockQuantities}
               onDeleteAllProducts={deleteAllProducts}
+              features={features}
+              isSuperAdmin={isSuperAdmin}
+            />
+          )}
+          {activeTab === "superAdmin" && isSuperAdmin && (
+            <SuperAdminTab
+              shopName={shopName}
+              shopSlug={shopSlug}
+              features={features}
+              onSaveFeatures={async (next) => {
+                setFeatures(next);
+                return pushFeatures(next);
+              }}
+              onSwitchShop={leaveShopAsSuperAdmin}
             />
           )}
           {!allowedTabs.includes(activeTab) && (
@@ -5172,6 +5787,563 @@ function LoginScreen({
           )}
         </button>
       </form>
+    </div>
+  );
+}
+
+// Device-level sign-in that identifies which shop this device belongs to.
+// Separate from the staff PIN screen above — this runs once per device
+// (Supabase remembers the session afterwards) and is required before any
+// cloud data will sync, since RLS scopes every row to a shop_id tied to
+// this account.
+function ShopLoginScreen({
+  onSubmit,
+  error,
+  clearError,
+  lang,
+  setLang,
+  theme,
+  setTheme,
+}) {
+  const { t } = useT();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (submitting || !email.trim() || !password) return;
+    setSubmitting(true);
+    await onSubmit(email, password);
+    setSubmitting(false);
+  };
+
+  return (
+    <div
+      style={{
+        height: "100vh",
+        width: "100vw",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--bg)",
+        fontFamily: "var(--font-body)",
+        color: "var(--text)",
+      }}
+    >
+      <FontStyles />
+      <div
+        style={{
+          position: "absolute",
+          top: "20px",
+          right: "20px",
+          display: "flex",
+          gap: "8px",
+        }}
+      >
+        <LangSwitch lang={lang} setLang={setLang} />
+        <ThemeSwitch theme={theme} setTheme={setTheme} t={t} />
+      </div>
+      <form
+        onSubmit={submit}
+        className="login-card"
+        style={{
+          width: "340px",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "18px",
+          padding: "30px 28px",
+          boxShadow: "0 20px 50px rgba(0,0,0,.10)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            marginBottom: "22px",
+          }}
+        >
+          <div
+            style={{
+              width: "52px",
+              height: "52px",
+              borderRadius: "14px",
+              background: "var(--primary)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "12px",
+            }}
+          >
+            <Store size={26} color="#fff" />
+          </div>
+          <div
+            style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 700,
+              fontSize: "18px",
+              color: "var(--primary)",
+            }}
+          >
+            {t("shopLogin_title")}
+          </div>
+          <div
+            style={{
+              fontSize: "12.5px",
+              color: "var(--text-muted)",
+              marginTop: "4px",
+              textAlign: "center",
+            }}
+          >
+            {t("shopLogin_subtitle")}
+          </div>
+        </div>
+
+        <label style={fieldLabel}>{t("shopLogin_email")}</label>
+        <div style={{ position: "relative", marginBottom: "14px" }}>
+          <UserIcon
+            size={15}
+            style={{
+              position: "absolute",
+              left: "12px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--text-muted)",
+            }}
+          />
+          <input
+            autoFocus
+            type="email"
+            disabled={submitting}
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              clearError();
+            }}
+            style={{
+              ...fieldInput,
+              marginBottom: 0,
+              paddingLeft: "36px",
+              opacity: submitting ? 0.6 : 1,
+            }}
+            placeholder="you@example.com"
+          />
+        </div>
+
+        <label style={fieldLabel}>{t("shopLogin_password")}</label>
+        <div style={{ position: "relative", marginBottom: "6px" }}>
+          <Lock
+            size={15}
+            style={{
+              position: "absolute",
+              left: "12px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--text-muted)",
+            }}
+          />
+          <input
+            type={showPw ? "text" : "password"}
+            disabled={submitting}
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              clearError();
+            }}
+            style={{
+              ...fieldInput,
+              marginBottom: 0,
+              paddingLeft: "36px",
+              paddingRight: "36px",
+              opacity: submitting ? 0.6 : 1,
+            }}
+            placeholder="••••••••"
+          />
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => setShowPw(!showPw)}
+            style={{
+              position: "absolute",
+              right: "10px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "none",
+              border: "none",
+              cursor: submitting ? "default" : "pointer",
+              color: "var(--text-muted)",
+              display: "flex",
+            }}
+          >
+            {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        </div>
+
+        {error && (
+          <div
+            style={{
+              color: "var(--danger)",
+              fontSize: "12.5px",
+              fontWeight: 600,
+              marginBottom: "10px",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={submitting}
+          style={{
+            ...primaryBtnStyle,
+            width: "100%",
+            justifyContent: "center",
+            marginTop: "10px",
+            opacity: submitting ? 0.9 : 1,
+          }}
+        >
+          {submitting ? (
+            <>
+              <Loader2 size={16} className="spin-icon" />
+              {t("shopLogin_submitting")}
+            </>
+          ) : (
+            t("shopLogin_submit")
+          )}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// Landing screen for a signed-in Super Admin (a Supabase Auth account with
+// no shop_id of its own). Picking a shop here just sets `shopId` in
+// POSApp — from that point on every other screen behaves exactly as it
+// does for that shop's own admin, since none of the rest of the app knows
+// or cares whether shopId came from a normal shop login or a Super Admin
+// picking it here.
+function ShopPickerScreen({
+  shops,
+  loading,
+  onPick,
+  onRefresh,
+  onSignOut,
+  lang,
+  setLang,
+  theme,
+  setTheme,
+}) {
+  const { t } = useT();
+  return (
+    <div
+      style={{
+        height: "100vh",
+        width: "100vw",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--bg)",
+        fontFamily: "var(--font-body)",
+        color: "var(--text)",
+      }}
+    >
+      <FontStyles />
+      <div
+        style={{
+          position: "absolute",
+          top: "20px",
+          right: "20px",
+          display: "flex",
+          gap: "8px",
+        }}
+      >
+        <LangSwitch lang={lang} setLang={setLang} />
+        <ThemeSwitch theme={theme} setTheme={setTheme} t={t} />
+      </div>
+      <div
+        style={{
+          width: "380px",
+          maxHeight: "80vh",
+          display: "flex",
+          flexDirection: "column",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "18px",
+          padding: "26px 24px",
+          boxShadow: "0 20px 50px rgba(0,0,0,.10)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            marginBottom: "18px",
+          }}
+        >
+          <div
+            style={{
+              width: "52px",
+              height: "52px",
+              borderRadius: "14px",
+              background: "var(--primary)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "12px",
+            }}
+          >
+            <Crown size={26} color="#fff" />
+          </div>
+          <div
+            style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 700,
+              fontSize: "18px",
+              color: "var(--primary)",
+              textAlign: "center",
+            }}
+          >
+            {t("shopPicker_title")}
+          </div>
+          <div
+            style={{
+              fontSize: "12.5px",
+              color: "var(--text-muted)",
+              marginTop: "4px",
+              textAlign: "center",
+            }}
+          >
+            {t("shopPicker_subtitle")}
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", marginBottom: "14px" }}>
+          {loading && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                padding: "20px 0",
+                color: "var(--text-muted)",
+              }}
+            >
+              <Loader2 size={20} className="spin-icon" />
+            </div>
+          )}
+          {!loading && shops.length === 0 && (
+            <div
+              style={{
+                textAlign: "center",
+                color: "var(--text-muted)",
+                fontSize: "13px",
+                padding: "20px 0",
+              }}
+            >
+              {t("shopPicker_empty")}
+            </div>
+          )}
+          {!loading &&
+            shops.map((shop) => (
+              <button
+                key={shop.id}
+                onClick={() => onPick(shop.id, shop.slug)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "12px 14px",
+                  marginBottom: "8px",
+                  borderRadius: "12px",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-alt)",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <div
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "9px",
+                    background: "var(--primary)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Store size={16} color="#fff" />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      fontSize: "13.5px",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {shop.name || shop.slug}
+                  </div>
+                  {shop.slug && (
+                    <div
+                      style={{ fontSize: "11.5px", color: "var(--text-muted)" }}
+                    >
+                      {shop.slug}
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+        </div>
+
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            style={{
+              ...secondaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+            }}
+          >
+            <RefreshCw size={14} />
+            {t("shopPicker_refresh")}
+          </button>
+          <button
+            onClick={onSignOut}
+            style={{
+              ...secondaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+            }}
+          >
+            <LogOut size={14} />
+            {t("shopPicker_signOut")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Super Admin's per-shop control panel — a toggle per premium feature,
+// pushed straight to shop_settings.features_json (see pushFeatures in
+// POSApp) so the shop sees the change immediately, plus a way to go back
+// to <ShopPickerScreen> and manage a different shop.
+function SuperAdminTab({
+  shopName,
+  shopSlug,
+  features,
+  onSaveFeatures,
+  onSwitchShop,
+}) {
+  const { t, lang } = useT();
+  const [saving, setSaving] = useState(null); // feature id currently saving
+  const [savedFlash, setSavedFlash] = useState(null);
+
+  const toggleFeature = async (featureId) => {
+    const next = { ...features, [featureId]: !features[featureId] };
+    setSaving(featureId);
+    const ok = await onSaveFeatures(next);
+    setSaving(null);
+    if (ok) {
+      setSavedFlash(featureId);
+      setTimeout(() => setSavedFlash(null), 1500);
+    }
+  };
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "24px 26px" }}>
+      <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "4px" }}>
+        {t("superAdmin_title")}
+      </div>
+      <div
+        style={{
+          fontSize: "12.5px",
+          color: "var(--text-muted)",
+          marginBottom: "18px",
+        }}
+      >
+        {t("superAdmin_subtitle")}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 14px",
+          borderRadius: "12px",
+          border: "1px solid var(--border)",
+          background: "var(--surface-alt)",
+          marginBottom: "18px",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--text-muted)",
+              marginBottom: "2px",
+            }}
+          >
+            {t("superAdmin_currentShop")}
+          </div>
+          <div style={{ fontWeight: 700, fontSize: "14px" }}>
+            {shopName || shopSlug}
+          </div>
+        </div>
+        <button
+          onClick={onSwitchShop}
+          style={{ ...secondaryBtnStyle, fontSize: "12.5px" }}
+        >
+          <RefreshCw size={13} />
+          {t("superAdmin_switchShop")}
+        </button>
+      </div>
+
+      {PREMIUM_FEATURES.map((f) => (
+        <div
+          key={f.id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 0",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "13.5px", fontWeight: 600 }}>
+              {lang === "en" ? f.name_en : f.name_km}
+            </span>
+            {saving === f.id && <Loader2 size={13} className="spin-icon" />}
+            {savedFlash === f.id && (
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: "var(--success, #16a34a)",
+                  fontWeight: 600,
+                }}
+              >
+                {t("superAdmin_saved")}
+              </span>
+            )}
+          </div>
+          <ToggleSwitch
+            on={!!features[f.id]}
+            disabled={saving === f.id}
+            onClick={() => toggleFeature(f.id)}
+          />
+        </div>
+      ))}
     </div>
   );
 }
@@ -8126,6 +9298,7 @@ function OnlineOrdersTab({
   archivedOrders,
   products,
   supabaseStatus,
+  shopSlug,
   onAccept,
   onReject,
   onMarkPaid,
@@ -8153,7 +9326,9 @@ function OnlineOrdersTab({
 
   const storeUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}${window.location.pathname}?order=1`
+      ? `${window.location.origin}${window.location.pathname}?order=1${
+          shopSlug ? `&shop=${encodeURIComponent(shopSlug)}` : ""
+        }`
       : "";
 
   const qrImgUrl = (size) =>
@@ -9728,8 +10903,11 @@ function SettingsTab({
   onResetSalesData,
   onResetStockQty,
   onDeleteAllProducts,
+  features,
+  isSuperAdmin,
 }) {
   const { t } = useT();
+  const khqrFeatureOn = isSuperAdmin || !!(features && features.khqr);
   const [activeSettingsTab, setActiveSettingsTab] = useState("general");
   const isAdmin = currentUser?.role === "admin";
   const SETTINGS_TABS = [
@@ -9882,6 +11060,7 @@ function SettingsTab({
     if (khqrFileRef.current) khqrFileRef.current.value = "";
   };
   const toggleKhqr = () => {
+    if (!khqrFeatureOn) return;
     if (!payKhqrDraft && !khqrImageDraft) {
       setKhqrError(t("settings_khqrNeedsImageWarning"));
       return;
@@ -10144,13 +11323,43 @@ function SettingsTab({
                     padding: "10px 0",
                   }}
                 >
-                  <span style={{ fontSize: "13.5px", fontWeight: 600 }}>
+                  <span
+                    style={{
+                      fontSize: "13.5px",
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
                     {t("settings_payKhqrLabel")}
+                    {!khqrFeatureOn && <Lock size={12} />}
                   </span>
-                  <ToggleSwitch on={payKhqrDraft} onClick={toggleKhqr} />
+                  <ToggleSwitch
+                    on={payKhqrDraft}
+                    onClick={toggleKhqr}
+                    disabled={!khqrFeatureOn}
+                  />
                 </div>
+                {!khqrFeatureOn && (
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-muted)",
+                      margin: "6px 0 4px",
+                    }}
+                  >
+                    {t("settings_khqrLocked")}
+                  </div>
+                )}
 
-                <label style={{ ...fieldLabel, marginTop: "6px" }}>
+                <label
+                  style={{
+                    ...fieldLabel,
+                    marginTop: "6px",
+                    opacity: khqrFeatureOn ? 1 : 0.5,
+                  }}
+                >
                   {t("settings_khqrImageLabel")}
                 </label>
                 <div
@@ -10209,6 +11418,7 @@ function SettingsTab({
                     />
                     <button
                       onClick={() => khqrFileRef.current.click()}
+                      disabled={!khqrFeatureOn}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -10219,7 +11429,8 @@ function SettingsTab({
                         background: "var(--surface)",
                         fontSize: "12.5px",
                         fontWeight: 600,
-                        cursor: "pointer",
+                        cursor: khqrFeatureOn ? "pointer" : "not-allowed",
+                        opacity: khqrFeatureOn ? 1 : 0.5,
                       }}
                     >
                       <ImagePlus size={14} />{" "}
@@ -12632,7 +13843,7 @@ function StorefrontApp() {
   const prodUnit = (p) =>
     lang === "en" ? p.unit_en || "pcs" : p.unit_km || "ដុំ";
 
-  const [status, setStatus] = useState(supabase ? "loading" : "unconfigured"); // loading | ready | error | unconfigured
+  const [status, setStatus] = useState(supabase ? "loading" : "unconfigured"); // loading | ready | error | disabled | unconfigured
   const [shopRowId, setShopRowId] = useState(null);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState(
@@ -12761,38 +13972,78 @@ function StorefrontApp() {
 
   useEffect(() => {
     if (!supabase) return;
+    const shopSlugParam =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("shop")
+        : null;
     (async () => {
       try {
-        const { data } = await supabase
+        if (!shopSlugParam) {
+          // No ?shop=slug in the link — can't tell which shop's catalog to
+          // show. Every storefront link should include it, e.g.
+          // yoursite.com/?order=1&shop=myshop
+          setStatus("error");
+          return;
+        }
+        const { data: shopRow, error: shopError } = await supabase
           .from("shops")
           .select("id")
-          .eq("slug", SHOP_SLUG)
+          .eq("slug", shopSlugParam)
           .maybeSingle();
-        if (data) setShopRowId(data.id);
-      } catch {
-        /* order submission falls back to no shop_id — staff dashboard
-           filtering may not pick it up, but the order still saves */
-      }
-    })();
-    (async () => {
-      try {
+        if (shopError || !shopRow) throw shopError || new Error("no shop");
+        setShopRowId(shopRow.id);
+
+        const { data: settingsData } = await supabase
+          .from("shop_settings")
+          .select("*")
+          .eq("id", shopRow.id)
+          .maybeSingle();
+        // Online Ordering itself is a premium feature — if this shop's
+        // Super Admin hasn't turned it on, stop here rather than showing a
+        // catalog customers could try to order from but that the till
+        // side isn't paying to support.
+        let onlineOrdersOn = false;
+        if (settingsData && typeof settingsData.features_json === "string") {
+          try {
+            const cloudFeatures = JSON.parse(settingsData.features_json);
+            onlineOrdersOn = !!(cloudFeatures && cloudFeatures.onlineOrders);
+          } catch {
+            /* malformed features payload — treat as not enabled */
+          }
+        }
+        if (!onlineOrdersOn) {
+          setStatus("disabled");
+          return;
+        }
+        if (settingsData) {
+          setPayCashEnabled(
+            typeof settingsData.pay_cash_enabled === "boolean"
+              ? settingsData.pay_cash_enabled
+              : true,
+          );
+          setPayKhqrEnabled(!!settingsData.pay_khqr_enabled);
+          setKhqrImage(settingsData.khqr_image || "");
+          if (!settingsData.pay_cash_enabled && settingsData.pay_khqr_enabled) {
+            setPaymentMethod("khqr");
+          }
+        }
+
         const { data, error } = await supabase
           .from("products")
           .select("*")
+          .eq("shop_id", shopRow.id)
           .order("name_km");
         if (error) throw error;
         setProducts(data || []);
         setStatus("ready");
-      } catch {
-        setStatus("error");
-      }
-    })();
-    (async () => {
-      try {
-        const { data } = await supabase.from("categories").select("*");
-        if (data && data.length) {
+
+        const { data: catData } = await supabase
+          .from("categories")
+          .select("*")
+          .eq("shop_id", shopRow.id);
+        if (catData && catData.length) {
           setCategories(
-            data.map((r) => ({
+            catData.map((r) => ({
               key: r.key,
               label_km: r.label_km,
               label_en: r.label_en,
@@ -12800,30 +14051,7 @@ function StorefrontApp() {
           );
         }
       } catch {
-        /* keep default categories */
-      }
-    })();
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from("shop_settings")
-          .select("*")
-          .eq("id", "default")
-          .maybeSingle();
-        if (data) {
-          setPayCashEnabled(
-            typeof data.pay_cash_enabled === "boolean"
-              ? data.pay_cash_enabled
-              : true,
-          );
-          setPayKhqrEnabled(!!data.pay_khqr_enabled);
-          setKhqrImage(data.khqr_image || "");
-          if (!data.pay_cash_enabled && data.pay_khqr_enabled) {
-            setPaymentMethod("khqr");
-          }
-        }
-      } catch {
-        /* keep default (cash only) */
+        setStatus("error");
       }
     })();
   }, []);
@@ -13091,6 +14319,24 @@ function StorefrontApp() {
               </div>
               <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
                 {t("supabaseNotConfiguredHint")}
+              </div>
+            </div>
+          )}
+
+          {(status === "disabled" || status === "error") && (
+            <div
+              style={{
+                padding: "20px",
+                borderRadius: "12px",
+                background: "var(--surface-alt)",
+                border: "1px dashed var(--border)",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: "14.5px" }}>
+                {status === "disabled"
+                  ? t("storefront_orderingDisabled")
+                  : t("storefront_notFound")}
               </div>
             </div>
           )}
