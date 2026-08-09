@@ -800,6 +800,23 @@ const STRINGS = {
   settings_tab_currency: { km: "អត្រាប្តូរប្រាក់", en: "Currency" },
   settings_tab_notifications: { km: "ការជូនដំណឹង", en: "Notifications" },
   settings_tab_printing: { km: "បោះពុម្ព", en: "Printing" },
+  settings_tab_danger: { km: "តំបន់គ្រោះថ្នាក់", en: "Danger zone" },
+  settings_resetSalesData: {
+    km: "សម្អាតទិន្នន័យលក់ទាំងអស់",
+    en: "Reset all sales data",
+  },
+  settings_resetSalesDataDesc: {
+    km: "លុបប្រវត្តិលក់ ប្រតិបត្តិការ និងតួលេខរបាយការណ៍ទាំងអស់ជាអចិន្ត្រៃយ៍ ត្រឡប់ទៅសូន្យវិញ។ ទំនិញ អតិថិជន ចំណាយ និងអ្នកប្រើប្រាស់ មិនរងផលប៉ះពាល់ទេ។",
+    en: "Permanently deletes all sales history, transactions, and report figures back to zero. Products, customers, expenses, and users are not affected.",
+  },
+  settings_resetSalesDataConfirm: {
+    km: "តើអ្នកប្រាកដថាចង់សម្អាតទិន្នន័យលក់ទាំងអស់មែនទេ? សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។",
+    en: "Are you sure you want to reset all sales data? This action cannot be undone.",
+  },
+  settings_resetSalesDataDone: {
+    km: "បានសម្អាតទិន្នន័យលក់ទាំងអស់ហើយ",
+    en: "All sales data has been reset",
+  },
   settings_printTitle: {
     km: "ទំហំក្រដាសបង្កាន់ដៃ",
     en: "Receipt paper size",
@@ -2974,6 +2991,26 @@ function POSApp() {
     }
   };
 
+  // Danger-zone action from Settings: wipes all sales history so the
+  // Dashboard/Reports numbers go back to zero. Does NOT touch products,
+  // customers, expenses, or users — only the `sales` table.
+  const resetSalesData = async () => {
+    try {
+      if (supabase) {
+        const { error } = await supabase
+          .from("sales")
+          .delete()
+          .not("id", "is", null);
+        if (error) throw error;
+      }
+      setSales([]);
+      logAudit("delete", "sales_data", t("settings_resetSalesData"));
+      showToast(t("settings_resetSalesDataDone"));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
   const acceptOnlineOrder = async (order) => {
     try {
       // acknowledge + reserve stock only — revenue is NOT recorded yet since payment hasn't been collected
@@ -4205,6 +4242,8 @@ function POSApp() {
               }}
               receiptWidth={receiptWidth}
               setReceiptWidth={setReceiptWidth}
+              currentUser={currentUser}
+              onResetSalesData={resetSalesData}
             />
           )}
           {!allowedTabs.includes(activeTab) && (
@@ -9490,15 +9529,19 @@ function SettingsTab({
   onSavePaymentSettings,
   receiptWidth,
   setReceiptWidth,
+  currentUser,
+  onResetSalesData,
 }) {
   const { t } = useT();
   const [activeSettingsTab, setActiveSettingsTab] = useState("general");
+  const isAdmin = currentUser?.role === "admin";
   const SETTINGS_TABS = [
     { id: "general", label: t("settings_tab_general") },
     { id: "payment", label: t("settings_tab_payment") },
     { id: "currency", label: t("settings_tab_currency") },
     { id: "notifications", label: t("settings_tab_notifications") },
     { id: "printing", label: t("settings_tab_printing") },
+    ...(isAdmin ? [{ id: "danger", label: t("settings_tab_danger") }] : []),
   ];
   const [draft, setDraft] = useState(String(khrRate));
   const [saved, setSaved] = useState(false);
@@ -9529,6 +9572,7 @@ function SettingsTab({
 
   const [printWidthDraft, setPrintWidthDraft] = useState(receiptWidth);
   const [printSaved, setPrintSaved] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const savePrintSettings = () => {
     setReceiptWidth(printWidthDraft);
     setPrintSaved(true);
@@ -10470,6 +10514,55 @@ function SettingsTab({
                     </span>
                   )}
                 </div>
+              </div>
+            )}
+
+            {activeSettingsTab === "danger" && isAdmin && (
+              <div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14.5px",
+                    marginBottom: "4px",
+                    color: "var(--danger)",
+                  }}
+                >
+                  {t("settings_resetSalesData")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    marginBottom: "16px",
+                    maxWidth: "440px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {t("settings_resetSalesDataDesc")}
+                </div>
+                <button
+                  onClick={() => setResetConfirmOpen(true)}
+                  style={{
+                    ...primaryBtnStyle,
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    background: "var(--danger)",
+                  }}
+                >
+                  <Trash2 size={15} /> {t("settings_resetSalesData")}
+                </button>
+                {resetConfirmOpen && (
+                  <ConfirmDialog
+                    title={t("settings_resetSalesData")}
+                    message={t("settings_resetSalesDataConfirm")}
+                    confirmLabel={t("settings_resetSalesData")}
+                    onConfirm={() => {
+                      setResetConfirmOpen(false);
+                      onResetSalesData && onResetSalesData();
+                    }}
+                    onCancel={() => setResetConfirmOpen(false)}
+                  />
+                )}
               </div>
             )}
           </div>
