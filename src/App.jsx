@@ -817,6 +817,42 @@ const STRINGS = {
     km: "បានសម្អាតទិន្នន័យលក់ទាំងអស់ហើយ",
     en: "All sales data has been reset",
   },
+  settings_resetStockQty: {
+    km: "កំណត់ចំនួនស្តុកទំនិញឡើងវិញទៅសូន្យ",
+    en: "Reset all stock quantities to 0",
+  },
+  settings_resetStockQtyDesc: {
+    km: "កំណត់ចំនួនស្តុករបស់រាល់ទំនិញទៅសូន្យ (០) ដោយរក្សាទុកឈ្មោះ តម្លៃ និងព័ត៌មានទំនិញដដែល — សមស្របមុនពេលរាប់ស្តុកថ្មី។",
+    en: "Sets every product's stock count to 0 while keeping the product names, prices, and details — useful before a fresh physical stock count.",
+  },
+  settings_resetStockQtyConfirm: {
+    km: "តើអ្នកប្រាកដថាចង់កំណត់ចំនួនស្តុកទំនិញទាំងអស់ទៅសូន្យមែនទេ? សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។",
+    en: "Are you sure you want to reset all product stock quantities to 0? This action cannot be undone.",
+  },
+  settings_resetStockQtyDone: {
+    km: "បានកំណត់ស្តុកទំនិញទាំងអស់ទៅសូន្យហើយ",
+    en: "All stock quantities have been reset to 0",
+  },
+  settings_deleteAllProducts: {
+    km: "លុបទំនិញទាំងអស់",
+    en: "Delete all products",
+  },
+  settings_deleteAllProductsDesc: {
+    km: "លុបទំនិញទាំងអស់ចេញពី Inventory ជាអចិន្ត្រៃយ៍ (ឈ្មោះ តម្លៃ ស្តុក រូបភាព)។ ប្រវត្តិលក់មិនរងផលប៉ះពាល់ទេ។",
+    en: "Permanently deletes every product from Inventory (name, price, stock, image). Sales history is not affected.",
+  },
+  settings_deleteAllProductsConfirm: {
+    km: "តើអ្នកប្រាកដថាចង់លុបទំនិញទាំងអស់មែនទេ? សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។",
+    en: "Are you sure you want to delete all products? This action cannot be undone.",
+  },
+  settings_deleteAllProductsDone: {
+    km: "បានលុបទំនិញទាំងអស់ហើយ",
+    en: "All products have been deleted",
+  },
+  settings_resetBlockedByRls: {
+    km: "សកម្មភាពនេះត្រូវបានទប់ស្កាត់ដោយការកំណត់សុវត្ថិភាព (RLS) របស់ Supabase — សូមពិនិត្យ Row Level Security policy លើតារាងទាក់ទង ដើម្បីអនុញ្ញាតឲ្យលុប/កែប្រែបាន",
+    en: "This action was blocked by Supabase's Row Level Security — check the RLS policy on the relevant table to allow delete/update",
+  },
   settings_printTitle: {
     km: "ទំហំក្រដាសបង្កាន់ដៃ",
     en: "Receipt paper size",
@@ -2994,18 +3030,110 @@ function POSApp() {
   // Danger-zone action from Settings: wipes all sales history so the
   // Dashboard/Reports numbers go back to zero. Does NOT touch products,
   // customers, expenses, or users — only the `sales` table.
+  //
+  // Supabase can return "success" (no error) on a delete that Row Level
+  // Security silently filtered down to 0 affected rows — so we don't just
+  // trust the absence of an error. We chain .select("id") to see exactly
+  // which rows were removed, then re-count the table to confirm nothing
+  // was left behind by a partial/blocked delete.
   const resetSalesData = async () => {
     try {
       if (supabase) {
         const { error } = await supabase
           .from("sales")
           .delete()
-          .not("id", "is", null);
+          .not("id", "is", null)
+          .select("id");
         if (error) throw error;
+        const { count, error: countError } = await supabase
+          .from("sales")
+          .select("id", { count: "exact", head: true });
+        if (countError) throw countError;
+        if (count && count > 0) {
+          showToast(t("settings_resetBlockedByRls"), "error");
+          return;
+        }
       }
       setSales([]);
       logAudit("delete", "sales_data", t("settings_resetSalesData"));
       showToast(t("settings_resetSalesDataDone"));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  // Danger-zone action: sets every product's stock quantity to 0 while
+  // keeping the product catalog itself (name, price, category, barcode...)
+  // intact. Useful before a fresh physical stock count.
+  const resetStockQuantities = async () => {
+    try {
+      const updated = products.map((p) => ({
+        ...p,
+        stock: 0,
+        updatedAt: Date.now(),
+      }));
+      if (supabase) {
+        const { error } = await supabase.from("products").upsert(
+          updated.map((p) => ({
+            id: p.id,
+            name_km: p.name_km,
+            name_en: p.name_en || "",
+            category: p.category,
+            price: p.price,
+            cost: p.cost || 0,
+            stock: 0,
+            unit_km: p.unit_km || "",
+            unit_en: p.unit_en || "",
+            image: p.image || null,
+            barcode: p.barcode || null,
+            updated_at: p.updatedAt,
+          })),
+          { onConflict: "id" },
+        );
+        if (error) throw error;
+        // Confirm the write actually landed — RLS can block an UPDATE
+        // (via upsert) silently too, leaving stock untouched server-side.
+        const { count, error: countError } = await supabase
+          .from("products")
+          .select("id", { count: "exact", head: true })
+          .gt("stock", 0);
+        if (countError) throw countError;
+        if (count && count > 0) {
+          showToast(t("settings_resetBlockedByRls"), "error");
+          return;
+        }
+      }
+      setProducts(updated);
+      logAudit("edit", "stock_data", t("settings_resetStockQty"));
+      showToast(t("settings_resetStockQtyDone"));
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  // Danger-zone action: deletes every product from the catalog entirely
+  // (not just their stock numbers). Sales history is untouched.
+  const deleteAllProducts = async () => {
+    try {
+      if (supabase) {
+        const { error } = await supabase
+          .from("products")
+          .delete()
+          .not("id", "is", null)
+          .select("id");
+        if (error) throw error;
+        const { count, error: countError } = await supabase
+          .from("products")
+          .select("id", { count: "exact", head: true });
+        if (countError) throw countError;
+        if (count && count > 0) {
+          showToast(t("settings_resetBlockedByRls"), "error");
+          return;
+        }
+      }
+      setProducts([]);
+      logAudit("delete", "products_all", t("settings_deleteAllProducts"));
+      showToast(t("settings_deleteAllProductsDone"));
     } catch {
       showToast(t("toast_supabaseError"), "error");
     }
@@ -4244,6 +4372,8 @@ function POSApp() {
               setReceiptWidth={setReceiptWidth}
               currentUser={currentUser}
               onResetSalesData={resetSalesData}
+              onResetStockQty={resetStockQuantities}
+              onDeleteAllProducts={deleteAllProducts}
             />
           )}
           {!allowedTabs.includes(activeTab) && (
@@ -9531,6 +9661,8 @@ function SettingsTab({
   setReceiptWidth,
   currentUser,
   onResetSalesData,
+  onResetStockQty,
+  onDeleteAllProducts,
 }) {
   const { t } = useT();
   const [activeSettingsTab, setActiveSettingsTab] = useState("general");
@@ -9573,6 +9705,9 @@ function SettingsTab({
   const [printWidthDraft, setPrintWidthDraft] = useState(receiptWidth);
   const [printSaved, setPrintSaved] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [resetStockConfirmOpen, setResetStockConfirmOpen] = useState(false);
+  const [deleteProductsConfirmOpen, setDeleteProductsConfirmOpen] =
+    useState(false);
   const savePrintSettings = () => {
     setReceiptWidth(printWidthDraft);
     setPrintSaved(true);
@@ -10561,6 +10696,110 @@ function SettingsTab({
                       onResetSalesData && onResetSalesData();
                     }}
                     onCancel={() => setResetConfirmOpen(false)}
+                  />
+                )}
+
+                <div
+                  style={{
+                    borderTop: "1px solid var(--border)",
+                    margin: "22px 0 18px",
+                  }}
+                />
+
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14.5px",
+                    marginBottom: "4px",
+                    color: "var(--danger)",
+                  }}
+                >
+                  {t("settings_resetStockQty")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    marginBottom: "16px",
+                    maxWidth: "440px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {t("settings_resetStockQtyDesc")}
+                </div>
+                <button
+                  onClick={() => setResetStockConfirmOpen(true)}
+                  style={{
+                    ...primaryBtnStyle,
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    background: "var(--danger)",
+                  }}
+                >
+                  <Trash2 size={15} /> {t("settings_resetStockQty")}
+                </button>
+                {resetStockConfirmOpen && (
+                  <ConfirmDialog
+                    title={t("settings_resetStockQty")}
+                    message={t("settings_resetStockQtyConfirm")}
+                    confirmLabel={t("settings_resetStockQty")}
+                    onConfirm={() => {
+                      setResetStockConfirmOpen(false);
+                      onResetStockQty && onResetStockQty();
+                    }}
+                    onCancel={() => setResetStockConfirmOpen(false)}
+                  />
+                )}
+
+                <div
+                  style={{
+                    borderTop: "1px solid var(--border)",
+                    margin: "22px 0 18px",
+                  }}
+                />
+
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14.5px",
+                    marginBottom: "4px",
+                    color: "var(--danger)",
+                  }}
+                >
+                  {t("settings_deleteAllProducts")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    marginBottom: "16px",
+                    maxWidth: "440px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {t("settings_deleteAllProductsDesc")}
+                </div>
+                <button
+                  onClick={() => setDeleteProductsConfirmOpen(true)}
+                  style={{
+                    ...primaryBtnStyle,
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    background: "var(--danger)",
+                  }}
+                >
+                  <Trash2 size={15} /> {t("settings_deleteAllProducts")}
+                </button>
+                {deleteProductsConfirmOpen && (
+                  <ConfirmDialog
+                    title={t("settings_deleteAllProducts")}
+                    message={t("settings_deleteAllProductsConfirm")}
+                    confirmLabel={t("settings_deleteAllProducts")}
+                    onConfirm={() => {
+                      setDeleteProductsConfirmOpen(false);
+                      onDeleteAllProducts && onDeleteAllProducts();
+                    }}
+                    onCancel={() => setDeleteProductsConfirmOpen(false)}
                   />
                 )}
               </div>
