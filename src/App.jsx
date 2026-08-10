@@ -295,6 +295,17 @@ const seedUsers = [
 // exception: its id and full tab access are locked in code (see the
 // Roles Management UI) so the permission system itself can never be
 // locked out by an accidental checkbox change.
+// Besides `tabs` (which screens a role can even see), roles also carry
+// fine-grained *action* permissions for specific tabs — right now just
+// Shift (`shiftEdit` / `shiftDelete`), gating whether a role can correct
+// or remove an already-closed shift record, on top of the "shift" tab
+// just being visible. Anyone who can see the Shift tab can always start/
+// end a shift (that's just the tab itself); editing or deleting a past
+// shift entry is the extra, separately-gated action. Like `tabs`, these
+// are plain data — editable from the Roles Management matrix (see
+// UsersTab) — not hardcoded checks, except that the reserved "admin"
+// account role always gets both (see the `currentUser.role === "admin"`
+// fallback in POSApp), same safety net as full tab access.
 const seedRoles = [
   {
     id: "admin",
@@ -314,6 +325,8 @@ const seedRoles = [
       "settings",
       "expenses",
     ],
+    shiftEdit: true,
+    shiftDelete: true,
   },
   {
     id: "manager",
@@ -329,6 +342,8 @@ const seedRoles = [
       "onlineOrders",
       "expenses",
     ],
+    shiftEdit: true,
+    shiftDelete: false,
   },
   {
     id: "staff",
@@ -336,6 +351,8 @@ const seedRoles = [
     name_en: "Staff",
     builtin: true,
     tabs: ["pos", "customers", "onlineOrders"],
+    shiftEdit: false,
+    shiftDelete: false,
   },
 ];
 
@@ -1040,6 +1057,26 @@ const STRINGS = {
   shift_historyEmpty: {
     km: "មិនទាន់មានវេនណាមួយបិទរួចនៅឡើយទេ",
     en: "No shifts closed yet",
+  },
+  shift_editTitle: { km: "កែប្រែកំណត់ត្រាវេន", en: "Edit shift record" },
+  shift_edited: { km: "កែប្រែវេន", en: "Shift edited" },
+  shift_editedToast: {
+    km: "បានកែប្រែកំណត់ត្រាវេន",
+    en: "Shift record updated",
+  },
+  shift_deleteConfirm: {
+    km: "តើអ្នកប្រាកដថាចង់លុបកំណត់ត្រាវេននេះមែនទេ?",
+    en: "Delete this shift record?",
+  },
+  shift_deleted: { km: "លុបវេន", en: "Shift deleted" },
+  shift_deletedToast: { km: "បានលុបកំណត់ត្រាវេន", en: "Shift record deleted" },
+  shift_editPermission: {
+    km: "កែប្រែកំណត់ត្រាវេន",
+    en: "Edit shift records",
+  },
+  shift_deletePermission: {
+    km: "លុបកំណត់ត្រាវេន",
+    en: "Delete shift records",
   },
 
   settings_subtitle: {
@@ -2322,6 +2359,25 @@ function POSApp() {
     : roleTabIds(currentUserRole).filter(featureAllowsTab);
   const visibleNav = NAV.filter((n) => allowedTabs.includes(n.id));
 
+  // Action-level permissions for the Shift tab (on top of just being able
+  // to see it — see `tabs` above). Super Admin and the reserved "admin"
+  // role always get both, same fallback reasoning as full tab access, so
+  // a roles-data hiccup can never lock every admin out of fixing their own
+  // shift history. Everyone else reads straight from their role's
+  // `shiftEdit`/`shiftDelete` flags. Older saved roles (local cache or
+  // cloud) that predate these fields simply have them as `undefined`,
+  // which the `!!` below treats as off -- same "defaults off until
+  // explicitly turned on" rule used for premium features, so upgrading
+  // never silently grants a role more than it had before.
+  const canEditShift =
+    isSuperAdmin ||
+    (currentUser && currentUser.role === "admin") ||
+    !!(currentUserRole && currentUserRole.shiftEdit);
+  const canDeleteShift =
+    isSuperAdmin ||
+    (currentUser && currentUser.role === "admin") ||
+    !!(currentUserRole && currentUserRole.shiftDelete);
+
   const login = (username, password) => {
     const match = users.find(
       (u) =>
@@ -2954,6 +3010,18 @@ function POSApp() {
       if (error) {
         showToast(t("toast_supabaseError"), "error");
         console.error("pushShiftRow failed:", error);
+      }
+    } catch {
+      /* offline */
+    }
+  };
+  const deleteShiftRow = async (id) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.from("shifts").delete().eq("id", id);
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("deleteShiftRow failed:", error);
       }
     } catch {
       /* offline */
@@ -4435,6 +4503,53 @@ function POSApp() {
     showToast(t("shift_closedToast"));
   };
 
+  // Corrects an already-closed shift record (e.g. a counted-cash typo or a
+  // forgotten adjustment) — gated by `canEditShift` (see ShiftTab render).
+  // `cashSales`/`cashRefunds` stay frozen at whatever was recorded when the
+  // shift was originally closed (computeShiftCashFlow already locked those
+  // in at closing time); only the counted amount, adjustments, and note are
+  // editable, and expectedCash/difference are recomputed from those frozen
+  // figures so the math always stays internally consistent.
+  const editShift = ({ id, countedCash, adjustments, note }) => {
+    const target = shifts.find((s) => s.id === id);
+    if (!target) return;
+    const adj = Number(adjustments) || 0;
+    const counted = Number(countedCash) || 0;
+    const expectedCash =
+      target.openingCash +
+      (target.cashSales || 0) -
+      (target.cashRefunds || 0) -
+      adj;
+    const updated = {
+      ...target,
+      adjustments: adj,
+      expectedCash,
+      countedCash: counted,
+      difference: counted - expectedCash,
+      note: note || "",
+      updatedAt: Date.now(),
+    };
+    setShifts((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    pushShiftRow(updated);
+    logAudit(
+      "edit",
+      "shift",
+      `${t("shift_edited")} — ${t("shift_diff")}: ${fmt(updated.difference)}`,
+    );
+    showToast(t("shift_editedToast"));
+  };
+
+  // Removes a shift record entirely — gated by `canDeleteShift`, a
+  // separate (stricter) permission than editing. Only meant for closed
+  // history entries (see ShiftTab, which never offers this for the
+  // currently-open shift).
+  const deleteShift = (id) => {
+    setShifts((prev) => prev.filter((s) => s.id !== id));
+    deleteShiftRow(id);
+    logAudit("delete", "shift", t("shift_deleted"));
+    showToast(t("shift_deletedToast"));
+  };
+
   const saveCategory = (form) => {
     const label_km = (form.label_km || "").trim();
     const label_en = (form.label_en || "").trim();
@@ -5349,6 +5464,10 @@ function POSApp() {
               lang={lang}
               onStart={startShift}
               onEnd={endShift}
+              canEdit={canEditShift}
+              canDelete={canDeleteShift}
+              onEdit={editShift}
+              onDelete={deleteShift}
             />
           )}
           {activeTab === "onlineOrders" &&
@@ -9679,10 +9798,24 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
 
 // ================= Shift / Cash Reconciliation =================
 
-function ShiftTab({ shifts, currentShift, sales, lang, onStart, onEnd }) {
+function ShiftTab({
+  shifts,
+  currentShift,
+  sales,
+  lang,
+  onStart,
+  onEnd,
+  canEdit,
+  canDelete,
+  onEdit,
+  onDelete,
+}) {
   const { t } = useT();
   const [openingInput, setOpeningInput] = useState("");
   const [endOpen, setEndOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const showActions = canEdit || canDelete;
 
   const fmtTime = (ms) => {
     try {
@@ -9892,6 +10025,9 @@ function ShiftTab({ shifts, currentShift, sales, lang, onStart, onEnd }) {
                     <th style={{ ...thStyle, width: "20%", textAlign: "end" }}>
                       {t("shift_diff")}
                     </th>
+                    {showActions && (
+                      <th style={{ ...thStyle, width: "70px" }}></th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -9922,6 +10058,39 @@ function ShiftTab({ shifts, currentShift, sales, lang, onStart, onEnd }) {
                         {s.difference > 0 ? "+" : ""}
                         {fmt(s.difference)}
                       </td>
+                      {showActions && (
+                        <td style={{ ...tdStyle, textAlign: "end" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "5px",
+                              justifyContent: "flex-end",
+                            }}
+                          >
+                            {canEdit && (
+                              <button
+                                onClick={() => setEditTarget(s)}
+                                style={iconBtnStyle}
+                                title={t("shift_editTitle")}
+                              >
+                                <Pencil size={13} />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                onClick={() => setDeleteTarget(s.id)}
+                                style={{
+                                  ...iconBtnStyle,
+                                  color: "var(--danger)",
+                                }}
+                                title={t("shift_deleteConfirm")}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -9938,6 +10107,29 @@ function ShiftTab({ shifts, currentShift, sales, lang, onStart, onEnd }) {
           onConfirm={(vals) => {
             onEnd(vals);
             setEndOpen(false);
+          }}
+        />
+      )}
+
+      {editTarget && (
+        <EditShiftModal
+          shift={editTarget}
+          onClose={() => setEditTarget(null)}
+          onConfirm={(vals) => {
+            onEdit({ id: editTarget.id, ...vals });
+            setEditTarget(null);
+          }}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t("shift_deleteConfirm")}
+          danger
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            onDelete(deleteTarget);
+            setDeleteTarget(null);
           }}
         />
       )}
@@ -10090,6 +10282,169 @@ function EndShiftModal({ liveExpected, onClose, onConfirm }) {
             }}
           >
             {t("shift_confirmEnd")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Lets a permitted role (see canEdit/canEditShift) correct an already-closed
+// shift record. Opening cash and the frozen cash-sales/cash-refunds figures
+// (locked in when the shift was originally closed) are shown but not
+// editable — only counted cash, adjustments, and the note can change, and
+// expected cash / difference are recomputed live from those frozen figures.
+function EditShiftModal({ shift, onClose, onConfirm }) {
+  const { t } = useT();
+  const [countedCash, setCountedCash] = useState(
+    shift.countedCash != null ? String(shift.countedCash) : "",
+  );
+  const [adjustments, setAdjustments] = useState(
+    shift.adjustments ? String(shift.adjustments) : "",
+  );
+  const [note, setNote] = useState(shift.note || "");
+
+  const baseExpected =
+    shift.openingCash + (shift.cashSales || 0) - (shift.cashRefunds || 0);
+  const expectedAfterAdj = baseExpected - (Number(adjustments) || 0);
+  const diff = (Number(countedCash) || 0) - expectedAfterAdj;
+  const hasCounted = countedCash !== "";
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 200,
+        padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "16px",
+          padding: "22px",
+          width: "380px",
+          maxWidth: "100%",
+        }}
+      >
+        <div
+          style={{ fontWeight: 700, fontSize: "16px", marginBottom: "14px" }}
+        >
+          {t("shift_editTitle")}
+        </div>
+
+        <label style={fieldLabel}>{t("shift_adjustments")}</label>
+        <input
+          type="number"
+          step="0.01"
+          value={adjustments}
+          onChange={(e) => setAdjustments(e.target.value)}
+          style={fieldInput}
+          placeholder="0.00"
+        />
+        <div
+          style={{
+            fontSize: "12px",
+            color: "var(--text-muted)",
+            marginTop: "-8px",
+            marginBottom: "12px",
+          }}
+        >
+          {t("shift_adjustmentsHint")}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: "13.5px",
+            fontWeight: 700,
+            padding: "10px 12px",
+            background: "var(--bg)",
+            borderRadius: "10px",
+            marginBottom: "14px",
+          }}
+        >
+          <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>
+            {t("shift_expectedCash")}
+          </span>
+          <span>{fmt(expectedAfterAdj)}</span>
+        </div>
+
+        <label style={fieldLabel}>{t("shift_countedCash")}</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={countedCash}
+          onChange={(e) => setCountedCash(e.target.value)}
+          style={fieldInput}
+          placeholder="0.00"
+          autoFocus
+        />
+
+        {hasCounted && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: "13.5px",
+              fontWeight: 700,
+              padding: "10px 12px",
+              borderRadius: "10px",
+              marginBottom: "14px",
+              background: `color-mix(in srgb, ${
+                Math.abs(diff) < 0.01 ? "var(--success)" : "var(--danger)"
+              } 12%, transparent)`,
+              color: Math.abs(diff) < 0.01 ? "var(--success)" : "var(--danger)",
+            }}
+          >
+            <span>{t("shift_diff")}</span>
+            <span>
+              {diff > 0 ? "+" : ""}
+              {fmt(diff)}
+            </span>
+          </div>
+        )}
+
+        <label style={fieldLabel}>{t("shift_note")}</label>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          style={{ ...fieldInput, minHeight: "60px", resize: "vertical" }}
+          placeholder={t("shift_notePlaceholder")}
+        />
+
+        <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
+          <button
+            onClick={onClose}
+            style={{
+              ...secondaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+            }}
+          >
+            {t("cancel")}
+          </button>
+          <button
+            onClick={() => onConfirm({ countedCash, adjustments, note })}
+            disabled={!hasCounted}
+            style={{
+              ...primaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+              opacity: hasCounted ? 1 : 0.5,
+            }}
+          >
+            {t("save")}
           </button>
         </div>
       </div>
@@ -11154,12 +11509,20 @@ function UsersTab({
     }
     // A rename/add/delete came in from elsewhere (the role modal, or a
     // cloud sync) while permission checkboxes are still unsaved — adopt
-    // the new role list but keep whatever tabs are currently checked in
-    // the draft for roles that still exist, instead of discarding them.
+    // the new role list but keep whatever tabs/shift-permissions are
+    // currently checked in the draft for roles that still exist, instead
+    // of discarding them.
     setDraftRoles((prevDraft) =>
       roles.map((r) => {
         const draftMatch = prevDraft.find((d) => d.id === r.id);
-        return draftMatch ? { ...r, tabs: draftMatch.tabs } : r;
+        return draftMatch
+          ? {
+              ...r,
+              tabs: draftMatch.tabs,
+              shiftEdit: draftMatch.shiftEdit,
+              shiftDelete: draftMatch.shiftDelete,
+            }
+          : r;
       }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -11174,6 +11537,19 @@ function UsersTab({
           ...r,
           tabs: has ? r.tabs.filter((x) => x !== tabId) : [...r.tabs, tabId],
         };
+      }),
+    );
+    setRolesDirty(true);
+  };
+
+  // Toggles one of the extra (non-tab) action permissions — right now just
+  // `shiftEdit` / `shiftDelete` — the same way toggleDraftTab does for tab
+  // visibility, including the same locked-role guard.
+  const toggleDraftPermission = (roleId, key) => {
+    setDraftRoles((prev) =>
+      prev.map((r) => {
+        if (r.id !== roleId || (r.locked && !isSuperAdmin)) return r;
+        return { ...r, [key]: !r[key] };
       }),
     );
     setRolesDirty(true);
@@ -11559,6 +11935,42 @@ function UsersTab({
                       </td>
                     );
                   })}
+                </tr>
+              ))}
+              {/* Extra action-level permissions (not tied to tab visibility)
+                  — currently just editing/deleting closed shift records.
+                  Only meaningful once a role can see the Shift tab at all,
+                  but shown for every role like the rows above, mirroring
+                  how a premium-gated tab still shows here even before the
+                  feature is turned on. */}
+              {[
+                { key: "shiftEdit", label: t("shift_editPermission") },
+                { key: "shiftDelete", label: t("shift_deletePermission") },
+              ].map((perm) => (
+                <tr
+                  key={perm.key}
+                  style={{ borderTop: "1px solid var(--border)" }}
+                >
+                  <td style={tdStyle}>{perm.label}</td>
+                  {draftRoles.map((r) => (
+                    <td key={r.id} style={{ ...tdStyle, textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={!!r[perm.key]}
+                        disabled={r.locked && !isSuperAdmin}
+                        onChange={() => toggleDraftPermission(r.id, perm.key)}
+                        style={{
+                          width: "16px",
+                          height: "16px",
+                          cursor:
+                            r.locked && !isSuperAdmin
+                              ? "not-allowed"
+                              : "pointer",
+                          accentColor: "var(--primary)",
+                        }}
+                      />
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
