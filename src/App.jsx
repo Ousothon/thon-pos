@@ -301,11 +301,12 @@ const seedUsers = [
 // or remove an already-closed shift record, on top of the "shift" tab
 // just being visible. Anyone who can see the Shift tab can always start/
 // end a shift (that's just the tab itself); editing or deleting a past
-// shift entry is the extra, separately-gated action. Like `tabs`, these
-// are plain data — editable from the Roles Management matrix (see
-// UsersTab) — not hardcoded checks, except that the reserved "admin"
-// account role always gets both (see the `currentUser.role === "admin"`
-// fallback in POSApp), same safety net as full tab access.
+// shift entry is the extra, separately-gated action. Unlike `tabs`, these
+// are NOT force-granted to "admin" — losing them isn't a lockout risk the
+// way losing Settings/Users access would be, so it's fully in Super
+// Admin's hands (per shop) like any other role's checkbox in the Roles
+// Management matrix (see UsersTab). The values below are just the
+// starting defaults for a brand-new shop.
 const seedRoles = [
   {
     id: "admin",
@@ -2360,23 +2361,25 @@ function POSApp() {
   const visibleNav = NAV.filter((n) => allowedTabs.includes(n.id));
 
   // Action-level permissions for the Shift tab (on top of just being able
-  // to see it — see `tabs` above). Super Admin and the reserved "admin"
-  // role always get both, same fallback reasoning as full tab access, so
-  // a roles-data hiccup can never lock every admin out of fixing their own
-  // shift history. Everyone else reads straight from their role's
-  // `shiftEdit`/`shiftDelete` flags. Older saved roles (local cache or
-  // cloud) that predate these fields simply have them as `undefined`,
-  // which the `!!` below treats as off -- same "defaults off until
-  // explicitly turned on" rule used for premium features, so upgrading
-  // never silently grants a role more than it had before.
+  // to see it — see `tabs` above). Unlike full tab access, this is NOT
+  // forced on for the "admin" role — losing Settings/Users access could
+  // lock a shop out of fixing its own permissions, but losing shift
+  // edit/delete is just a feature restriction, so it's fully in Super
+  // Admin's hands like everything else in this matrix (see the disabled-
+  // when-locked checkbox in UsersTab: only Super Admin can change what
+  // "admin" itself is allowed here, same as any other role, and that
+  // choice is per-shop since roles live in that shop's `roles_json`).
+  // Super Admin's own account still always passes, same as it does for
+  // every other permission in the app.
+  // Older saved roles (local cache or cloud) that predate these fields
+  // simply have them as `undefined`, which the `!!` below treats as off —
+  // same "defaults off until explicitly turned on" rule used for premium
+  // features, so upgrading never silently grants a role more than it had
+  // before this feature existed.
   const canEditShift =
-    isSuperAdmin ||
-    (currentUser && currentUser.role === "admin") ||
-    !!(currentUserRole && currentUserRole.shiftEdit);
+    isSuperAdmin || !!(currentUserRole && currentUserRole.shiftEdit);
   const canDeleteShift =
-    isSuperAdmin ||
-    (currentUser && currentUser.role === "admin") ||
-    !!(currentUserRole && currentUserRole.shiftDelete);
+    isSuperAdmin || !!(currentUserRole && currentUserRole.shiftDelete);
 
   const login = (username, password) => {
     const match = users.find(
@@ -11544,7 +11547,10 @@ function UsersTab({
 
   // Toggles one of the extra (non-tab) action permissions — right now just
   // `shiftEdit` / `shiftDelete` — the same way toggleDraftTab does for tab
-  // visibility, including the same locked-role guard.
+  // visibility, including the same locked-role guard: only Super Admin can
+  // change what the "admin" role itself gets here, but they CAN change it
+  // (unlike tabs' "never lock everyone out" reasoning, there's no
+  // lockout risk in restricting this one).
   const toggleDraftPermission = (roleId, key) => {
     setDraftRoles((prev) =>
       prev.map((r) => {
@@ -11952,25 +11958,36 @@ function UsersTab({
                   style={{ borderTop: "1px solid var(--border)" }}
                 >
                   <td style={tdStyle}>{perm.label}</td>
-                  {draftRoles.map((r) => (
-                    <td key={r.id} style={{ ...tdStyle, textAlign: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={!!r[perm.key]}
-                        disabled={r.locked && !isSuperAdmin}
-                        onChange={() => toggleDraftPermission(r.id, perm.key)}
-                        style={{
-                          width: "16px",
-                          height: "16px",
-                          cursor:
-                            r.locked && !isSuperAdmin
-                              ? "not-allowed"
-                              : "pointer",
-                          accentColor: "var(--primary)",
-                        }}
-                      />
-                    </td>
-                  ))}
+                  {draftRoles.map((r) => {
+                    // Unlike tab visibility, this is NOT forced on for
+                    // "admin" — it's a real, revocable permission like any
+                    // other role's, just locked so only Super Admin can
+                    // change what "admin" itself gets (same disabled rule
+                    // as the tab rows above). Defaults to unchecked for
+                    // roles saved before this permission existed, same as
+                    // a premium feature nobody has turned on yet.
+                    const checked = !!r[perm.key];
+                    const disabled = r.locked && !isSuperAdmin;
+                    return (
+                      <td
+                        key={r.id}
+                        style={{ ...tdStyle, textAlign: "center" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => toggleDraftPermission(r.id, perm.key)}
+                          style={{
+                            width: "16px",
+                            height: "16px",
+                            cursor: disabled ? "not-allowed" : "pointer",
+                            accentColor: "var(--primary)",
+                          }}
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
