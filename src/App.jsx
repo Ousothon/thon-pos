@@ -2390,7 +2390,7 @@ function POSApp() {
   const saveRolePermissions = async (updatedRoles) => {
     const safeRoles = updatedRoles.map((r) => {
       const original = roles.find((x) => x.id === r.id);
-      return original && original.locked ? original : r;
+      return original && original.locked && !isSuperAdmin ? original : r;
     });
     setRoles(safeRoles);
     const ok = await pushRoles(safeRoles);
