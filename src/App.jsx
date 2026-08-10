@@ -136,6 +136,10 @@ const supabase =
 // cache can be migrated into the right shop-scoped slot the first time it
 // signs in, instead of silently losing it.
 const LEGACY_STORAGE_KEY = "shop-data";
+// Remembers which shop a Super Admin was last managing on this device, so
+// refreshing the page (see loadShopProfile) can drop them straight back
+// into that shop instead of always re-showing <ShopPickerScreen>.
+const SUPERADMIN_LAST_SHOP_KEY = "superadmin-lastShop";
 const CATEGORY_KEYS = ["beverage", "food", "household", "snack", "other"];
 
 const WEEKDAY_LABELS = {
@@ -1881,10 +1885,25 @@ function POSApp() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("shop-theme") || "light",
   );
+  // `shopIdRef` mirrors `shopId` (declared further below) without adding it
+  // as a dependency of the persist effect right below — see the effect's
+  // comment for why that separation matters.
+  const shopIdRef = useRef(null);
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     try {
-      localStorage.setItem("shop-theme", theme);
+      // Persist under this shop's own key when we know which shop is
+      // signed in, falling back to the shared "shop-theme" key for the
+      // login/picker screens where no shop is signed in yet. Deliberately
+      // depends on `theme` only (not `shopId`) — if it also re-ran on
+      // every shopId change, it would fire in the same commit as (and race
+      // ahead of) the "load this shop's theme" effect below, overwriting
+      // the newly-switched-to shop's saved theme with the previous shop's
+      // theme before that effect got a chance to load it.
+      const key = shopIdRef.current
+        ? `shop-theme-${shopIdRef.current}`
+        : "shop-theme";
+      localStorage.setItem(key, theme);
     } catch {
       /* ignore */
     }
@@ -1939,6 +1958,22 @@ function POSApp() {
   const [shopSlug, setShopSlug] = useState("");
   const [shopAuthChecking, setShopAuthChecking] = useState(!!supabase);
   const [shopAuthError, setShopAuthError] = useState("");
+  useEffect(() => {
+    shopIdRef.current = shopId;
+  }, [shopId]);
+  // Each shop remembers its own light/dark preference. Without this, the
+  // theme toggle above was writing to one shared "shop-theme" key for
+  // every shop on this device, so switching shops (most visibly as a
+  // Super Admin hopping between them) carried Shop A's theme choice into
+  // Shop B instead of showing Shop B's own.
+  useEffect(() => {
+    if (!shopId) return;
+    try {
+      setTheme(localStorage.getItem(`shop-theme-${shopId}`) || "light");
+    } catch {
+      setTheme("light");
+    }
+  }, [shopId]);
   // Super Admin = a platform-owner Supabase Auth account (profiles.shop_id
   // is NULL, profiles.is_super_admin is true) that isn't tied to any one
   // shop. Instead of landing straight in a shop, it lands on
@@ -1959,8 +1994,35 @@ function POSApp() {
     if (error) throw error;
     if (profile) {
       setIsSuperAdmin(!!profile.is_super_admin);
-      setShopId(profile.shop_id || null);
-      setShopSlug((profile.shops && profile.shops.slug) || "");
+      if (profile.shop_id) {
+        setShopId(profile.shop_id);
+        setShopSlug((profile.shops && profile.shops.slug) || "");
+      } else if (profile.is_super_admin) {
+        // Super Admin accounts have no shop_id of their own — they pick
+        // one via <ShopPickerScreen> (enterShopAsSuperAdmin). Without
+        // this, every page refresh re-ran this same check, found no
+        // shop_id, and sent them back to the picker even though they'd
+        // already chosen a shop a moment ago. Restore whichever shop they
+        // were last managing on this device instead.
+        try {
+          const saved = JSON.parse(
+            localStorage.getItem(SUPERADMIN_LAST_SHOP_KEY) || "null",
+          );
+          if (saved && saved.id) {
+            setShopId(saved.id);
+            setShopSlug(saved.slug || "");
+          } else {
+            setShopId(null);
+            setShopSlug("");
+          }
+        } catch {
+          setShopId(null);
+          setShopSlug("");
+        }
+      } else {
+        setShopId(null);
+        setShopSlug("");
+      }
     }
   };
 
@@ -2028,6 +2090,14 @@ function POSApp() {
     setLoading(true);
     setShopId(id);
     setShopSlug(slug || "");
+    try {
+      localStorage.setItem(
+        SUPERADMIN_LAST_SHOP_KEY,
+        JSON.stringify({ id, slug: slug || "" }),
+      );
+    } catch {
+      /* ignore */
+    }
   };
   const leaveShopAsSuperAdmin = () => {
     setLoading(true);
@@ -2041,6 +2111,11 @@ function POSApp() {
     setUsers([]);
     setRoles(seedRoles);
     setFeatures(DEFAULT_FEATURES);
+    try {
+      localStorage.removeItem(SUPERADMIN_LAST_SHOP_KEY);
+    } catch {
+      /* ignore */
+    }
   };
   const signOutShop = async () => {
     if (!supabase) return;
@@ -2068,6 +2143,11 @@ function POSApp() {
     setUsers([]);
     setRoles(seedRoles);
     setFeatures(DEFAULT_FEATURES);
+    try {
+      localStorage.removeItem(SUPERADMIN_LAST_SHOP_KEY);
+    } catch {
+      /* ignore */
+    }
   };
 
   // ---------- Local cache (per-shop) ----------
@@ -14708,13 +14788,32 @@ function ReceiptModal({
 
 function StorefrontApp() {
   const [lang, setLang] = useState("km");
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("shop-theme") || "light",
-  );
+  // Slug from ?shop=slug in the URL — resolved synchronously (no fetch
+  // needed) since it's used to scope both the theme and "my active order"
+  // localStorage keys per shop. Without this, a browser that's opened
+  // storefront links for two different shops (e.g. a merchant testing
+  // both) had one shop's theme and in-progress order bleed into the
+  // other's, because everything was saved under the same shared keys.
+  const shopSlugParam =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("shop")
+      : null;
+  const activeOrderStorageKey = shopSlugParam
+    ? `storefront-activeOrder-${shopSlugParam}`
+    : null;
+  const [theme, setTheme] = useState(() => {
+    try {
+      const key = shopSlugParam ? `shop-theme-${shopSlugParam}` : "shop-theme";
+      return localStorage.getItem(key) || "light";
+    } catch {
+      return "light";
+    }
+  });
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     try {
-      localStorage.setItem("shop-theme", theme);
+      const key = shopSlugParam ? `shop-theme-${shopSlugParam}` : "shop-theme";
+      localStorage.setItem(key, theme);
     } catch {
       /* ignore */
     }
@@ -14861,17 +14960,60 @@ function StorefrontApp() {
       setMyOrder(data);
       setSubmitted(true);
       setShowHistory(false);
+      if (activeOrderStorageKey) {
+        try {
+          localStorage.setItem(activeOrderStorageKey, JSON.stringify({ id }));
+        } catch {
+          /* ignore */
+        }
+      }
     } catch {
       showToast(t("toast_supabaseError"), "error");
     }
   };
 
+  // Restore the order-confirmation screen after a page refresh. Without
+  // this, refreshing while looking at "Order received!" (or its live
+  // status) dropped the customer straight back to the product list with
+  // no obvious way back short of digging through order history. Written
+  // as its own effect (rather than reusing trackOrder) so a stale pointer
+  // — e.g. the shop permanently deleted this order from its archive —
+  // fails silently instead of surfacing a "something went wrong" toast
+  // on a page the customer hasn't touched yet.
+  useEffect(() => {
+    if (!supabase || !activeOrderStorageKey) return;
+    let saved;
+    try {
+      const raw = localStorage.getItem(activeOrderStorageKey);
+      if (!raw) return;
+      saved = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!saved || !saved.id) return;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("online_orders")
+          .select("*")
+          .eq("id", saved.id)
+          .single();
+        if (error || !data) throw error || new Error("not found");
+        setMyOrder(data);
+        setSubmitted(true);
+      } catch {
+        try {
+          localStorage.removeItem(activeOrderStorageKey);
+        } catch {
+          /* ignore */
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!supabase) return;
-    const shopSlugParam =
-      typeof window !== "undefined"
-        ? new URLSearchParams(window.location.search).get("shop")
-        : null;
     (async () => {
       try {
         if (!shopSlugParam) {
@@ -15008,6 +15150,16 @@ function StorefrontApp() {
       setMyOrder(data);
       saveOrderToHistory(data);
       setSubmitted(true);
+      if (activeOrderStorageKey) {
+        try {
+          localStorage.setItem(
+            activeOrderStorageKey,
+            JSON.stringify({ id: data.id }),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
       if (
         typeof Notification !== "undefined" &&
         Notification.permission === "default"
@@ -15031,6 +15183,13 @@ function StorefrontApp() {
     setNote("");
     setSubmitted(false);
     setMyOrder(null);
+    if (activeOrderStorageKey) {
+      try {
+        localStorage.removeItem(activeOrderStorageKey);
+      } catch {
+        /* ignore */
+      }
+    }
   };
 
   return (
