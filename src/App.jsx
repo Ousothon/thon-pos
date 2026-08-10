@@ -732,6 +732,32 @@ const STRINGS = {
     en: "No archived orders yet",
   },
   archive_single: { km: "Archive", en: "Archive" },
+  archive_deletePermanent: { km: "លុបជាអចិន្ត្រៃយ៍", en: "Delete permanently" },
+  archive_deleteAllPermanent: {
+    km: "លុបទាំងអស់ជាអចិន្ត្រៃយ៍",
+    en: "Delete all permanently",
+  },
+  order_deleteConfirmTitle: {
+    km: "លុបការបញ្ជាទិញនេះជាអចិន្ត្រៃយ៍?",
+    en: "Delete this order permanently?",
+  },
+  order_deleteConfirmMsg: {
+    km: "ទិន្នន័យនេះនឹងលុបចោលជាអចិន្ត្រៃយ៍ ហើយមិនអាច Restore មកវិញបានទេ។",
+    en: "This will be permanently deleted and cannot be restored.",
+  },
+  order_deleteAllConfirmTitle: {
+    km: "លុប {count} ការបញ្ជាទិញក្នុង Archive ជាអចិន្ត្រៃយ៍?",
+    en: "Delete {count} archived orders permanently?",
+  },
+  order_deleteAllConfirmMsg: {
+    km: "ការបញ្ជាទិញទាំងអស់ក្នុង Archive នេះនឹងលុបចោលជាអចិន្ត្រៃយ៍ ហើយមិនអាច Restore មកវិញបានទេ។",
+    en: "All orders in this archive will be permanently deleted and cannot be restored.",
+  },
+  toast_orderDeleted: { km: "បានលុបការបញ្ជាទិញរួចរាល់", en: "Order deleted" },
+  toast_ordersDeletedAll: {
+    km: "បានលុប {count} ការបញ្ជាទិញជាអចិន្ត្រៃយ៍",
+    en: "Permanently deleted {count} orders",
+  },
 
   refund: { km: "សងវិញ", en: "Refund" },
   refunded: { km: "បានសងវិញ", en: "Refunded" },
@@ -4090,6 +4116,50 @@ function POSApp() {
     }
   };
 
+  // ---------- Permanent delete for archived online orders (Super Admin only) ----------
+  // Unlike archive/restore above, these actually remove the row from
+  // `online_orders` in Supabase — irreversible. Gated behind `isSuperAdmin`
+  // in the UI. Every id passed in already comes from `onlineOrders`, which
+  // is fetched with `.eq("shop_id", shopId)` (see fetchOnlineOrders above),
+  // so these can only ever touch the current shop's own rows — but since
+  // this is a hard delete (not a soft archive), we also repeat the
+  // shop_id filter on the delete call itself as a second guard, in case
+  // `order`/`ids` were ever built from a different source in the future.
+  const deleteOrderPermanently = async (order) => {
+    try {
+      if (supabase)
+        await supabase
+          .from("online_orders")
+          .delete()
+          .eq("id", order.id)
+          .eq("shop_id", shopId);
+      setOnlineOrders((prev) => prev.filter((o) => o.id !== order.id));
+      showToast(t("toast_orderDeleted"));
+      logAudit("delete", "order", order.customer_name || order.id);
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
+  const deleteAllArchivedOrders = async () => {
+    const archived = onlineOrders.filter((o) => o.archived);
+    if (archived.length === 0) return;
+    const ids = archived.map((o) => o.id);
+    try {
+      if (supabase)
+        await supabase
+          .from("online_orders")
+          .delete()
+          .in("id", ids)
+          .eq("shop_id", shopId);
+      setOnlineOrders((prev) => prev.filter((o) => !ids.includes(o.id)));
+      showToast(t("toast_ordersDeletedAll", { count: ids.length }));
+      logAudit("delete", "order", `${ids.length} orders (bulk)`);
+    } catch {
+      showToast(t("toast_supabaseError"), "error");
+    }
+  };
+
   // ---------- Customers ----------
   const saveCustomer = (form) => {
     if (!form.name) {
@@ -5220,6 +5290,9 @@ function POSApp() {
                 onArchiveFinished={archiveFinishedOrders}
                 onRestoreOrder={restoreOrder}
                 onRestoreAllOrders={restoreAllOrders}
+                isSuperAdmin={isSuperAdmin}
+                onDeleteOrder={deleteOrderPermanently}
+                onDeleteAllArchived={deleteAllArchivedOrders}
               />
             )}
           {activeTab === "users" && allowedTabs.includes("users") && (
@@ -10044,6 +10117,9 @@ function OnlineOrdersTab({
   onArchiveFinished,
   onRestoreOrder,
   onRestoreAllOrders,
+  isSuperAdmin,
+  onDeleteOrder,
+  onDeleteAllArchived,
   notifySoundOn,
   setNotifySoundOn,
 }) {
@@ -10054,6 +10130,8 @@ function OnlineOrdersTab({
   const [statusFilter, setStatusFilter] = useState("all");
   const [undoTarget, setUndoTarget] = useState(null);
   const [reasonTarget, setReasonTarget] = useState(null); // { order, actionType: 'reject'|'cancel' }
+  const [deleteTarget, setDeleteTarget] = useState(null); // single order pending permanent delete
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false); // bulk delete confirm
   const allVisibleOrders = archiveView === "archived" ? archivedOrders : orders;
   const visibleOrders =
     statusFilter === "all"
@@ -10227,6 +10305,25 @@ function OnlineOrdersTab({
                 }}
               >
                 {t("archive_restoreAll")}
+              </button>
+            )}
+            {archiveView === "archived" && isSuperAdmin && (
+              <button
+                onClick={() => setDeleteAllConfirm(true)}
+                disabled={archivedOrders.length === 0}
+                style={{
+                  ...iconBtnStyle,
+                  width: "auto",
+                  padding: "8px 12px",
+                  gap: "6px",
+                  display: "flex",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "var(--danger)",
+                  opacity: archivedOrders.length === 0 ? 0.5 : 1,
+                }}
+              >
+                <Trash2 size={14} /> {t("archive_deleteAllPermanent")}
               </button>
             )}
             <button
@@ -10626,21 +10723,40 @@ function OnlineOrdersTab({
                 {fmt(o.subtotal)}
               </span>
               {archiveView === "archived" && (
-                <button
-                  onClick={() => onRestoreOrder(o)}
-                  style={{
-                    ...iconBtnStyle,
-                    width: "auto",
-                    padding: "6px 11px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    display: "flex",
-                    gap: "5px",
-                    color: "var(--primary)",
-                  }}
-                >
-                  <History size={13} /> {t("archive_restore")}
-                </button>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => setDeleteTarget(o)}
+                      style={{
+                        ...iconBtnStyle,
+                        width: "auto",
+                        padding: "6px 11px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        display: "flex",
+                        gap: "5px",
+                        color: "var(--danger)",
+                      }}
+                    >
+                      <Trash2 size={13} /> {t("archive_deletePermanent")}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => onRestoreOrder(o)}
+                    style={{
+                      ...iconBtnStyle,
+                      width: "auto",
+                      padding: "6px 11px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      display: "flex",
+                      gap: "5px",
+                      color: "var(--primary)",
+                    }}
+                  >
+                    <History size={13} /> {t("archive_restore")}
+                  </button>
+                </div>
               )}
               {archiveView === "active" &&
                 ["paid", "rejected", "cancelled"].includes(o.status) && (
@@ -10783,6 +10899,34 @@ function OnlineOrdersTab({
             }
             setReasonTarget(null);
           }}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t("order_deleteConfirmTitle")}
+          message={t("order_deleteConfirmMsg")}
+          confirmLabel={t("archive_deletePermanent")}
+          danger
+          onConfirm={() => {
+            onDeleteOrder(deleteTarget);
+            setDeleteTarget(null);
+          }}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+      {deleteAllConfirm && (
+        <ConfirmDialog
+          title={t("order_deleteAllConfirmTitle", {
+            count: archivedOrders.length,
+          })}
+          message={t("order_deleteAllConfirmMsg")}
+          confirmLabel={t("archive_deleteAllPermanent")}
+          danger
+          onConfirm={() => {
+            onDeleteAllArchived();
+            setDeleteAllConfirm(false);
+          }}
+          onCancel={() => setDeleteAllConfirm(false)}
         />
       )}
     </div>
