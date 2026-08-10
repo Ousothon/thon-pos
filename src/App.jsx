@@ -1766,10 +1766,7 @@ const NAV = [
 // simply doesn't mention the new tab — and since locked rows can't be
 // checked by hand in Role Management, there'd be no way for that admin to
 // ever unlock it. This keeps admin's access always complete by definition.
-const roleTabIds = (role) =>
-  role && role.locked
-    ? NAV.filter((n) => n.id !== "superAdmin").map((n) => n.id)
-    : (role && role.tabs) || [];
+const roleTabIds = (role) => (role && role.tabs) || [];
 
 function POSApp() {
   const [loading, setLoading] = useState(true);
@@ -2216,10 +2213,7 @@ function POSApp() {
   };
   const allowedTabs = isSuperAdmin
     ? NAV.map((n) => n.id)
-    : (currentUser && currentUser.role === "admin"
-        ? NAV.filter((n) => n.id !== "superAdmin").map((n) => n.id)
-        : roleTabIds(currentUserRole)
-      ).filter(featureAllowsTab);
+    : roleTabIds(currentUserRole).filter(featureAllowsTab);
   const visibleNav = NAV.filter((n) => allowedTabs.includes(n.id));
 
   const login = (username, password) => {
@@ -5241,6 +5235,7 @@ function POSApp() {
               openEditRole={(r) => setRoleModal({ mode: "edit", role: r })}
               deleteRole={deleteRole}
               saveRolePermissions={saveRolePermissions}
+              isSuperAdmin={isSuperAdmin}
             />
           )}
           {activeTab === "auditLog" && allowedTabs.includes("auditLog") && (
@@ -10909,6 +10904,7 @@ function UsersTab({
   openEditRole,
   deleteRole,
   saveRolePermissions,
+  isSuperAdmin,
 }) {
   const { t, lang } = useT();
   const [subTab, setSubTab] = useState("list"); // "list" | "roles"
@@ -10948,7 +10944,7 @@ function UsersTab({
   const toggleDraftTab = (roleId, tabId) => {
     setDraftRoles((prev) =>
       prev.map((r) => {
-        if (r.id !== roleId || r.locked) return r;
+        if (r.id !== roleId || (r.locked && !isSuperAdmin)) return r;
         const has = (r.tabs || []).includes(tabId);
         return {
           ...r,
@@ -11308,7 +11304,7 @@ function UsersTab({
               </tr>
             </thead>
             <tbody>
-              {NAV.map((navItem) => (
+              {NAV.filter((n) => n.id !== "superAdmin").map((navItem) => (
                 <tr
                   key={navItem.id}
                   style={{ borderTop: "1px solid var(--border)" }}
@@ -11324,12 +11320,15 @@ function UsersTab({
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={r.locked}
+                          disabled={r.locked && !isSuperAdmin}
                           onChange={() => toggleDraftTab(r.id, navItem.id)}
                           style={{
                             width: "16px",
                             height: "16px",
-                            cursor: r.locked ? "not-allowed" : "pointer",
+                            cursor:
+                              r.locked && !isSuperAdmin
+                                ? "not-allowed"
+                                : "pointer",
                             accentColor: "var(--primary)",
                           }}
                         />
