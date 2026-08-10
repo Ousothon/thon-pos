@@ -63,6 +63,7 @@ import {
   BellOff,
   Camera,
   MoreVertical,
+  Banknote,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -362,6 +363,12 @@ const PREMIUM_FEATURES = [
     name_km: "អ្នកប្រើប្រាស់ច្រើននាក់ & សិទ្ធិ",
     name_en: "Multi-user & Roles",
     tab: "users",
+  },
+  {
+    id: "shiftReconciliation",
+    name_km: "បិទបញ្ជីវេន និងផ្ទៀងផ្ទាត់សាច់ប្រាក់",
+    name_en: "Shift & Cash Reconciliation",
+    tab: "shift",
   },
 ];
 // Every feature defaults OFF for a shop until a Super Admin explicitly
@@ -801,6 +808,7 @@ const STRINGS = {
 
   paymentSuccess: { km: "ការទូទាត់បានជោគជ័យ", en: "Payment successful" },
   close: { km: "បិទ", en: "Close" },
+  cancel: { km: "បោះបង់", en: "Cancel" },
   print: { km: "បោះពុម្ព", en: "Print" },
 
   login_title: { km: "ចូលប្រើប្រព័ន្ធ", en: "Sign in" },
@@ -917,6 +925,7 @@ const STRINGS = {
     en: "Save failed — please try again",
   },
   nav_expenses: { km: "ចំណាយ", en: "Expenses" },
+  nav_shift: { km: "បិទបញ្ជីវេន", en: "Shift" },
 
   exp_title: { km: "តាមដានចំណាយ", en: "Expense tracking" },
   exp_subtitle: {
@@ -957,6 +966,52 @@ const STRINGS = {
   toast_expenseUpdated: { km: "បានកែប្រែចំណាយ", en: "Expense updated" },
   toast_expenseDeleted: { km: "បានលុបចំណាយ", en: "Expense deleted" },
   stat_expenses: { km: "ចំណាយប្រតិបត្តិការ", en: "Operating expenses" },
+
+  shift_subtitle: {
+    km: "គ្រប់គ្រងការបើក/បិទវេន និងផ្ទៀងផ្ទាត់សាច់ប្រាក់ក្នុងថត",
+    en: "Manage shift open/close and reconcile the cash drawer",
+  },
+  shift_startTitle: { km: "ចាប់ផ្តើមវេនថ្មី", en: "Start a new shift" },
+  shift_startDesc: {
+    km: "រាប់លុយក្នុងថតមុនចាប់ផ្តើមលក់ ហើយបញ្ចូលចំនួនទឹកប្រាក់ចាប់ផ្តើម",
+    en: "Count the cash in the drawer before you start selling and enter the opening amount",
+  },
+  shift_openingCash: { km: "លុយចាប់ផ្តើម", en: "Opening cash" },
+  shift_startBtn: { km: "ចាប់ផ្តើមវេន", en: "Start shift" },
+  shift_started: { km: "ចាប់ផ្តើមវេន", en: "Shift started" },
+  shift_startedToast: { km: "បានចាប់ផ្តើមវេនហើយ", en: "Shift started" },
+  shift_active: { km: "វេនកំពុងដំណើរការ", en: "Shift in progress" },
+  shift_openedBy: { km: "ចាប់ផ្តើមដោយ", en: "Opened by" },
+  shift_endBtn: { km: "បិទបញ្ជីវេន", en: "End shift" },
+  shift_cashSales: { km: "លក់សាច់ប្រាក់", en: "Cash sales" },
+  shift_cashRefunds: { km: "សងប្រាក់វិញ", en: "Cash refunds" },
+  shift_expectedCash: { km: "លុយដែលគួរមាន", en: "Expected cash" },
+  shift_countedCash: { km: "លុយរាប់បានពិត", en: "Counted cash" },
+  shift_adjustments: {
+    km: "កែតម្រូវផ្សេងៗ (ស្រេចចិត្ត)",
+    en: "Other adjustments (optional)",
+  },
+  shift_adjustmentsHint: {
+    km: "ឧ. លុយបានយកចេញទិញអីវ៉ាន់ ឬចំណាយសាច់ប្រាក់ផ្សេងទៀត (កាត់ចេញពីលុយគួរមាន)",
+    en: "e.g. cash taken out for supplies or other petty cash paid out (subtracted from expected)",
+  },
+  shift_diff: { km: "ភាពខុសគ្នា", en: "Difference" },
+  shift_note: { km: "កំណត់ចំណាំ (ស្រេចចិត្ត)", en: "Note (optional)" },
+  shift_notePlaceholder: {
+    km: "កំណត់ចំណាំបន្ថែម បើមាន...",
+    en: "Any extra notes...",
+  },
+  shift_confirmEnd: { km: "បញ្ជាក់បិទវេន", en: "Confirm & close shift" },
+  shift_closed: { km: "បិទវេន", en: "Shift closed" },
+  shift_closedToast: { km: "បានបិទវេនរួចរាល់", en: "Shift closed" },
+  shift_closedAt: { km: "ពេលបិទវេន", en: "Closed at" },
+  shift_closedBy: { km: "បិទដោយ", en: "Closed by" },
+  shift_history: { km: "ប្រវត្តិវេន", en: "Shift history" },
+  shift_historyEmpty: {
+    km: "មិនទាន់មានវេនណាមួយបិទរួចនៅឡើយទេ",
+    en: "No shifts closed yet",
+  },
+
   settings_subtitle: {
     km: "កំណត់ការកំណត់ទូទៅរបស់ហាង",
     en: "Configure general shop settings",
@@ -1106,6 +1161,8 @@ const STRINGS = {
   checkout_paymentMethod: { km: "វិធីទូទាត់ប្រាក់", en: "Payment method" },
   checkout_payCash: { km: "សាច់ប្រាក់ពេលទទួល", en: "Cash on pickup" },
   checkout_payKhqr: { km: "ស្កេន KHQR ទូទាត់ភ្លាមៗ", en: "Scan KHQR now" },
+  pos_payCash: { km: "សាច់ប្រាក់", en: "Cash" },
+  pos_payKhqr: { km: "KHQR", en: "KHQR" },
   checkout_khqrInstructions: {
     km: "ស្កេន QR ខាងក្រោមដើម្បីទូទាត់ចំនួន {amount} រួចចុចដាក់ការកម្មង់ខាងក្រោម",
     en: "Scan the QR below to pay {amount}, then submit your order below",
@@ -1687,6 +1744,7 @@ const NAV = [
   { id: "customers", key: "nav_customers", icon: Users },
   { id: "onlineOrders", key: "nav_onlineOrders", icon: Store },
   { id: "expenses", key: "nav_expenses", icon: Wallet },
+  { id: "shift", key: "nav_shift", icon: Banknote },
   { id: "users", key: "nav_users", icon: UserCog },
   { id: "auditLog", key: "nav_auditLog", icon: History },
   { id: "settings", key: "nav_settings", icon: SettingsIcon },
@@ -1726,6 +1784,7 @@ function POSApp() {
   const [sales, setSales] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [shifts, setShifts] = useState([]);
   const [shopName, setShopName] = useState("");
   const [shopLogo, setShopLogo] = useState(null);
   const [khrRate, setKhrRate] = useState(KHR_PER_USD_DEFAULT);
@@ -1782,6 +1841,7 @@ function POSApp() {
   const [discountMode, setDiscountMode] = useState("amount"); // 'amount' ($) or 'percent' (%)
   const [redeemPoints, setRedeemPoints] = useState("");
   const [payment, setPayment] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [receipt, setReceipt] = useState(null);
 
@@ -2022,6 +2082,7 @@ function POSApp() {
         setSales(parsed.sales || []);
         setCustomers(parsed.customers || []);
         setExpenses(parsed.expenses || []);
+        setShifts(parsed.shifts || []);
         if (parsed.categories && parsed.categories.length) {
           setCategories(parsed.categories);
         }
@@ -2072,6 +2133,7 @@ function POSApp() {
             sales,
             customers,
             expenses,
+            shifts,
             categories,
             shopName,
             shopLogo,
@@ -2096,6 +2158,7 @@ function POSApp() {
     sales,
     customers,
     expenses,
+    shifts,
     categories,
     shopName,
     shopLogo,
@@ -2514,6 +2577,7 @@ function POSApp() {
     setDiscountMode("amount");
     setRedeemPoints("");
     setPayment("");
+    setPaymentMethod("cash");
     setSelectedCustomerId("");
   };
 
@@ -2522,7 +2586,7 @@ function POSApp() {
       showToast(t("toast_selectProduct"), "error");
       return;
     }
-    if (paymentNum < total) {
+    if (paymentMethod !== "khqr" && paymentNum < total) {
       showToast(t("toast_insufficientPayment"), "error");
       return;
     }
@@ -2540,8 +2604,9 @@ function POSApp() {
       subtotal,
       discount: discountAmt,
       total,
-      paid: paymentNum,
-      change,
+      paid: paymentMethod === "khqr" ? total : paymentNum,
+      change: paymentMethod === "khqr" ? 0 : change,
+      paymentMethod,
       customerId: customer ? customer.id : null,
       customerName: customer ? customer.name : null,
       archived: false,
@@ -2763,6 +2828,38 @@ function POSApp() {
       /* offline */
     }
   };
+  const pushShiftRow = async (s) => {
+    if (!supabase || !shopId) return;
+    try {
+      const { error } = await supabase.from("shifts").upsert(
+        {
+          id: s.id,
+          shop_id: shopId,
+          opened_by: s.openedBy || "",
+          opened_at: s.openedAt,
+          opening_cash: s.openingCash,
+          closed_by: s.closedBy || null,
+          closed_at: s.closedAt || null,
+          cash_sales: s.cashSales ?? null,
+          cash_refunds: s.cashRefunds ?? null,
+          adjustments: s.adjustments ?? 0,
+          expected_cash: s.expectedCash ?? null,
+          counted_cash: s.countedCash ?? null,
+          difference: s.difference ?? null,
+          note: s.note || "",
+          updated_at: s.updatedAt || Date.now(),
+        },
+        { onConflict: "id" },
+      );
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("pushShiftRow failed:", error);
+      }
+    } catch {
+      /* offline */
+    }
+  };
+
   const pushExpenseRow = async (e) => {
     if (!supabase || !shopId) return;
     try {
@@ -3003,6 +3100,7 @@ function POSApp() {
             paid: s.paid,
             change: s.change,
             customer_name: s.customerName || null,
+            payment_method: s.paymentMethod || "cash",
             archived: !!s.archived,
             refunded: !!s.refunded,
             refunded_at: s.refundedAt || null,
@@ -3046,6 +3144,7 @@ function POSApp() {
         paid: r.paid,
         change: r.change,
         customerName: r.customer_name || "",
+        paymentMethod: r.payment_method || "cash",
         archived: !!r.archived,
         refunded: !!r.refunded,
         refundedAt: r.refunded_at || null,
@@ -3076,6 +3175,36 @@ function POSApp() {
         updatedAt: r.updated_at || 0,
       }));
       setCustomers((prev) => mergeById(prev, mapped));
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
+  const fetchCloudShifts = async () => {
+    if (!supabase || !shopId) return;
+    try {
+      const { data, error } = await supabase
+        .from("shifts")
+        .select("*")
+        .eq("shop_id", shopId);
+      if (error) throw error;
+      const mapped = (data || []).map((r) => ({
+        id: r.id,
+        openedBy: r.opened_by || "",
+        openedAt: r.opened_at,
+        openingCash: r.opening_cash,
+        closedBy: r.closed_by || null,
+        closedAt: r.closed_at || null,
+        cashSales: r.cash_sales,
+        cashRefunds: r.cash_refunds,
+        adjustments: r.adjustments || 0,
+        expectedCash: r.expected_cash,
+        countedCash: r.counted_cash,
+        difference: r.difference,
+        note: r.note || "",
+        updatedAt: r.updated_at || 0,
+      }));
+      setShifts((prev) => mergeById(prev, mapped));
     } catch {
       /* ignore, local cache still works */
     }
@@ -3348,6 +3477,7 @@ function POSApp() {
     fetchCloudSettings();
     fetchCloudExpenses();
     fetchCloudCategories();
+    fetchCloudShifts();
     const poll = setInterval(() => {
       fetchCloudSales();
       fetchCloudCustomers();
@@ -3356,6 +3486,7 @@ function POSApp() {
       fetchCloudSettings();
       fetchCloudExpenses();
       fetchCloudCategories();
+      fetchCloudShifts();
     }, 15000);
     let channel;
     try {
@@ -4063,6 +4194,101 @@ function POSApp() {
         ? `${t("exp_cat_" + target.category)} — ${fmt(target.amount)}`
         : id,
     );
+  };
+
+  // ---------- Shift / cash-drawer reconciliation ----------
+  // Every in-person sale rung up on this screen has no separate payment
+  // method today (unlike online orders, which can be cash or KHQR) — so
+  // this treats every sale total as cash received. If a shop actually
+  // takes KHQR at the counter too, staff should net that out using the
+  // "adjustments" field when ending the shift.
+  const currentShift = useMemo(
+    () => shifts.find((s) => !s.closedAt) || null,
+    [shifts],
+  );
+  const displayName = (u) => (u ? u.name_km || u.name_en || u.username : "");
+
+  const startShift = (openingCash) => {
+    if (currentShift) return;
+    const shift = {
+      id: genId(),
+      openedBy: displayName(currentUser),
+      openedAt: Date.now(),
+      openingCash: Number(openingCash) || 0,
+      closedBy: null,
+      closedAt: null,
+      cashSales: null,
+      cashRefunds: null,
+      adjustments: 0,
+      expectedCash: null,
+      countedCash: null,
+      difference: null,
+      note: "",
+      updatedAt: Date.now(),
+    };
+    setShifts((prev) => [shift, ...prev]);
+    pushShiftRow(shift);
+    logAudit(
+      "add",
+      "shift",
+      `${t("shift_started")} — ${fmt(shift.openingCash)}`,
+    );
+    showToast(t("shift_startedToast"));
+  };
+
+  // Cash sales/refunds rung up between openedAt and now — used both for
+  // the live preview while a shift is open and to freeze final numbers
+  // when the shift is closed.
+  const computeShiftCashFlow = (openedAt, closedAt) => {
+    const end = closedAt || Date.now();
+    let cashSales = 0;
+    let cashRefunds = 0;
+    sales.forEach((s) => {
+      // Only sales actually paid in cash affect the drawer — KHQR sales
+      // never put physical cash in the till, so they're excluded here.
+      if ((s.paymentMethod || "cash") !== "cash") return;
+      const soldAt = new Date(s.date).getTime();
+      if (soldAt >= openedAt && soldAt < end) cashSales += s.total;
+      if (s.refunded && s.refundedAt) {
+        const refundedAt = new Date(s.refundedAt).getTime();
+        if (refundedAt >= openedAt && refundedAt < end) cashRefunds += s.total;
+      }
+    });
+    return { cashSales, cashRefunds };
+  };
+
+  const endShift = ({ countedCash, adjustments, note }) => {
+    if (!currentShift) return;
+    const closedAt = Date.now();
+    const { cashSales, cashRefunds } = computeShiftCashFlow(
+      currentShift.openedAt,
+      closedAt,
+    );
+    const adj = Number(adjustments) || 0;
+    const expectedCash =
+      currentShift.openingCash + cashSales - cashRefunds - adj;
+    const counted = Number(countedCash) || 0;
+    const updated = {
+      ...currentShift,
+      closedBy: displayName(currentUser),
+      closedAt,
+      cashSales,
+      cashRefunds,
+      adjustments: adj,
+      expectedCash,
+      countedCash: counted,
+      difference: counted - expectedCash,
+      note: note || "",
+      updatedAt: Date.now(),
+    };
+    setShifts((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    pushShiftRow(updated);
+    logAudit(
+      "edit",
+      "shift",
+      `${t("shift_closed")} — ${t("shift_diff")}: ${fmt(updated.difference)}`,
+    );
+    showToast(t("shift_closedToast"));
   };
 
   const saveCategory = (form) => {
@@ -4885,6 +5111,11 @@ function POSApp() {
               total={total}
               payment={payment}
               setPayment={setPayment}
+              paymentMethod={paymentMethod}
+              setPaymentMethod={setPaymentMethod}
+              payCashEnabled={payCashEnabled}
+              payKhqrEnabled={payKhqrEnabled}
+              khqrImage={khqrImage}
               change={change}
               completeSale={completeSale}
               customers={customers}
@@ -4964,6 +5195,16 @@ function POSApp() {
               openAdd={() => setExpenseModal({ mode: "add" })}
               openEdit={(e) => setExpenseModal({ mode: "edit", expense: e })}
               deleteExpense={deleteExpense}
+            />
+          )}
+          {activeTab === "shift" && allowedTabs.includes("shift") && (
+            <ShiftTab
+              shifts={shifts}
+              currentShift={currentShift}
+              sales={sales}
+              lang={lang}
+              onStart={startShift}
+              onEnd={endShift}
             />
           )}
           {activeTab === "onlineOrders" &&
@@ -6687,6 +6928,11 @@ function POSTab(props) {
     total,
     payment,
     setPayment,
+    paymentMethod,
+    setPaymentMethod,
+    payCashEnabled,
+    payKhqrEnabled,
+    khqrImage,
     change,
     completeSale,
     customers,
@@ -7256,36 +7502,111 @@ function POSTab(props) {
             bold
             big
           />
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              margin: "9px 0 5px",
-            }}
-          >
-            <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-              {t("paymentReceived")}
-            </span>
-            <input
-              type="number"
-              min="0"
-              value={payment}
-              onChange={(e) => setPayment(e.target.value)}
-              placeholder="0.00"
+          {payKhqrEnabled && khqrImage && (
+            <div style={{ display: "flex", gap: "8px", margin: "9px 0 5px" }}>
+              <button
+                type="button"
+                onClick={() => setPaymentMethod("cash")}
+                style={{
+                  flex: 1,
+                  padding: "8px 10px",
+                  borderRadius: "9px",
+                  border:
+                    paymentMethod === "cash"
+                      ? "2px solid var(--primary)"
+                      : "1px solid var(--border)",
+                  background:
+                    paymentMethod === "cash"
+                      ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                      : "var(--surface)",
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {t("pos_payCash")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentMethod("khqr")}
+                style={{
+                  flex: 1,
+                  padding: "8px 10px",
+                  borderRadius: "9px",
+                  border:
+                    paymentMethod === "khqr"
+                      ? "2px solid var(--primary)"
+                      : "1px solid var(--border)",
+                  background:
+                    paymentMethod === "khqr"
+                      ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                      : "var(--surface)",
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {t("pos_payKhqr")}
+              </button>
+            </div>
+          )}
+          {paymentMethod === "khqr" && payKhqrEnabled && khqrImage ? (
+            <div
               style={{
-                width: "106px",
-                textAlign: "right",
-                padding: "6px 9px",
-                borderRadius: "7px",
+                textAlign: "center",
+                padding: "12px",
+                margin: "5px 0",
+                borderRadius: "12px",
                 border: "1px solid var(--border)",
-                fontFamily: "var(--font-mono)",
-                fontSize: "14px",
-                fontWeight: 700,
+                background: "var(--surface-alt)",
               }}
-            />
-          </div>
-          {total > 0 && (
+            >
+              <img
+                src={khqrImage}
+                alt="KHQR"
+                style={{
+                  width: "150px",
+                  height: "150px",
+                  objectFit: "contain",
+                  margin: "0 auto",
+                  background: "#fff",
+                  borderRadius: "8px",
+                  padding: "6px",
+                }}
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                margin: "9px 0 5px",
+              }}
+            >
+              <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                {t("paymentReceived")}
+              </span>
+              <input
+                type="number"
+                min="0"
+                value={payment}
+                onChange={(e) => setPayment(e.target.value)}
+                placeholder="0.00"
+                style={{
+                  width: "106px",
+                  textAlign: "right",
+                  padding: "6px 9px",
+                  borderRadius: "7px",
+                  border: "1px solid var(--border)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                }}
+              />
+            </div>
+          )}
+          {paymentMethod !== "khqr" && total > 0 && (
             <div
               style={{
                 display: "grid",
@@ -9204,6 +9525,426 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ================= Shift / Cash Reconciliation =================
+
+function ShiftTab({ shifts, currentShift, sales, lang, onStart, onEnd }) {
+  const { t } = useT();
+  const [openingInput, setOpeningInput] = useState("");
+  const [endOpen, setEndOpen] = useState(false);
+
+  const fmtTime = (ms) => {
+    try {
+      return new Date(ms).toLocaleString(lang === "en" ? "en-US" : "km-KH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    } catch {
+      return "";
+    }
+  };
+
+  let liveCashSales = 0;
+  let liveCashRefunds = 0;
+  if (currentShift) {
+    sales.forEach((s) => {
+      if ((s.paymentMethod || "cash") !== "cash") return;
+      const soldAt = new Date(s.date).getTime();
+      if (soldAt >= currentShift.openedAt) liveCashSales += s.total;
+      if (s.refunded && s.refundedAt) {
+        const refundedAt = new Date(s.refundedAt).getTime();
+        if (refundedAt >= currentShift.openedAt) liveCashRefunds += s.total;
+      }
+    });
+  }
+  const liveExpected = currentShift
+    ? currentShift.openingCash + liveCashSales - liveCashRefunds
+    : 0;
+
+  const closedShifts = [...shifts]
+    .filter((s) => s.closedAt)
+    .sort((a, b) => b.closedAt - a.closedAt);
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto" }}>
+      <TopBar title={t("nav_shift")} subtitle={t("shift_subtitle")} />
+      <div style={{ padding: "18px 26px" }}>
+        {!currentShift && (
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "14px",
+              padding: "18px",
+              maxWidth: "360px",
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: "15px" }}>
+              {t("shift_startTitle")}
+            </div>
+            <div
+              style={{
+                fontSize: "12.5px",
+                color: "var(--text-muted)",
+                marginTop: "4px",
+                marginBottom: "14px",
+              }}
+            >
+              {t("shift_startDesc")}
+            </div>
+            <label style={fieldLabel}>{t("shift_openingCash")}</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={openingInput}
+              onChange={(e) => setOpeningInput(e.target.value)}
+              style={fieldInput}
+              placeholder="0.00"
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                onStart(openingInput);
+                setOpeningInput("");
+              }}
+              style={{ ...primaryBtnStyle, marginTop: "6px" }}
+            >
+              <Banknote size={16} /> {t("shift_startBtn")}
+            </button>
+          </div>
+        )}
+
+        {currentShift && (
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "14px",
+              padding: "18px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                flexWrap: "wrap",
+                gap: "10px",
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "15px" }}>
+                  {t("shift_active")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    marginTop: "2px",
+                  }}
+                >
+                  {t("shift_openedBy")}: {currentShift.openedBy} ·{" "}
+                  {fmtTime(currentShift.openedAt)}
+                </div>
+              </div>
+              <button
+                onClick={() => setEndOpen(true)}
+                style={{ ...primaryBtnStyle, background: "var(--danger)" }}
+              >
+                {t("shift_endBtn")}
+              </button>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                gap: "12px",
+                marginTop: "18px",
+              }}
+            >
+              <StatCard
+                label={t("shift_openingCash")}
+                value={fmt(currentShift.openingCash)}
+                icon={Banknote}
+              />
+              <StatCard
+                label={t("shift_cashSales")}
+                value={fmt(liveCashSales)}
+                icon={TrendingUp}
+              />
+              <StatCard
+                label={t("shift_cashRefunds")}
+                value={fmt(liveCashRefunds)}
+                icon={RotateCcw}
+              />
+              <StatCard
+                label={t("shift_expectedCash")}
+                value={fmt(liveExpected)}
+                icon={Wallet}
+                tone="accent"
+              />
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: "24px" }}>
+          <div
+            style={{ fontWeight: 700, fontSize: "14px", marginBottom: "10px" }}
+          >
+            {t("shift_history")}
+          </div>
+          {closedShifts.length === 0 && (
+            <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+              {t("shift_historyEmpty")}
+            </div>
+          )}
+          {closedShifts.length > 0 && (
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                overflow: "hidden",
+                overflowX: "auto",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  tableLayout: "fixed",
+                  minWidth: "640px",
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      textAlign: "start",
+                      fontSize: "12.5px",
+                      color: "var(--text-muted)",
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    <th style={{ ...thStyle, width: "22%" }}>
+                      {t("shift_closedAt")}
+                    </th>
+                    <th style={{ ...thStyle, width: "18%" }}>
+                      {t("shift_closedBy")}
+                    </th>
+                    <th style={{ ...thStyle, width: "20%", textAlign: "end" }}>
+                      {t("shift_expectedCash")}
+                    </th>
+                    <th style={{ ...thStyle, width: "20%", textAlign: "end" }}>
+                      {t("shift_countedCash")}
+                    </th>
+                    <th style={{ ...thStyle, width: "20%", textAlign: "end" }}>
+                      {t("shift_diff")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {closedShifts.map((s) => (
+                    <tr
+                      key={s.id}
+                      style={{ borderBottom: "1px solid var(--border)" }}
+                    >
+                      <td style={tdStyle}>{fmtTime(s.closedAt)}</td>
+                      <td style={tdStyle}>{s.closedBy}</td>
+                      <td style={{ ...tdStyle, textAlign: "end" }}>
+                        {fmt(s.expectedCash)}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "end" }}>
+                        {fmt(s.countedCash)}
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "end",
+                          fontWeight: 700,
+                          color:
+                            Math.abs(s.difference) < 0.01
+                              ? "var(--success)"
+                              : "var(--danger)",
+                        }}
+                      >
+                        {s.difference > 0 ? "+" : ""}
+                        {fmt(s.difference)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {endOpen && currentShift && (
+        <EndShiftModal
+          liveExpected={liveExpected}
+          onClose={() => setEndOpen(false)}
+          onConfirm={(vals) => {
+            onEnd(vals);
+            setEndOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EndShiftModal({ liveExpected, onClose, onConfirm }) {
+  const { t } = useT();
+  const [countedCash, setCountedCash] = useState("");
+  const [adjustments, setAdjustments] = useState("");
+  const [note, setNote] = useState("");
+
+  const expectedAfterAdj = liveExpected - (Number(adjustments) || 0);
+  const diff = (Number(countedCash) || 0) - expectedAfterAdj;
+  const hasCounted = countedCash !== "";
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 200,
+        padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "16px",
+          padding: "22px",
+          width: "380px",
+          maxWidth: "100%",
+        }}
+      >
+        <div
+          style={{ fontWeight: 700, fontSize: "16px", marginBottom: "14px" }}
+        >
+          {t("shift_endBtn")}
+        </div>
+
+        <label style={fieldLabel}>{t("shift_adjustments")}</label>
+        <input
+          type="number"
+          step="0.01"
+          value={adjustments}
+          onChange={(e) => setAdjustments(e.target.value)}
+          style={fieldInput}
+          placeholder="0.00"
+        />
+        <div
+          style={{
+            fontSize: "12px",
+            color: "var(--text-muted)",
+            marginTop: "-8px",
+            marginBottom: "12px",
+          }}
+        >
+          {t("shift_adjustmentsHint")}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: "13.5px",
+            fontWeight: 700,
+            padding: "10px 12px",
+            background: "var(--bg)",
+            borderRadius: "10px",
+            marginBottom: "14px",
+          }}
+        >
+          <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>
+            {t("shift_expectedCash")}
+          </span>
+          <span>{fmt(expectedAfterAdj)}</span>
+        </div>
+
+        <label style={fieldLabel}>{t("shift_countedCash")}</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={countedCash}
+          onChange={(e) => setCountedCash(e.target.value)}
+          style={fieldInput}
+          placeholder="0.00"
+          autoFocus
+        />
+
+        {hasCounted && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: "13.5px",
+              fontWeight: 700,
+              padding: "10px 12px",
+              borderRadius: "10px",
+              marginBottom: "14px",
+              background: `color-mix(in srgb, ${
+                Math.abs(diff) < 0.01 ? "var(--success)" : "var(--danger)"
+              } 12%, transparent)`,
+              color: Math.abs(diff) < 0.01 ? "var(--success)" : "var(--danger)",
+            }}
+          >
+            <span>{t("shift_diff")}</span>
+            <span>
+              {diff > 0 ? "+" : ""}
+              {fmt(diff)}
+            </span>
+          </div>
+        )}
+
+        <label style={fieldLabel}>{t("shift_note")}</label>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          style={{ ...fieldInput, minHeight: "60px", resize: "vertical" }}
+          placeholder={t("shift_notePlaceholder")}
+        />
+
+        <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
+          <button
+            onClick={onClose}
+            style={{
+              ...secondaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+            }}
+          >
+            {t("cancel")}
+          </button>
+          <button
+            onClick={() => onConfirm({ countedCash, adjustments, note })}
+            disabled={!hasCounted}
+            style={{
+              ...primaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+              opacity: hasCounted ? 1 : 0.5,
+            }}
+          >
+            {t("shift_confirmEnd")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -13751,6 +14492,18 @@ function ReceiptModal({
                 {fmt(sale.paid)}
               </span>
             </div>
+            {sale.paymentMethod === "khqr" && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <span>{t("checkout_paymentMethod")}</span>
+                <span>{t("pos_payKhqr")}</span>
+              </div>
+            )}
             <div
               style={{
                 display: "flex",
