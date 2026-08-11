@@ -327,6 +327,7 @@ const seedRoles = [
     shiftEdit: true,
     shiftDelete: true,
     refundSale: true,
+    customerDelete: true,
   },
   {
     id: "manager",
@@ -345,6 +346,7 @@ const seedRoles = [
     shiftEdit: true,
     shiftDelete: false,
     refundSale: true,
+    customerDelete: true,
   },
   {
     id: "staff",
@@ -355,6 +357,7 @@ const seedRoles = [
     shiftEdit: false,
     shiftDelete: false,
     refundSale: false,
+    customerDelete: false,
   },
 ];
 
@@ -1062,7 +1065,10 @@ const STRINGS = {
   },
   shift_editTitle: { km: "កែប្រែកំណត់ត្រាវេន", en: "Edit shift record" },
   shift_edited: { km: "កែប្រែវេន", en: "Shift edited" },
-  shift_editedToast: { km: "បានកែប្រែកំណត់ត្រាវេន", en: "Shift record updated" },
+  shift_editedToast: {
+    km: "បានកែប្រែកំណត់ត្រាវេន",
+    en: "Shift record updated",
+  },
   shift_deleteConfirm: {
     km: "តើអ្នកប្រាកដថាចង់លុបកំណត់ត្រាវេននេះមែនទេ?",
     en: "Delete this shift record?",
@@ -1080,6 +1086,10 @@ const STRINGS = {
   refund_permission: {
     km: "អនុញ្ញាតឲ្យសងលុយវិញ (Refund)",
     en: "Refund sales",
+  },
+  customerDelete_permission: {
+    km: "លុបអតិថិជន",
+    en: "Delete customers",
   },
 
   settings_subtitle: {
@@ -2394,6 +2404,14 @@ function POSApp() {
   // in the Roles Management matrix, same place as the other two.
   const canRefundSale =
     isSuperAdmin || !(currentUserRole && currentUserRole.refundSale === false);
+
+  // Same backward-compatible shape as canRefundSale — deleting a customer
+  // already worked for any role that could see Customers (which is all
+  // three default roles), so `undefined` still means allowed. Only an
+  // explicit `false` (set by Super Admin in the matrix) blocks it.
+  const canDeleteCustomer =
+    isSuperAdmin ||
+    !(currentUserRole && currentUserRole.customerDelete === false);
 
   const login = (username, password) => {
     const match = users.find(
@@ -5464,6 +5482,7 @@ function POSApp() {
               openAdd={() => setCustomerModal({ mode: "add" })}
               openEdit={(c) => setCustomerModal({ mode: "edit", customer: c })}
               deleteCustomer={deleteCustomer}
+              canDelete={canDeleteCustomer}
             />
           )}
           {activeTab === "expenses" && allowedTabs.includes("expenses") && (
@@ -9339,7 +9358,13 @@ function ReportsTab({
 
 // ================= Customers =================
 
-function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
+function CustomersTab({
+  customers,
+  openAdd,
+  openEdit,
+  deleteCustomer,
+  canDelete,
+}) {
   const { t } = useT();
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -9549,12 +9574,14 @@ function CustomersTab({ customers, openAdd, openEdit, deleteCustomer }) {
                   <button onClick={() => openEdit(c)} style={iconBtnStyle}>
                     <Pencil size={13} />
                   </button>
-                  <button
-                    onClick={() => setDeleteTarget(c)}
-                    style={{ ...iconBtnStyle, color: "var(--danger)" }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => setDeleteTarget(c)}
+                      style={{ ...iconBtnStyle, color: "var(--danger)" }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </div>
               </div>
               <div
@@ -11992,6 +12019,14 @@ function UsersTab({
                   key: "refundSale",
                   label: t("refund_permission"),
                   isChecked: (r) => r.refundSale !== false,
+                },
+                {
+                  // Same reasoning as refundSale — deleting a customer
+                  // already worked unrestricted for every role that could
+                  // see Customers, so `undefined` still reads as allowed.
+                  key: "customerDelete",
+                  label: t("customerDelete_permission"),
+                  isChecked: (r) => r.customerDelete !== false,
                 },
               ].map((perm) => (
                 <tr
