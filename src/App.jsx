@@ -296,17 +296,15 @@ const seedUsers = [
 // Roles Management UI) so the permission system itself can never be
 // locked out by an accidental checkbox change.
 // Besides `tabs` (which screens a role can even see), roles also carry
-// fine-grained *action* permissions for specific tabs — right now just
-// Shift (`shiftEdit` / `shiftDelete`), gating whether a role can correct
-// or remove an already-closed shift record, on top of the "shift" tab
-// just being visible. Anyone who can see the Shift tab can always start/
-// end a shift (that's just the tab itself); editing or deleting a past
-// shift entry is the extra, separately-gated action. Unlike `tabs`, these
-// are NOT force-granted to "admin" — losing them isn't a lockout risk the
-// way losing Settings/Users access would be, so it's fully in Super
-// Admin's hands (per shop) like any other role's checkbox in the Roles
-// Management matrix (see UsersTab). The values below are just the
-// starting defaults for a brand-new shop.
+// fine-grained *action* permissions for specific tabs — `shiftEdit` /
+// `shiftDelete` (correcting or removing a closed shift record) and
+// `refundSale` (refunding a completed sale from Reports), on top of the
+// relevant tab just being visible. None of these are force-granted to
+// "admin" — losing them isn't a lockout risk the way losing Settings/
+// Users access would be, so they're fully in Super Admin's hands (per
+// shop) like any other role's checkbox in the Roles Management matrix
+// (see UsersTab). The values below are just the starting defaults for a
+// brand-new shop.
 const seedRoles = [
   {
     id: "admin",
@@ -328,6 +326,7 @@ const seedRoles = [
     ],
     shiftEdit: true,
     shiftDelete: true,
+    refundSale: true,
   },
   {
     id: "manager",
@@ -345,6 +344,7 @@ const seedRoles = [
     ],
     shiftEdit: true,
     shiftDelete: false,
+    refundSale: true,
   },
   {
     id: "staff",
@@ -354,6 +354,7 @@ const seedRoles = [
     tabs: ["pos", "customers", "onlineOrders"],
     shiftEdit: false,
     shiftDelete: false,
+    refundSale: false,
   },
 ];
 
@@ -1061,10 +1062,7 @@ const STRINGS = {
   },
   shift_editTitle: { km: "កែប្រែកំណត់ត្រាវេន", en: "Edit shift record" },
   shift_edited: { km: "កែប្រែវេន", en: "Shift edited" },
-  shift_editedToast: {
-    km: "បានកែប្រែកំណត់ត្រាវេន",
-    en: "Shift record updated",
-  },
+  shift_editedToast: { km: "បានកែប្រែកំណត់ត្រាវេន", en: "Shift record updated" },
   shift_deleteConfirm: {
     km: "តើអ្នកប្រាកដថាចង់លុបកំណត់ត្រាវេននេះមែនទេ?",
     en: "Delete this shift record?",
@@ -1078,6 +1076,10 @@ const STRINGS = {
   shift_deletePermission: {
     km: "លុបកំណត់ត្រាវេន",
     en: "Delete shift records",
+  },
+  refund_permission: {
+    km: "អនុញ្ញាតឲ្យសងលុយវិញ (Refund)",
+    en: "Refund sales",
   },
 
   settings_subtitle: {
@@ -2380,6 +2382,18 @@ function POSApp() {
     isSuperAdmin || !!(currentUserRole && currentUserRole.shiftEdit);
   const canDeleteShift =
     isSuperAdmin || !!(currentUserRole && currentUserRole.shiftDelete);
+
+  // `refundSale` gates the Reports-tab "Refund" button. Unlike the two
+  // above, this permission was carved out of a feature that already
+  // worked for every role that could see Reports (no restriction at all)
+  // — so treating missing data as "off" would silently take Refund away
+  // from every existing shop's Admin/Manager the moment they load this
+  // update. Instead, only an EXPLICIT `false` blocks it; `undefined`
+  // (old data) and `true` both allow it, same as the pre-existing
+  // behavior. Super Admin can still turn it off per shop by unchecking it
+  // in the Roles Management matrix, same place as the other two.
+  const canRefundSale =
+    isSuperAdmin || !(currentUserRole && currentUserRole.refundSale === false);
 
   const login = (username, password) => {
     const match = users.find(
@@ -5441,6 +5455,7 @@ function POSApp() {
               onExportArchive={exportArchiveJson}
               onImportArchive={importArchiveJson}
               onRefund={refundSale}
+              canRefund={canRefundSale}
             />
           )}
           {activeTab === "customers" && (
@@ -8736,6 +8751,7 @@ function ReportsTab({
   onExportArchive,
   onImportArchive,
   onRefund,
+  canRefund,
 }) {
   const { t, lang } = useT();
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -9213,7 +9229,7 @@ function ReportsTab({
                   padding: "0 0 6px 23px",
                 }}
               >
-                {!s.refunded && (
+                {!s.refunded && canRefund && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -11545,17 +11561,22 @@ function UsersTab({
     setRolesDirty(true);
   };
 
-  // Toggles one of the extra (non-tab) action permissions — right now just
-  // `shiftEdit` / `shiftDelete` — the same way toggleDraftTab does for tab
+  // Toggles one of the extra (non-tab) action permissions — `shiftEdit`,
+  // `shiftDelete`, `refundSale` — the same way toggleDraftTab does for tab
   // visibility, including the same locked-role guard: only Super Admin can
   // change what the "admin" role itself gets here, but they CAN change it
-  // (unlike tabs' "never lock everyone out" reasoning, there's no
-  // lockout risk in restricting this one).
-  const toggleDraftPermission = (roleId, key) => {
+  // (unlike tabs' "never lock everyone out" reasoning, there's no lockout
+  // risk in restricting these). Takes the explicit next value (the
+  // opposite of what's currently *displayed*, from the checkbox's own
+  // `checked`) rather than flipping the raw stored value — `refundSale`
+  // treats `undefined` as allowed (see canRefundSale), so a naive `!r[key]`
+  // flip would turn "checked because undefined" into `true` on uncheck
+  // instead of the intended `false`.
+  const toggleDraftPermission = (roleId, key, nextValue) => {
     setDraftRoles((prev) =>
       prev.map((r) => {
         if (r.id !== roleId || (r.locked && !isSuperAdmin)) return r;
-        return { ...r, [key]: !r[key] };
+        return { ...r, [key]: nextValue };
       }),
     );
     setRolesDirty(true);
@@ -11944,14 +11965,34 @@ function UsersTab({
                 </tr>
               ))}
               {/* Extra action-level permissions (not tied to tab visibility)
-                  — currently just editing/deleting closed shift records.
-                  Only meaningful once a role can see the Shift tab at all,
-                  but shown for every role like the rows above, mirroring
-                  how a premium-gated tab still shows here even before the
+                  — currently editing/deleting closed shift records, and
+                  refunding a completed sale from Reports. Only meaningful
+                  once a role can see the relevant tab at all, but shown
+                  for every role like the rows above, mirroring how a
+                  premium-gated tab still shows here even before the
                   feature is turned on. */}
               {[
-                { key: "shiftEdit", label: t("shift_editPermission") },
-                { key: "shiftDelete", label: t("shift_deletePermission") },
+                {
+                  key: "shiftEdit",
+                  label: t("shift_editPermission"),
+                  isChecked: (r) => !!r.shiftEdit,
+                },
+                {
+                  key: "shiftDelete",
+                  label: t("shift_deletePermission"),
+                  isChecked: (r) => !!r.shiftDelete,
+                },
+                {
+                  // refundSale predates this matrix row as an unrestricted
+                  // feature (see canRefundSale in POSApp) — `undefined`
+                  // means "not yet configured, so still allowed" here too,
+                  // otherwise a shop upgrading would see this box unchecked
+                  // while Refund still actually works, the exact mismatch
+                  // already fixed once for the shift rows above.
+                  key: "refundSale",
+                  label: t("refund_permission"),
+                  isChecked: (r) => r.refundSale !== false,
+                },
               ].map((perm) => (
                 <tr
                   key={perm.key}
@@ -11963,10 +12004,8 @@ function UsersTab({
                     // "admin" — it's a real, revocable permission like any
                     // other role's, just locked so only Super Admin can
                     // change what "admin" itself gets (same disabled rule
-                    // as the tab rows above). Defaults to unchecked for
-                    // roles saved before this permission existed, same as
-                    // a premium feature nobody has turned on yet.
-                    const checked = !!r[perm.key];
+                    // as the tab rows above).
+                    const checked = perm.isChecked(r);
                     const disabled = r.locked && !isSuperAdmin;
                     return (
                       <td
@@ -11977,7 +12016,9 @@ function UsersTab({
                           type="checkbox"
                           checked={checked}
                           disabled={disabled}
-                          onChange={() => toggleDraftPermission(r.id, perm.key)}
+                          onChange={() =>
+                            toggleDraftPermission(r.id, perm.key, !checked)
+                          }
                           style={{
                             width: "16px",
                             height: "16px",
