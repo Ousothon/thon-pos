@@ -489,6 +489,65 @@ const fmtKhr = (usd, rate = KHR_PER_USD_DEFAULT) => {
     Math.round(((Number(usd) || 0) * (Number(rate) || 0)) / 100) * 100;
   return riel.toLocaleString("en-US") + "៛";
 };
+// ---------------- Bakong KHQR (dynamic, amount-encoded QR) ----------------
+// Builds an EMVCo-based "KHQR" payload string per the National Bank of
+// Cambodia's Bakong spec, with a transaction amount baked in (Point of
+// Initiation Method "12" = dynamic, vs "11" = static/any-amount).
+// This only uses the standard/public tag set (00,01,29,52,53,54,58,59,60,63)
+// — bank apps like ABA add their own proprietary tag (40) with a P2P
+// reference on top, but that's not required for a Bakong-compliant scanner
+// to read the amount and account correctly.
+// Verified against a real decoded ABA static KHQR: the CRC16 implementation
+// below reproduces that QR's checksum byte-for-byte.
+const KHQR_CURRENCY_CODE = { usd: "840", khr: "116" };
+// CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflect) — the checksum
+// algorithm EMVCo QR codes use for the trailing tag 63.
+const khqrCrc16 = (str) => {
+  let crc = 0xffff;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let b = 0; b < 8; b++) {
+      crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+};
+// tag/length/value helper — length is always 2 digits, per EMVCo.
+const khqrTlv = (tag, value) =>
+  tag + String(value.length).padStart(2, "0") + value;
+// Builds the full dynamic KHQR string. `accountId` is the Bakong Account ID
+// (format like "name@bank", found in the Bakong app or decoded from a bank
+// app's own static QR). `amount` is a plain number in the given currency
+// ('usd' | 'khr'); KHR amounts are whole numbers, USD amounts keep cents.
+const buildDynamicKhqr = ({
+  accountId,
+  merchantName,
+  merchantCity,
+  bankName,
+  amount,
+  currency = "usd",
+}) => {
+  if (!accountId || !merchantName || !merchantCity) return null;
+  const amt =
+    currency === "khr"
+      ? String(Math.max(0, Math.round(Number(amount) || 0)))
+      : Math.max(0, Number(amount) || 0).toFixed(2);
+  const accountInfo =
+    khqrTlv("00", accountId) + (bankName ? khqrTlv("02", bankName) : "");
+  const payload =
+    khqrTlv("00", "01") + // Payload Format Indicator
+    khqrTlv("01", "12") + // Point of Initiation Method: 12 = dynamic (fixed amount)
+    khqrTlv("29", accountInfo) + // Individual/merchant account info
+    khqrTlv("52", "0000") + // Merchant category code (unset)
+    khqrTlv("53", KHQR_CURRENCY_CODE[currency] || KHQR_CURRENCY_CODE.usd) +
+    khqrTlv("54", amt) + // Transaction amount
+    khqrTlv("58", "KH") +
+    khqrTlv("59", merchantName.toUpperCase().slice(0, 25)) +
+    khqrTlv("60", merchantCity.toUpperCase().slice(0, 15)) +
+    "6304"; // CRC tag+length, value appended below
+  return payload + khqrCrc16(payload);
+};
+
 // Loyalty points redemption rate — how many points equal $1 of discount.
 // Change this single number to adjust the rate shop-wide.
 const POINTS_PER_DOLLAR = 100;
@@ -1234,9 +1293,28 @@ const STRINGS = {
     en: "KHQR isn't turned on for this shop yet — contact your Super Admin",
   },
   settings_khqrNeedsImageWarning: {
-    km: "សូមផ្ទុករូបភាព QR សិន មុននឹងបើកមុខងារនេះ",
-    en: "Please upload a QR image before enabling this",
+    km: "សូមផ្ទុករូបភាព QR ឬបំពេញព័ត៌មាន Dynamic QR សិន មុននឹងបើកមុខងារនេះ",
+    en: "Please upload a QR image or fill in the Dynamic QR fields before enabling this",
   },
+  settings_khqrDynamicLabel: {
+    km: "Dynamic QR (បញ្ចូលចំនួនទឹកប្រាក់ស្វ័យប្រវត្តិ)",
+    en: "Dynamic QR (amount auto-encoded)",
+  },
+  settings_khqrDynamicHint: {
+    km: "បង្កើត QR ថ្មីរាល់ការលក់ ដោយបញ្ចូលចំនួនទឹកប្រាក់ត្រង់ក្នុង QR ដោយស្វ័យប្រវត្តិ — អតិថិជនមិនចាំបាច់វាយបញ្ចូលចំនួនទេ។ ត្រូវការ Bakong Account ID (រកបានពី app Bakong ឬ decode ពី QR ធនាគាររបស់អ្នក)។ សូមសាកល្បងស្កេនចំនួនតូចមួយសិន មុននឹងប្រើជាមួយអតិថិជនពិត។",
+    en: "Generates a fresh QR for every sale with the amount baked in — customers don't need to type it in. Requires your Bakong Account ID (found in the Bakong app, or decoded from your bank app's QR). Test-scan with a small real amount first before relying on it with customers.",
+  },
+  settings_khqrAccountIdLabel: {
+    km: "Bakong Account ID",
+    en: "Bakong Account ID",
+  },
+  settings_khqrMerchantNameLabel: {
+    km: "ឈ្មោះម្ចាស់គណនី (English)",
+    en: "Account holder name (English)",
+  },
+  settings_khqrMerchantCityLabel: { km: "ទីក្រុង", en: "City" },
+  settings_khqrBankNameLabel: { km: "ធនាគារ", en: "Bank" },
+  optional: { km: "មិនចាំបាច់", en: "optional" },
 
   checkout_paymentMethod: { km: "វិធីទូទាត់ប្រាក់", en: "Payment method" },
   checkout_payCash: { km: "សាច់ប្រាក់ពេលទទួល", en: "Cash on pickup" },
@@ -1868,6 +1946,14 @@ function POSApp() {
   const [payCashEnabled, setPayCashEnabled] = useState(true);
   const [payKhqrEnabled, setPayKhqrEnabled] = useState(false);
   const [khqrImage, setKhqrImage] = useState("");
+  // Dynamic KHQR (amount baked into the QR itself) — an alternative to the
+  // static uploaded-screenshot flow above. All four fields must be filled
+  // in Settings for dynamic mode to actually turn on at checkout.
+  const [khqrDynamicEnabled, setKhqrDynamicEnabled] = useState(false);
+  const [khqrAccountId, setKhqrAccountId] = useState("");
+  const [khqrMerchantName, setKhqrMerchantName] = useState("");
+  const [khqrMerchantCity, setKhqrMerchantCity] = useState("");
+  const [khqrBankName, setKhqrBankName] = useState("");
   // Which premium features this shop currently has turned on — only a
   // Super Admin can change these (see pushFeatures / SuperAdminTab below).
   // Defaults closed until the cloud settings load confirms otherwise, so a
@@ -2249,6 +2335,11 @@ function POSApp() {
         );
         setPayKhqrEnabled(!!parsed.payKhqrEnabled);
         setKhqrImage(parsed.khqrImage || "");
+        setKhqrDynamicEnabled(!!parsed.khqrDynamicEnabled);
+        setKhqrAccountId(parsed.khqrAccountId || "");
+        setKhqrMerchantName(parsed.khqrMerchantName || "");
+        setKhqrMerchantCity(parsed.khqrMerchantCity || "");
+        setKhqrBankName(parsed.khqrBankName || "");
         setLang(parsed.lang || "km");
         setUsers(
           parsed.users && parsed.users.length ? parsed.users : seedUsers,
@@ -2294,6 +2385,11 @@ function POSApp() {
             payCashEnabled,
             payKhqrEnabled,
             khqrImage,
+            khqrDynamicEnabled,
+            khqrAccountId,
+            khqrMerchantName,
+            khqrMerchantCity,
+            khqrBankName,
             lang,
             users,
             roles,
@@ -2319,6 +2415,11 @@ function POSApp() {
     payCashEnabled,
     payKhqrEnabled,
     khqrImage,
+    khqrDynamicEnabled,
+    khqrAccountId,
+    khqrMerchantName,
+    khqrMerchantCity,
+    khqrBankName,
     lang,
     users,
     roles,
@@ -3537,6 +3638,16 @@ function POSApp() {
         setPayKhqrEnabled(data.pay_khqr_enabled);
       if (data && typeof data.khqr_image === "string")
         setKhqrImage(data.khqr_image);
+      if (data && typeof data.khqr_dynamic_enabled === "boolean")
+        setKhqrDynamicEnabled(data.khqr_dynamic_enabled);
+      if (data && typeof data.khqr_account_id === "string")
+        setKhqrAccountId(data.khqr_account_id);
+      if (data && typeof data.khqr_merchant_name === "string")
+        setKhqrMerchantName(data.khqr_merchant_name);
+      if (data && typeof data.khqr_merchant_city === "string")
+        setKhqrMerchantCity(data.khqr_merchant_city);
+      if (data && typeof data.khqr_bank_name === "string")
+        setKhqrBankName(data.khqr_bank_name);
       if (data && typeof data.roles_json === "string") {
         try {
           const cloudRoles = JSON.parse(data.roles_json);
@@ -3570,7 +3681,16 @@ function POSApp() {
     }
   };
 
-  const pushPaymentSettings = async (cashEnabled, khqrEnabled, khqrImg) => {
+  const pushPaymentSettings = async (
+    cashEnabled,
+    khqrEnabled,
+    khqrImg,
+    dynEnabled,
+    acctId,
+    merchName,
+    merchCity,
+    bank,
+  ) => {
     if (!supabase || !shopId) return;
     try {
       await supabase.from("shop_settings").upsert(
@@ -3580,6 +3700,11 @@ function POSApp() {
           pay_cash_enabled: cashEnabled,
           pay_khqr_enabled: khqrEnabled,
           khqr_image: khqrImg || null,
+          khqr_dynamic_enabled: !!dynEnabled,
+          khqr_account_id: acctId || null,
+          khqr_merchant_name: merchName || null,
+          khqr_merchant_city: merchCity || null,
+          khqr_bank_name: bank || null,
           updated_at: Date.now(),
         },
         { onConflict: "id" },
@@ -5410,6 +5535,11 @@ function POSApp() {
               payCashEnabled={payCashEnabled}
               payKhqrEnabled={payKhqrEnabled}
               khqrImage={khqrImage}
+              khqrDynamicEnabled={khqrDynamicEnabled}
+              khqrAccountId={khqrAccountId}
+              khqrMerchantName={khqrMerchantName}
+              khqrMerchantCity={khqrMerchantCity}
+              khqrBankName={khqrBankName}
               change={change}
               completeSale={completeSale}
               customers={customers}
@@ -5573,11 +5703,39 @@ function POSApp() {
               payCashEnabled={payCashEnabled}
               payKhqrEnabled={payKhqrEnabled}
               khqrImage={khqrImage}
-              onSavePaymentSettings={(cash, khqr, img) => {
+              khqrDynamicEnabled={khqrDynamicEnabled}
+              khqrAccountId={khqrAccountId}
+              khqrMerchantName={khqrMerchantName}
+              khqrMerchantCity={khqrMerchantCity}
+              khqrBankName={khqrBankName}
+              onSavePaymentSettings={(
+                cash,
+                khqr,
+                img,
+                dynEnabled,
+                acctId,
+                merchName,
+                merchCity,
+                bank,
+              ) => {
                 setPayCashEnabled(cash);
                 setPayKhqrEnabled(khqr);
                 setKhqrImage(img);
-                pushPaymentSettings(cash, khqr, img);
+                setKhqrDynamicEnabled(dynEnabled);
+                setKhqrAccountId(acctId);
+                setKhqrMerchantName(merchName);
+                setKhqrMerchantCity(merchCity);
+                setKhqrBankName(bank);
+                pushPaymentSettings(
+                  cash,
+                  khqr,
+                  img,
+                  dynEnabled,
+                  acctId,
+                  merchName,
+                  merchCity,
+                  bank,
+                );
               }}
               receiptWidth={receiptWidth}
               setReceiptWidth={setReceiptWidth}
@@ -7237,6 +7395,11 @@ function POSTab(props) {
     payCashEnabled,
     payKhqrEnabled,
     khqrImage,
+    khqrDynamicEnabled,
+    khqrAccountId,
+    khqrMerchantName,
+    khqrMerchantCity,
+    khqrBankName,
     change,
     completeSale,
     customers,
@@ -7250,6 +7413,7 @@ function POSTab(props) {
     onBarcodeScan,
     onOpenScanner,
   } = props;
+  const [khqrCurrency, setKhqrCurrency] = useState("usd");
 
   return (
     <div
@@ -7806,80 +7970,170 @@ function POSTab(props) {
             bold
             big
           />
-          {payKhqrEnabled && khqrImage && (
-            <div style={{ display: "flex", gap: "8px", margin: "9px 0 5px" }}>
-              <button
-                type="button"
-                onClick={() => setPaymentMethod("cash")}
-                style={{
-                  flex: 1,
-                  padding: "8px 10px",
-                  borderRadius: "9px",
-                  border:
-                    paymentMethod === "cash"
-                      ? "2px solid var(--primary)"
-                      : "1px solid var(--border)",
-                  background:
-                    paymentMethod === "cash"
-                      ? "color-mix(in srgb, var(--primary) 10%, transparent)"
-                      : "var(--surface)",
-                  fontSize: "12.5px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {t("pos_payCash")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentMethod("khqr")}
-                style={{
-                  flex: 1,
-                  padding: "8px 10px",
-                  borderRadius: "9px",
-                  border:
-                    paymentMethod === "khqr"
-                      ? "2px solid var(--primary)"
-                      : "1px solid var(--border)",
-                  background:
-                    paymentMethod === "khqr"
-                      ? "color-mix(in srgb, var(--primary) 10%, transparent)"
-                      : "var(--surface)",
-                  fontSize: "12.5px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {t("pos_payKhqr")}
-              </button>
-            </div>
-          )}
-          {paymentMethod === "khqr" && payKhqrEnabled && khqrImage ? (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "12px",
-                margin: "5px 0",
-                borderRadius: "12px",
-                border: "1px solid var(--border)",
-                background: "var(--surface-alt)",
-              }}
-            >
-              <img
-                src={khqrImage}
-                alt="KHQR"
-                style={{
-                  width: "150px",
-                  height: "150px",
-                  objectFit: "contain",
-                  margin: "0 auto",
-                  background: "#fff",
-                  borderRadius: "8px",
-                  padding: "6px",
-                }}
-              />
-            </div>
-          ) : (
+          {(() => {
+            const khqrDynamicReady =
+              khqrDynamicEnabled &&
+              khqrAccountId &&
+              khqrMerchantName &&
+              khqrMerchantCity;
+            const khqrAvailable =
+              payKhqrEnabled && (khqrDynamicReady || khqrImage);
+            return (
+              <>
+                {khqrAvailable && (
+                  <div
+                    style={{ display: "flex", gap: "8px", margin: "9px 0 5px" }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("cash")}
+                      style={{
+                        flex: 1,
+                        padding: "8px 10px",
+                        borderRadius: "9px",
+                        border:
+                          paymentMethod === "cash"
+                            ? "2px solid var(--primary)"
+                            : "1px solid var(--border)",
+                        background:
+                          paymentMethod === "cash"
+                            ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                            : "var(--surface)",
+                        fontSize: "12.5px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t("pos_payCash")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("khqr")}
+                      style={{
+                        flex: 1,
+                        padding: "8px 10px",
+                        borderRadius: "9px",
+                        border:
+                          paymentMethod === "khqr"
+                            ? "2px solid var(--primary)"
+                            : "1px solid var(--border)",
+                        background:
+                          paymentMethod === "khqr"
+                            ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                            : "var(--surface)",
+                        fontSize: "12.5px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t("pos_payKhqr")}
+                    </button>
+                  </div>
+                )}
+                {paymentMethod === "khqr" && khqrAvailable ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "12px",
+                      margin: "5px 0",
+                      borderRadius: "12px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-alt)",
+                    }}
+                  >
+                    {khqrDynamicReady ? (
+                      <>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "6px",
+                            justifyContent: "center",
+                            marginBottom: "10px",
+                          }}
+                        >
+                          {["usd", "khr"].map((cur) => (
+                            <button
+                              key={cur}
+                              type="button"
+                              onClick={() => setKhqrCurrency(cur)}
+                              style={{
+                                padding: "4px 12px",
+                                borderRadius: "999px",
+                                border:
+                                  khqrCurrency === cur
+                                    ? "2px solid var(--primary)"
+                                    : "1px solid var(--border)",
+                                background:
+                                  khqrCurrency === cur
+                                    ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                                    : "var(--surface)",
+                                fontSize: "11.5px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {cur === "usd" ? "USD $" : "KHR ៛"}
+                            </button>
+                          ))}
+                        </div>
+                        <DynamicQrImage
+                          payload={buildDynamicKhqr({
+                            accountId: khqrAccountId,
+                            merchantName: khqrMerchantName,
+                            merchantCity: khqrMerchantCity,
+                            bankName: khqrBankName,
+                            currency: khqrCurrency,
+                            amount:
+                              khqrCurrency === "khr"
+                                ? Math.round(
+                                    (Number(total) || 0) *
+                                      (Number(khrRate) || 0),
+                                  )
+                                : total,
+                          })}
+                        />
+                        <div
+                          style={{
+                            marginTop: "8px",
+                            fontSize: "12.5px",
+                            fontWeight: 700,
+                            fontFamily: "var(--font-mono)",
+                          }}
+                        >
+                          {khqrCurrency === "khr"
+                            ? fmtKhr(total, khrRate)
+                            : fmt(total)}
+                        </div>
+                      </>
+                    ) : (
+                      <img
+                        src={khqrImage}
+                        alt="KHQR"
+                        style={{
+                          width: "150px",
+                          height: "150px",
+                          objectFit: "contain",
+                          margin: "0 auto",
+                          background: "#fff",
+                          borderRadius: "8px",
+                          padding: "6px",
+                        }}
+                      />
+                    )}
+                  </div>
+                ) : null}
+              </>
+            );
+          })()}
+          {!(
+            paymentMethod === "khqr" &&
+            payKhqrEnabled &&
+            (khqrImage ||
+              (khqrDynamicEnabled &&
+                khqrAccountId &&
+                khqrMerchantName &&
+                khqrMerchantCity))
+          ) && (
             <div
               style={{
                 display: "flex",
@@ -12365,6 +12619,11 @@ function SettingsTab({
   payCashEnabled,
   payKhqrEnabled,
   khqrImage,
+  khqrDynamicEnabled,
+  khqrAccountId,
+  khqrMerchantName,
+  khqrMerchantCity,
+  khqrBankName,
   onSavePaymentSettings,
   receiptWidth,
   setReceiptWidth,
@@ -12397,6 +12656,20 @@ function SettingsTab({
   const [payCashDraft, setPayCashDraft] = useState(payCashEnabled);
   const [payKhqrDraft, setPayKhqrDraft] = useState(payKhqrEnabled);
   const [khqrImageDraft, setKhqrImageDraft] = useState(khqrImage);
+  const [khqrDynamicDraft, setKhqrDynamicDraft] =
+    useState(!!khqrDynamicEnabled);
+  const [khqrAccountIdDraft, setKhqrAccountIdDraft] = useState(
+    khqrAccountId || "",
+  );
+  const [khqrMerchantNameDraft, setKhqrMerchantNameDraft] = useState(
+    khqrMerchantName || "",
+  );
+  const [khqrMerchantCityDraft, setKhqrMerchantCityDraft] = useState(
+    khqrMerchantCity || "",
+  );
+  const [khqrBankNameDraft, setKhqrBankNameDraft] = useState(
+    khqrBankName || "",
+  );
   const [khqrError, setKhqrError] = useState("");
   const [paymentSaved, setPaymentSaved] = useState(false);
   const khqrFileRef = useRef(null);
@@ -12525,12 +12798,17 @@ function SettingsTab({
   };
   const removeKhqrImage = () => {
     setKhqrImageDraft("");
-    if (payKhqrDraft) setPayKhqrDraft(false);
+    if (payKhqrDraft && !khqrDynamicDraft) setPayKhqrDraft(false);
     if (khqrFileRef.current) khqrFileRef.current.value = "";
   };
+  const khqrDynamicComplete =
+    khqrDynamicDraft &&
+    khqrAccountIdDraft &&
+    khqrMerchantNameDraft &&
+    khqrMerchantCityDraft;
   const toggleKhqr = () => {
     if (!khqrFeatureOn) return;
-    if (!payKhqrDraft && !khqrImageDraft) {
+    if (!payKhqrDraft && !khqrImageDraft && !khqrDynamicComplete) {
       setKhqrError(t("settings_khqrNeedsImageWarning"));
       return;
     }
@@ -12539,7 +12817,16 @@ function SettingsTab({
   };
   const savePaymentSettings = () => {
     if (onSavePaymentSettings)
-      onSavePaymentSettings(payCashDraft, payKhqrDraft, khqrImageDraft);
+      onSavePaymentSettings(
+        payCashDraft,
+        payKhqrDraft,
+        khqrImageDraft,
+        khqrDynamicDraft,
+        khqrAccountIdDraft,
+        khqrMerchantNameDraft,
+        khqrMerchantCityDraft,
+        khqrBankNameDraft,
+      );
     setPaymentSaved(true);
     setTimeout(() => setPaymentSaved(false), 1800);
   };
@@ -12936,6 +13223,137 @@ function SettingsTab({
                     {khqrError}
                   </div>
                 )}
+
+                <div
+                  style={{
+                    marginTop: "18px",
+                    paddingTop: "16px",
+                    borderTop: "1px solid var(--border)",
+                    opacity: khqrFeatureOn ? 1 : 0.5,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    <span style={{ fontSize: "13.5px", fontWeight: 600 }}>
+                      {t("settings_khqrDynamicLabel")}
+                    </span>
+                    <ToggleSwitch
+                      on={khqrDynamicDraft}
+                      onClick={() =>
+                        khqrFeatureOn && setKhqrDynamicDraft(!khqrDynamicDraft)
+                      }
+                      disabled={!khqrFeatureOn}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-muted)",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    {t("settings_khqrDynamicHint")}
+                  </div>
+                  {khqrDynamicDraft && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "10px",
+                      }}
+                    >
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={fieldLabel}>
+                          {t("settings_khqrAccountIdLabel")}
+                        </label>
+                        <input
+                          type="text"
+                          value={khqrAccountIdDraft}
+                          onChange={(e) =>
+                            setKhqrAccountIdDraft(e.target.value.trim())
+                          }
+                          placeholder="name@bank"
+                          disabled={!khqrFeatureOn}
+                          style={{
+                            width: "100%",
+                            padding: "7px 10px",
+                            borderRadius: "7px",
+                            border: "1px solid var(--border)",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: "13px",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={fieldLabel}>
+                          {t("settings_khqrMerchantNameLabel")}
+                        </label>
+                        <input
+                          type="text"
+                          value={khqrMerchantNameDraft}
+                          onChange={(e) =>
+                            setKhqrMerchantNameDraft(e.target.value)
+                          }
+                          disabled={!khqrFeatureOn}
+                          style={{
+                            width: "100%",
+                            padding: "7px 10px",
+                            borderRadius: "7px",
+                            border: "1px solid var(--border)",
+                            fontSize: "13px",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={fieldLabel}>
+                          {t("settings_khqrMerchantCityLabel")}
+                        </label>
+                        <input
+                          type="text"
+                          value={khqrMerchantCityDraft}
+                          onChange={(e) =>
+                            setKhqrMerchantCityDraft(e.target.value)
+                          }
+                          disabled={!khqrFeatureOn}
+                          style={{
+                            width: "100%",
+                            padding: "7px 10px",
+                            borderRadius: "7px",
+                            border: "1px solid var(--border)",
+                            fontSize: "13px",
+                          }}
+                        />
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={fieldLabel}>
+                          {t("settings_khqrBankNameLabel")}{" "}
+                          <span style={{ fontWeight: 400, opacity: 0.7 }}>
+                            ({t("optional")})
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          value={khqrBankNameDraft}
+                          onChange={(e) => setKhqrBankNameDraft(e.target.value)}
+                          disabled={!khqrFeatureOn}
+                          style={{
+                            width: "100%",
+                            padding: "7px 10px",
+                            borderRadius: "7px",
+                            border: "1px solid var(--border)",
+                            fontSize: "13px",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div
                   style={{
@@ -13576,6 +13994,102 @@ const loadHtml5Qrcode = () => {
   });
   return html5QrcodeLoadPromise;
 };
+
+// Loads a QR-code *generation* library (separate from the html5-qrcode
+// *scanning* one above) the first time a dynamic KHQR needs to be rendered.
+let qrGenLoadPromise = null;
+const loadQrCodeGenerator = () => {
+  if (window.QRCode) return Promise.resolve();
+  if (qrGenLoadPromise) return qrGenLoadPromise;
+  qrGenLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src =
+      "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => {
+      qrGenLoadPromise = null;
+      reject(new Error("failed to load qrcode generator"));
+    };
+    document.head.appendChild(script);
+  });
+  return qrGenLoadPromise;
+};
+// Renders a payload string (e.g. a dynamic KHQR string) as a scannable QR
+// image. Shows nothing until the library loads and the code is drawn.
+function DynamicQrImage({ payload, size = 150 }) {
+  const [dataUrl, setDataUrl] = useState("");
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!payload) {
+      setDataUrl("");
+      return;
+    }
+    setFailed(false);
+    loadQrCodeGenerator()
+      .then(() =>
+        window.QRCode.toDataURL(payload, { margin: 1, width: size * 3 }),
+      )
+      .then((url) => {
+        if (!cancelled) setDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [payload, size]);
+  if (failed) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "11px",
+          color: "var(--danger)",
+          textAlign: "center",
+          padding: "8px",
+        }}
+      >
+        Couldn't load QR generator — check connection
+      </div>
+    );
+  }
+  if (!dataUrl) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "11px",
+          color: "var(--text-muted)",
+        }}
+      >
+        …
+      </div>
+    );
+  }
+  return (
+    <img
+      src={dataUrl}
+      alt="KHQR"
+      style={{
+        width: size,
+        height: size,
+        objectFit: "contain",
+        background: "#fff",
+        borderRadius: "8px",
+      }}
+    />
+  );
+}
 
 // Short "beep" on successful scan, synthesized with the Web Audio API so no
 // sound file needs to be bundled/loaded. Mirrors the single high-pitched
