@@ -13997,20 +13997,38 @@ const loadHtml5Qrcode = () => {
 
 // Loads a QR-code *generation* library (separate from the html5-qrcode
 // *scanning* one above) the first time a dynamic KHQR needs to be rendered.
+// Tries unpkg first — same CDN host the working scanner script above already
+// uses, so it's known to pass this deployment's CSP/network — then falls
+// back to jsdelivr if that host is ever unreachable.
 let qrGenLoadPromise = null;
+const QR_GEN_CDN_URLS = [
+  "https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js",
+  "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js",
+];
+const loadScriptFrom = (urls) =>
+  new Promise((resolve, reject) => {
+    const tryNext = (i) => {
+      if (i >= urls.length) {
+        reject(new Error("all CDN sources failed"));
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = urls[i];
+      script.onload = () => resolve();
+      script.onerror = () => {
+        script.remove();
+        tryNext(i + 1);
+      };
+      document.head.appendChild(script);
+    };
+    tryNext(0);
+  });
 const loadQrCodeGenerator = () => {
   if (window.QRCode) return Promise.resolve();
   if (qrGenLoadPromise) return qrGenLoadPromise;
-  qrGenLoadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src =
-      "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js";
-    script.onload = () => resolve();
-    script.onerror = () => {
-      qrGenLoadPromise = null;
-      reject(new Error("failed to load qrcode generator"));
-    };
-    document.head.appendChild(script);
+  qrGenLoadPromise = loadScriptFrom(QR_GEN_CDN_URLS).catch((err) => {
+    qrGenLoadPromise = null;
+    throw err;
   });
   return qrGenLoadPromise;
 };
