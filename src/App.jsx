@@ -64,6 +64,7 @@ import {
   Camera,
   MoreVertical,
   Banknote,
+  Percent,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -109,6 +110,32 @@ import {
 //    migration, sign in as Super Admin and turn back on whatever features
 //    your existing shops were already using, or they'll lose access to
 //    those tabs immediately.
+// 9. Open Tabs (held/unpaid orders, e.g. a table waiting to pay) used to
+//    live in this device's localStorage only, so a tab started on one
+//    device never showed up on another signed-in device for the same
+//    shop. It now syncs the same way products/sales/customers do. Run
+//    once in the SQL editor:
+//      create table if not exists open_tabs (
+//        id text primary key,
+//        shop_id uuid not null references shops(id),
+//        table_label text not null default '',
+//        items jsonb not null default '[]',
+//        discount numeric,
+//        discount_mode text,
+//        item_discount_total numeric default 0,
+//        discount_amt numeric default 0,
+//        subtotal numeric default 0,
+//        total numeric default 0,
+//        customer_id text,
+//        created_at bigint,
+//        updated_at bigint
+//      );
+//      alter table open_tabs enable row level security;
+//      create policy "shop can manage its own open tabs" on open_tabs
+//        for all using (shop_id = auth_shop_id() or is_super_admin())
+//        with check (shop_id = auth_shop_id() or is_super_admin());
+//    Then Database > Replication — turn on realtime for `open_tabs` too
+//    (optional but recommended, same as `online_orders` in step 4).
 const SUPABASE_URL = "https://zkstajqlucnvpqxwpuxo.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_jucFEQ_c8EVFcwPkfhWMoQ_K-sSNyzm";
 const supabase =
@@ -1412,6 +1439,33 @@ const STRINGS = {
   subtotal: { km: "សរុបរង", en: "Subtotal" },
   discountAmount: { km: "បញ្ចុះតម្លៃ ($)", en: "Discount ($)" },
   discountLabel: { km: "បញ្ចុះតម្លៃ", en: "Discount" },
+  itemDiscountLabel: {
+    km: "បញ្ចុះតម្លៃទំនិញ",
+    en: "Item Discount",
+  },
+  itemDiscountLine: {
+    km: "បញ្ចុះតម្លៃ ({percent}%)",
+    en: "Discount_Item({percent}%)",
+  },
+  splitLine: { km: "ញែកជាបន្ទាត់ថ្មី", en: "Split line" },
+  openTabsLabel: { km: "Order កំពុងបើក", en: "Open Tabs" },
+  tableLabel_field: { km: "លេខ/ឈ្មោះតុ", en: "Table" },
+  tableLabelPlaceholder: {
+    km: "ឧ. តុ 5 / VIP1",
+    en: "e.g. Table 5 / VIP1",
+  },
+  holdTabBtn: {
+    km: "រក្សាទុក & Print (មិនទាន់បង់)",
+    en: "Hold & Print (unpaid)",
+  },
+  editingTabBadge: {
+    km: "កំពុងកែ order តុ {table}",
+    en: "Editing tab — {table}",
+  },
+  noOpenTabs: { km: "មិនមាន order កំពុងបើកទេ", en: "No open tabs" },
+  resumeTabBtn: { km: "បន្ត", en: "Resume" },
+  cancelTabBtn: { km: "លុប", en: "Cancel" },
+  unpaidBillTitle: { km: "វិក្កយបត្រ (មិនទាន់បង់)", en: "Bill (Unpaid)" },
   customerDiscountBadge: {
     km: "សមាជិកនេះមានបញ្ចុះតម្លៃ {percent}%",
     en: "{percent}% member discount",
@@ -1433,6 +1487,18 @@ const STRINGS = {
   toast_saleSuccess: {
     km: "លក់ទំនិញបានជោគជ័យ",
     en: "Sale completed successfully",
+  },
+  toast_tableRequired: {
+    km: "សូមបញ្ចូលលេខ/ឈ្មោះតុជាមុនសិន",
+    en: "Please enter a table name/number",
+  },
+  toast_tabSaved: {
+    km: "បានរក្សាទុក order សម្រាប់តុ {table}",
+    en: "Order held for table {table}",
+  },
+  confirmCancelTab: {
+    km: "លុប order នេះចោល? សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ",
+    en: "Cancel this held order? This can't be undone.",
   },
   toast_selectProduct: {
     km: "សូមជ្រើសរើសទំនិញជាមុនសិន",
@@ -2783,6 +2849,7 @@ function POSApp() {
   const [userModal, setUserModal] = useState(null);
   const [roleModal, setRoleModal] = useState(null);
   const [changePwOpen, setChangePwOpen] = useState(false);
+  const [switchShopConfirmOpen, setSwitchShopConfirmOpen] = useState(false);
   const [loginError, setLoginError] = useState("");
 
   const [cart, setCart] = useState([]);
@@ -2795,6 +2862,15 @@ function POSApp() {
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [receipt, setReceipt] = useState(null);
+  // Open tabs — orders held for a table/customer that hasn't paid yet (bars,
+  // restaurants). Kept separate from `sales` so nothing about reports,
+  // profit, refunds, or CSV exports needs to change: a tab only becomes a
+  // real `sales` row once it's actually paid via completeSale. Device-local
+  // only (not synced to Supabase) for now.
+  const [openTabs, setOpenTabs] = useState([]);
+  const [tableLabel, setTableLabel] = useState("");
+  const [editingTabId, setEditingTabId] = useState(null);
+  const [tabListOpen, setTabListOpen] = useState(false);
 
   const [invSearch, setInvSearch] = useState("");
   const [invCategory, setInvCategory] = useState("all");
@@ -3110,6 +3186,7 @@ function POSApp() {
         setCustomers(parsed.customers || []);
         setExpenses(parsed.expenses || []);
         setShifts(parsed.shifts || []);
+        setOpenTabs(parsed.openTabs || []);
         if (parsed.categories && parsed.categories.length) {
           setCategories(parsed.categories);
         }
@@ -3166,6 +3243,7 @@ function POSApp() {
             customers,
             expenses,
             shifts,
+            openTabs,
             categories,
             shopName,
             shopLogo,
@@ -3196,6 +3274,7 @@ function POSApp() {
     customers,
     expenses,
     shifts,
+    openTabs,
     categories,
     shopName,
     shopLogo,
@@ -3531,9 +3610,19 @@ function POSApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, search, categoryFilter, lang]);
 
+  // Total quantity already in the cart for a product, summed across every
+  // line (a product can have more than one line — see splitCartLine below,
+  // used e.g. to sell 10 beers at full price + 5 free on a separate line).
+  const qtyInCartForProduct = (productId, excludeLineId) =>
+    cart.reduce(
+      (s, c) =>
+        c.id === productId && c.lineId !== excludeLineId ? s + c.qty : s,
+      0,
+    );
+
   const addToCart = (product) => {
     const inCart = cart.find((c) => c.id === product.id);
-    const currentQty = inCart ? inCart.qty : 0;
+    const currentQty = qtyInCartForProduct(product.id);
     if (currentQty + 1 > product.stock) {
       showToast(
         `${t("toast_insufficientStock")}: ${prodName(product)}`,
@@ -3543,12 +3632,15 @@ function POSApp() {
     }
     if (inCart) {
       setCart(
-        cart.map((c) => (c.id === product.id ? { ...c, qty: c.qty + 1 } : c)),
+        cart.map((c) =>
+          c.lineId === inCart.lineId ? { ...c, qty: c.qty + 1 } : c,
+        ),
       );
     } else {
       setCart([
         ...cart,
         {
+          lineId: genId(),
           id: product.id,
           name: prodName(product),
           price: product.price,
@@ -3556,9 +3648,40 @@ function POSApp() {
           unit: prodUnit(product),
           qty: 1,
           image: product.image,
+          discountPercent: 0,
         },
       ]);
     }
+  };
+
+  // Splits one unit off an existing cart line into its own new line, so a
+  // cashier can give that portion a different discount — e.g. buy 10 beers,
+  // give 5 free: add 10 normally, tap split 5 times (or adjust qty) to move
+  // 5 into their own line, then set that line's discount to 100%.
+  const splitCartLine = (lineId) => {
+    setCart((prev) => {
+      const line = prev.find((c) => c.lineId === lineId);
+      if (!line || line.qty < 2) return prev;
+      return prev
+        .map((c) => (c.lineId === lineId ? { ...c, qty: c.qty - 1 } : c))
+        .concat({
+          ...line,
+          lineId: genId(),
+          qty: 1,
+          discountPercent: 0,
+        });
+    });
+  };
+
+  // Per-item discount (%) — lets a cashier discount one line (e.g. a
+  // promo item, a comped drink) without discounting the whole sale.
+  const setItemDiscount = (lineId, percent) => {
+    const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
+    setCart(
+      cart.map((c) =>
+        c.lineId === lineId ? { ...c, discountPercent: clamped } : c,
+      ),
+    );
   };
 
   // Shared by the USB/Bluetooth scanner (which types into the search box
@@ -3580,14 +3703,18 @@ function POSApp() {
     }
   };
 
-  const changeQty = (id, delta) => {
-    const product = products.find((p) => p.id === id);
+  const changeQty = (lineId, delta) => {
+    const line = cart.find((c) => c.lineId === lineId);
+    const product = line && products.find((p) => p.id === line.id);
     setCart(
       cart
         .map((c) => {
-          if (c.id !== id) return c;
+          if (c.lineId !== lineId) return c;
           const newQty = c.qty + delta;
-          if (product && newQty > product.stock) {
+          if (
+            product &&
+            qtyInCartForProduct(product.id, lineId) + newQty > product.stock
+          ) {
             showToast(
               `${t("toast_insufficientStock")}: ${prodName(product)}`,
               "error",
@@ -3600,13 +3727,24 @@ function POSApp() {
     );
   };
 
-  const removeFromCart = (id) => setCart(cart.filter((c) => c.id !== id));
+  const removeFromCart = (lineId) =>
+    setCart(cart.filter((c) => c.lineId !== lineId));
 
   const subtotal = cart.reduce((s, c) => s + c.price * c.qty, 0);
+  // Sum of each line's own discount (price × qty × its own %), separate
+  // from the order-level discount box below.
+  const itemDiscountTotal = cart.reduce(
+    (s, c) => s + (c.price * c.qty * (Number(c.discountPercent) || 0)) / 100,
+    0,
+  );
+  const subtotalAfterItemDiscount = Math.max(subtotal - itemDiscountTotal, 0);
   const discountAmt =
     discountMode === "percent"
-      ? Math.min((subtotal * (Number(discount) || 0)) / 100, subtotal)
-      : Math.min(Number(discount) || 0, subtotal);
+      ? Math.min(
+          (subtotalAfterItemDiscount * (Number(discount) || 0)) / 100,
+          subtotalAfterItemDiscount,
+        )
+      : Math.min(Number(discount) || 0, subtotalAfterItemDiscount);
 
   const selectedCustomer =
     customers.find((c) => c.id === selectedCustomerId) || null;
@@ -3616,7 +3754,7 @@ function POSApp() {
   const availablePoints = selectedCustomer
     ? Math.floor(selectedCustomer.points || 0)
     : 0;
-  const afterDiscount = Math.max(subtotal - discountAmt, 0);
+  const afterDiscount = Math.max(subtotalAfterItemDiscount - discountAmt, 0);
   const maxRedeemablePoints = Math.min(
     availablePoints,
     Math.floor(afterDiscount * POINTS_PER_DOLLAR),
@@ -3659,6 +3797,84 @@ function POSApp() {
     setPayment("");
     setPaymentMethod("cash");
     setSelectedCustomerId("");
+    setTableLabel("");
+    setEditingTabId(null);
+  };
+
+  // Saves the current cart as an open tab (unpaid) under a table/customer
+  // label instead of charging it now — for bars/restaurants where the guest
+  // pays when they leave. Stock is NOT deducted yet; that still happens
+  // once the tab is actually closed with payment via completeSale, so
+  // inventory, reports, and profit are unaffected by tabs that are only
+  // held, edited, or cancelled.
+  const holdTab = () => {
+    if (cart.length === 0) {
+      showToast(t("toast_selectProduct"), "error");
+      return;
+    }
+    const label = tableLabel.trim();
+    if (!label) {
+      showToast(t("toast_tableRequired"), "error");
+      return;
+    }
+    const id = editingTabId || genId();
+    const existing = openTabs.find((o) => o.id === id);
+    const tab = {
+      id,
+      table: label,
+      items: cart,
+      discount,
+      discountMode,
+      itemDiscountTotal,
+      discountAmt,
+      subtotal,
+      total,
+      customerId: selectedCustomerId || null,
+      createdAt: existing ? existing.createdAt : Date.now(),
+      updatedAt: Date.now(),
+    };
+    setOpenTabs([tab, ...openTabs.filter((o) => o.id !== id)]);
+    pushTabRow(tab);
+    showToast(t("toast_tabSaved", { table: label }), "ok");
+    setReceipt({
+      id: "tab-" + id,
+      date: new Date().toISOString(),
+      items: cart.map((c) => ({
+        productId: c.id,
+        name: c.name,
+        price: c.price,
+        qty: c.qty,
+        unit: c.unit,
+        discountPercent: Number(c.discountPercent) || 0,
+        lineDiscount:
+          (c.price * c.qty * (Number(c.discountPercent) || 0)) / 100,
+      })),
+      subtotal,
+      discount: discountAmt + itemDiscountTotal,
+      total,
+      table: label,
+      unpaid: true,
+    });
+    clearSale();
+  };
+
+  // Pulls a held tab's items back into the active cart for editing or to
+  // collect payment. The tab stays in openTabs until completeSale (or
+  // holdTab, to save edits back) resolves it.
+  const resumeTab = (tab) => {
+    setCart(tab.items || []);
+    setDiscount(tab.discount || "");
+    setDiscountMode(tab.discountMode || "amount");
+    setSelectedCustomerId(tab.customerId || "");
+    setTableLabel(tab.table || "");
+    setEditingTabId(tab.id);
+    setTabListOpen(false);
+  };
+
+  const cancelTab = (id) => {
+    setOpenTabs(openTabs.filter((o) => o.id !== id));
+    deleteTabRow(id);
+    if (editingTabId === id) clearSale();
   };
 
   const completeSale = () => {
@@ -3680,15 +3896,23 @@ function POSApp() {
         price: c.price,
         qty: c.qty,
         unit: c.unit,
+        discountPercent: Number(c.discountPercent) || 0,
+        lineDiscount:
+          (c.price * c.qty * (Number(c.discountPercent) || 0)) / 100,
       })),
       subtotal,
-      discount: discountAmt,
+      // Combined total discount (per-item + order-level) so existing
+      // profit/report math that reads sale.discount keeps working as-is.
+      discount: discountAmt + itemDiscountTotal,
+      itemDiscount: itemDiscountTotal,
+      orderDiscount: discountAmt,
       total,
       paid: paymentMethod === "khqr" ? total : paymentNum,
       change: paymentMethod === "khqr" ? 0 : change,
       paymentMethod,
       customerId: customer ? customer.id : null,
       customerName: customer ? customer.name : null,
+      table: tableLabel || null,
       archived: false,
       refunded: false,
       refundedAt: null,
@@ -3696,9 +3920,9 @@ function POSApp() {
     };
     setSales([sale, ...sales]);
     const updatedProducts = products.map((p) => {
-      const item = cart.find((c) => c.id === p.id);
-      return item
-        ? { ...p, stock: p.stock - item.qty, updatedAt: Date.now() }
+      const soldQty = qtyInCartForProduct(p.id);
+      return soldQty > 0
+        ? { ...p, stock: p.stock - soldQty, updatedAt: Date.now() }
         : p;
     });
     setProducts(updatedProducts);
@@ -3720,6 +3944,10 @@ function POSApp() {
       pushCustomerRow(updatedCustomer);
     }
     setReceipt(sale);
+    if (editingTabId) {
+      setOpenTabs(openTabs.filter((o) => o.id !== editingTabId));
+      deleteTabRow(editingTabId);
+    }
     clearSale();
     showToast(t("toast_saleSuccess"), "ok");
   };
@@ -4020,6 +4248,57 @@ function POSApp() {
       if (error) {
         showToast(t("toast_supabaseError"), "error");
         console.error("deleteCategoryRow failed:", error);
+      }
+    } catch {
+      /* offline */
+    }
+  };
+
+  // Held/unpaid tabs (e.g. a table waiting to pay) — pushed the same way as
+  // products/sales/etc. so a tab opened on one device (the counter PC) shows
+  // up on another signed-in device for the same shop (a tablet, a phone),
+  // instead of being stuck in that one device's localStorage.
+  const pushTabRow = async (tab) => {
+    if (!supabase || !shopId) return;
+    try {
+      const { error } = await supabase.from("open_tabs").upsert(
+        {
+          id: tab.id,
+          shop_id: shopId,
+          table_label: tab.table || "",
+          items: tab.items || [],
+          discount:
+            tab.discount === "" ||
+            tab.discount === null ||
+            tab.discount === undefined
+              ? null
+              : Number(tab.discount),
+          discount_mode: tab.discountMode || null,
+          item_discount_total: tab.itemDiscountTotal || 0,
+          discount_amt: tab.discountAmt || 0,
+          subtotal: tab.subtotal || 0,
+          total: tab.total || 0,
+          customer_id: tab.customerId || null,
+          created_at: tab.createdAt || Date.now(),
+          updated_at: tab.updatedAt || Date.now(),
+        },
+        { onConflict: "id" },
+      );
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("pushTabRow failed:", error);
+      }
+    } catch {
+      /* offline — local copy still safe, will retry on next change */
+    }
+  };
+  const deleteTabRow = async (id) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.from("open_tabs").delete().eq("id", id);
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("deleteTabRow failed:", error);
       }
     } catch {
       /* offline */
@@ -4348,6 +4627,36 @@ function POSApp() {
     }
   };
 
+  // ---- Pull held/unpaid tabs so a tab opened on one device (e.g. the
+  // counter PC) shows up on every other signed-in device for this shop ----
+  const fetchCloudTabs = async () => {
+    if (!supabase || !shopId) return;
+    try {
+      const { data, error } = await supabase
+        .from("open_tabs")
+        .select("*")
+        .eq("shop_id", shopId);
+      if (error) throw error;
+      const mapped = (data || []).map((r) => ({
+        id: r.id,
+        table: r.table_label || "",
+        items: r.items || [],
+        discount: r.discount,
+        discountMode: r.discount_mode || "amount",
+        itemDiscountTotal: r.item_discount_total || 0,
+        discountAmt: r.discount_amt || 0,
+        subtotal: r.subtotal || 0,
+        total: r.total || 0,
+        customerId: r.customer_id || null,
+        createdAt: r.created_at || 0,
+        updatedAt: r.updated_at || 0,
+      }));
+      setOpenTabs((prev) => mergeById(prev, mapped));
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
   // ---- Pull products/users from Supabase so every device shares the same catalog + accounts ----
   const fetchCloudProducts = async () => {
     if (!supabase || !shopId) return;
@@ -4594,6 +4903,7 @@ function POSApp() {
     fetchCloudExpenses();
     fetchCloudCategories();
     fetchCloudShifts();
+    fetchCloudTabs();
     const poll = setInterval(() => {
       fetchCloudSales();
       fetchCloudCustomers();
@@ -4603,6 +4913,7 @@ function POSApp() {
       fetchCloudExpenses();
       fetchCloudCategories();
       fetchCloudShifts();
+      fetchCloudTabs();
     }, 15000);
     let channel;
     try {
@@ -4677,6 +4988,16 @@ function POSApp() {
             filter: `shop_id=eq.${shopId}`,
           },
           fetchCloudCategories,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "open_tabs",
+            filter: `shop_id=eq.${shopId}`,
+          },
+          fetchCloudTabs,
         )
         .subscribe();
     } catch {
@@ -6266,11 +6587,7 @@ function POSApp() {
               </button>
               {supabase && currentUser.role === "admin" && (
                 <button
-                  onClick={() => {
-                    if (window.confirm(t("settings_switchShopConfirm"))) {
-                      signOutShop();
-                    }
-                  }}
+                  onClick={() => setSwitchShopConfirmOpen(true)}
                   title={t("settings_switchShop")}
                   style={{ ...iconBtnStyle, marginRight: "2px" }}
                 >
@@ -6311,6 +6628,18 @@ function POSApp() {
               addToCart={addToCart}
               changeQty={changeQty}
               removeFromCart={removeFromCart}
+              setItemDiscount={setItemDiscount}
+              splitCartLine={splitCartLine}
+              itemDiscountTotal={itemDiscountTotal}
+              openTabs={openTabs}
+              tableLabel={tableLabel}
+              setTableLabel={setTableLabel}
+              editingTabId={editingTabId}
+              holdTab={holdTab}
+              resumeTab={resumeTab}
+              cancelTab={cancelTab}
+              tabListOpen={tabListOpen}
+              setTabListOpen={setTabListOpen}
               clearCart={() => setCart([])}
               subtotal={subtotal}
               discount={discount}
@@ -6634,6 +6963,19 @@ function POSApp() {
           />
         )}
         {toast && <Toast msg={toast.msg} kind={toast.kind} />}
+        {switchShopConfirmOpen && (
+          <ConfirmDialog
+            title={t("settings_switchShop")}
+            message={t("settings_switchShopConfirm")}
+            confirmLabel={t("settings_switchShop")}
+            danger={false}
+            onCancel={() => setSwitchShopConfirmOpen(false)}
+            onConfirm={() => {
+              setSwitchShopConfirmOpen(false);
+              signOutShop();
+            }}
+          />
+        )}
       </div>
     </LangContext.Provider>
   );
@@ -6915,6 +7257,9 @@ function FontStyles() {
 
       @media (max-width: 520px) {
         .responsive-grid-4 { grid-template-columns: 1fr !important; }
+        .pos-invoice { overflow-x: hidden; }
+        .invoice-header-row { gap: 6px !important; }
+        .invoice-table-row button { flex: 1 1 100%; justify-content: center; }
       }
 
       @media print {
@@ -7936,10 +8281,13 @@ function Toast({ msg, kind }) {
   return (
     <div
       style={{
-        position: "absolute",
+        position: "fixed",
         top: "18px",
         right: "18px",
-        zIndex: 60,
+        left: "18px",
+        marginLeft: "auto",
+        maxWidth: "min(420px, calc(100vw - 36px))",
+        zIndex: 200,
         background: kind === "error" ? "var(--danger)" : "var(--primary)",
         color: "#fff",
         padding: "12px 18px",
@@ -7950,6 +8298,7 @@ function Toast({ msg, kind }) {
         display: "flex",
         alignItems: "center",
         gap: "9px",
+        wordBreak: "break-word",
       }}
     >
       {kind === "error" ? (
@@ -8171,6 +8520,18 @@ function POSTab(props) {
     addToCart,
     changeQty,
     removeFromCart,
+    setItemDiscount,
+    splitCartLine,
+    itemDiscountTotal,
+    openTabs,
+    tableLabel,
+    setTableLabel,
+    editingTabId,
+    holdTab,
+    resumeTab,
+    cancelTab,
+    tabListOpen,
+    setTabListOpen,
     clearCart,
     subtotal,
     discount,
@@ -8461,10 +8822,13 @@ function POSTab(props) {
           }}
         >
           <div
+            className="invoice-header-row"
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
+              flexWrap: "wrap",
+              rowGap: "6px",
               gap: "9px",
             }}
           >
@@ -8496,23 +8860,118 @@ function POSTab(props) {
                 </span>
               )}
             </div>
-            {cart.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <button
-                onClick={clearCart}
+                onClick={() => setTabListOpen(true)}
                 style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
                   background: "none",
-                  border: "none",
+                  border: "1px solid var(--border)",
+                  borderRadius: "999px",
                   color: "var(--text-muted)",
                   fontSize: "11.5px",
                   fontWeight: 600,
                   cursor: "pointer",
-                  padding: "4px 2px",
-                  textDecoration: "underline",
+                  padding: "4px 10px",
                 }}
               >
-                {t("clearCart")}
+                <Clock3 size={12} />
+                {t("openTabsLabel")}
+                {openTabs.length > 0 && (
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                      color: "#fff",
+                      background: "var(--primary)",
+                      borderRadius: "999px",
+                      padding: "1px 6px",
+                    }}
+                  >
+                    {openTabs.length}
+                  </span>
+                )}
               </button>
-            )}
+              {cart.length > 0 && (
+                <button
+                  onClick={clearCart}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "11.5px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    padding: "4px 2px",
+                    textDecoration: "underline",
+                  }}
+                >
+                  {t("clearCart")}
+                </button>
+              )}
+            </div>
+          </div>
+          {editingTabId && (
+            <div
+              style={{
+                marginTop: "8px",
+                fontSize: "11.5px",
+                fontWeight: 600,
+                color: "var(--primary)",
+              }}
+            >
+              {t("editingTabBadge", { table: tableLabel })}
+            </div>
+          )}
+          <div
+            className="invoice-table-row"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "10px",
+              flexWrap: "wrap",
+            }}
+          >
+            <input
+              value={tableLabel}
+              onChange={(e) => setTableLabel(e.target.value)}
+              placeholder={t("tableLabelPlaceholder")}
+              style={{
+                flex: 1,
+                minWidth: "120px",
+                padding: "7px 10px",
+                borderRadius: "8px",
+                border: "1px solid var(--border)",
+                fontSize: "12.5px",
+              }}
+            />
+            <button
+              onClick={holdTab}
+              disabled={cart.length === 0}
+              title={t("holdTabBtn")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "7px 10px",
+                borderRadius: "8px",
+                border: "1px solid var(--primary)",
+                background: "none",
+                color: "var(--primary)",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: cart.length === 0 ? "default" : "pointer",
+                opacity: cart.length === 0 ? 0.5 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Clock3 size={13} />
+              {t("holdTabBtn")}
+            </button>
           </div>
           <select
             value={selectedCustomerId}
@@ -8557,62 +9016,140 @@ function POSTab(props) {
               {t("emptyCart")}
             </div>
           )}
-          {cart.map((c) => (
-            <div
-              key={c.id}
-              className="cart-line-row"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                padding: "8px 6px",
-                marginBottom: "2px",
-              }}
-            >
-              <ProductThumb image={c.image} size={34} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {c.name}
-                </div>
-                <div
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "11.5px",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  {fmt(c.price)} × {c.qty} ={" "}
-                  <span style={{ color: "var(--text)", fontWeight: 700 }}>
-                    {fmt(c.price * c.qty)}
-                  </span>
-                </div>
-              </div>
-              <div className="cart-line-qty">
-                <button onClick={() => changeQty(c.id, -1)}>
-                  <Minus size={12} />
-                </button>
-                <span>{c.qty}</span>
-                <button onClick={() => changeQty(c.id, 1)}>
-                  <Plus size={12} />
-                </button>
-              </div>
-              <button
-                className="cart-line-remove"
-                onClick={() => removeFromCart(c.id)}
-                style={{ ...iconBtnStyle, color: "var(--danger)" }}
+          {cart.map((c) => {
+            const lineGross = c.price * c.qty;
+            const lineDiscPct = Number(c.discountPercent) || 0;
+            const lineDisc = (lineGross * lineDiscPct) / 100;
+            const lineNet = lineGross - lineDisc;
+            return (
+              <div
+                key={c.lineId}
+                className="cart-line-row"
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "10px",
+                  padding: "8px 6px",
+                  marginBottom: "2px",
+                }}
               >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
+                <ProductThumb image={c.image} size={34} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {c.name}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "11.5px",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {fmt(c.price)} × {c.qty} ={" "}
+                    {lineDiscPct > 0 ? (
+                      <>
+                        <span
+                          style={{
+                            textDecoration: "line-through",
+                            opacity: 0.55,
+                          }}
+                        >
+                          {fmt(lineGross)}
+                        </span>{" "}
+                        <span
+                          style={{ color: "var(--primary)", fontWeight: 700 }}
+                        >
+                          {fmt(lineNet)}
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                        {fmt(lineGross)}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      marginTop: "3px",
+                    }}
+                  >
+                    <Percent size={10} color="var(--text-muted)" />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={c.discountPercent || ""}
+                      onChange={(e) =>
+                        setItemDiscount(c.lineId, e.target.value)
+                      }
+                      placeholder="0"
+                      style={{
+                        width: "42px",
+                        padding: "1px 4px",
+                        fontSize: "11px",
+                        fontFamily: "var(--font-mono)",
+                        borderRadius: "5px",
+                        border: "1px solid var(--border)",
+                        textAlign: "right",
+                      }}
+                    />
+                    <span
+                      style={{ fontSize: "10.5px", color: "var(--text-muted)" }}
+                    >
+                      {t("itemDiscountLabel")}
+                    </span>
+                    {c.qty >= 2 && (
+                      <button
+                        type="button"
+                        onClick={() => splitCartLine(c.lineId)}
+                        title={t("splitLine")}
+                        style={{
+                          marginLeft: "auto",
+                          background: "none",
+                          border: "none",
+                          color: "var(--primary)",
+                          fontSize: "10.5px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          padding: 0,
+                          textDecoration: "underline",
+                        }}
+                      >
+                        {t("splitLine")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="cart-line-qty">
+                  <button onClick={() => changeQty(c.lineId, -1)}>
+                    <Minus size={12} />
+                  </button>
+                  <span>{c.qty}</span>
+                  <button onClick={() => changeQty(c.lineId, 1)}>
+                    <Plus size={12} />
+                  </button>
+                </div>
+                <button
+                  className="cart-line-remove"
+                  onClick={() => removeFromCart(c.lineId)}
+                  style={{ ...iconBtnStyle, color: "var(--danger)" }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         <div
@@ -8623,6 +9160,12 @@ function POSTab(props) {
           }}
         >
           <Row label={t("subtotal")} value={fmt(subtotal)} />
+          {itemDiscountTotal > 0 && (
+            <Row
+              label={t("itemDiscountLabel")}
+              value={`-${fmt(itemDiscountTotal)}`}
+            />
+          )}
           {customerDiscountPercent > 0 && (
             <div
               style={{
@@ -9018,6 +9561,168 @@ function POSTab(props) {
           </button>
         </div>
       </div>
+      {tabListOpen && (
+        <OpenTabsModal
+          openTabs={openTabs}
+          onClose={() => setTabListOpen(false)}
+          onResume={resumeTab}
+          onCancel={cancelTab}
+          khrRate={khrRate}
+        />
+      )}
+    </div>
+  );
+}
+
+function OpenTabsModal({ openTabs, onClose, onResume, onCancel, khrRate }) {
+  const { t, lang } = useT();
+  const [cancelTargetId, setCancelTargetId] = useState(null);
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(20,30,27,.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 50,
+        padding: "16px",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          borderRadius: "14px",
+          width: "380px",
+          maxWidth: "100%",
+          maxHeight: "80vh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 20px 50px rgba(0,0,0,.25)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "16px 18px",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontWeight: 700,
+              fontSize: "15px",
+            }}
+          >
+            <Clock3 size={16} color="var(--primary)" />
+            {t("openTabsLabel")}
+          </div>
+          <button onClick={onClose} style={iconBtnStyle}>
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{ overflowY: "auto", padding: "8px 10px" }}>
+          {openTabs.length === 0 && (
+            <div
+              style={{
+                textAlign: "center",
+                color: "var(--text-muted)",
+                fontSize: "13px",
+                padding: "30px 10px",
+              }}
+            >
+              {t("noOpenTabs")}
+            </div>
+          )}
+          {openTabs.map((tab) => (
+            <div
+              key={tab.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                padding: "10px 8px",
+                borderBottom: "1px dashed var(--border)",
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: "13.5px" }}>
+                  {tab.table}
+                </div>
+                <div
+                  style={{
+                    fontSize: "11.5px",
+                    color: "var(--text-muted)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  {(tab.items || []).reduce((n, c) => n + c.qty, 0)} ×{" "}
+                  {fmt(tab.total)}
+                </div>
+                <div
+                  style={{
+                    fontSize: "10.5px",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  {new Date(tab.createdAt).toLocaleString(
+                    lang === "en" ? "en-US" : "km-KH",
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => onResume(tab)}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "7px",
+                  border: "1px solid var(--primary)",
+                  background: "none",
+                  color: "var(--primary)",
+                  fontSize: "11.5px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {t("resumeTabBtn")}
+              </button>
+              <button
+                onClick={() => setCancelTargetId(tab.id)}
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: "7px",
+                  border: "none",
+                  background: "none",
+                  color: "var(--danger)",
+                  cursor: "pointer",
+                }}
+                title={t("cancelTabBtn")}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      {cancelTargetId && (
+        <ConfirmDialog
+          title={t("cancelTabBtn")}
+          message={t("confirmCancelTab")}
+          confirmLabel={t("cancelTabBtn")}
+          onCancel={() => setCancelTargetId(null)}
+          onConfirm={() => {
+            onCancel(cancelTargetId);
+            setCancelTargetId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -16354,7 +17059,7 @@ function ReceiptModal({
           ) : (
             <CheckCircle2
               size={32}
-              color="var(--primary)"
+              color={sale.unpaid ? "var(--text-muted)" : "var(--primary)"}
               style={{ margin: "0 auto 9px" }}
             />
           )}
@@ -16367,14 +17072,27 @@ function ReceiptModal({
           >
             {shopName}
           </div>
+          {sale.table && (
+            <div
+              style={{
+                fontSize: "12.5px",
+                fontWeight: 700,
+                color: "var(--primary)",
+                marginTop: "3px",
+              }}
+            >
+              {sale.table}
+            </div>
+          )}
           <div
             style={{
               fontSize: "12.5px",
-              color: "var(--text-muted)",
+              color: sale.unpaid ? "var(--danger)" : "var(--text-muted)",
+              fontWeight: sale.unpaid ? 700 : 400,
               marginTop: "3px",
             }}
           >
-            {t("paymentSuccess")}
+            {sale.unpaid ? t("unpaidBillTitle") : t("paymentSuccess")}
           </div>
           <div
             style={{
@@ -16396,31 +17114,49 @@ function ReceiptModal({
           }}
         >
           {sale.items.map((it, i) => (
-            <div
-              key={i}
-              className="receipt-row"
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "10px",
-                padding: "3px 0",
-              }}
-            >
-              <span
+            <div key={i} style={{ padding: "3px 0" }}>
+              <div
+                className="receipt-row"
                 style={{
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "10px",
                 }}
               >
-                {it.name} ×{it.qty}
-              </span>
-              <span
-                style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}
-              >
-                {fmt(it.price * it.qty)}
-              </span>
+                <span
+                  style={{
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {it.name} ×{it.qty}
+                </span>
+                <span
+                  style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}
+                >
+                  {fmt(it.price * it.qty)}
+                </span>
+              </div>
+              {it.discountPercent > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    fontSize: "11px",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  <span>
+                    {t("itemDiscountLine", { percent: it.discountPercent })}
+                  </span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    -{fmt(it.lineDiscount)}
+                  </span>
+                </div>
+              )}
             </div>
           ))}
           <div
@@ -16471,56 +17207,60 @@ function ReceiptModal({
                 ≈ {fmtKhr(sale.total, khrRate)}
               </span>
             </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                color: "var(--text-muted)",
-                marginTop: "5px",
-              }}
-            >
-              <span>{t("paymentReceived")}</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                {fmt(sale.paid)}
-              </span>
-            </div>
-            {sale.paymentMethod === "khqr" && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  color: "var(--text-muted)",
-                }}
-              >
-                <span>{t("checkout_paymentMethod")}</span>
-                <span>{t("pos_payKhqr")}</span>
-              </div>
-            )}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                color: "var(--text-muted)",
-              }}
-            >
-              <span>{t("changeDue")}</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                {fmt(sale.change)}
-              </span>
-            </div>
-            {sale.change > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  fontSize: "11.5px",
-                  color: "var(--text-muted)",
-                }}
-              >
-                <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                  ≈ {fmtKhr(sale.change, khrRate)}
-                </span>
-              </div>
+            {!sale.unpaid && (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    color: "var(--text-muted)",
+                    marginTop: "5px",
+                  }}
+                >
+                  <span>{t("paymentReceived")}</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {fmt(sale.paid)}
+                  </span>
+                </div>
+                {sale.paymentMethod === "khqr" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    <span>{t("checkout_paymentMethod")}</span>
+                    <span>{t("pos_payKhqr")}</span>
+                  </div>
+                )}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  <span>{t("changeDue")}</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {fmt(sale.change)}
+                  </span>
+                </div>
+                {sale.change > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      fontSize: "11.5px",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                      ≈ {fmtKhr(sale.change, khrRate)}
+                    </span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
