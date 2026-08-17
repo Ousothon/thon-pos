@@ -6389,7 +6389,7 @@ function POSApp() {
                   style={{
                     width: "34px",
                     height: "34px",
-                    borderRadius: "9px",
+                    borderRadius: "var(--radius-md)",
                     overflow: "hidden",
                     flexShrink: 0,
                     background: "var(--surface-alt)",
@@ -6458,7 +6458,7 @@ function POSApp() {
                     alignItems: "center",
                     gap: "11px",
                     padding: "11px 14px",
-                    borderRadius: "9px",
+                    borderRadius: "var(--radius-md)",
                     border: "none",
                     cursor: "pointer",
                     textAlign: "left",
@@ -6482,7 +6482,7 @@ function POSApp() {
                         color: "#fff",
                         fontSize: "11px",
                         fontWeight: 700,
-                        borderRadius: "999px",
+                        borderRadius: "var(--radius-pill)",
                         padding: "1px 7px",
                       }}
                     >
@@ -6499,7 +6499,7 @@ function POSApp() {
                         color: "#fff",
                         fontSize: "11px",
                         fontWeight: 700,
-                        borderRadius: "999px",
+                        borderRadius: "var(--radius-pill)",
                         padding: "1px 7px",
                       }}
                     >
@@ -6550,7 +6550,7 @@ function POSApp() {
                 style={{
                   width: "30px",
                   height: "30px",
-                  borderRadius: "999px",
+                  borderRadius: "var(--radius-pill)",
                   background: "var(--surface-alt)",
                   display: "flex",
                   alignItems: "center",
@@ -6988,17 +6988,37 @@ function FontStyles() {
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@500;600;700&family=Noto+Sans+Khmer:wght@400;500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
       :root {
-        --bg: #F5F4EF; --surface: #FFFFFF; --surface-alt: #EEEBE2; --border: #E1DDD0;
-        --text: #20302B; --text-muted: #74807A; --primary: #0F6B5C; --primary-dark: #0A4F44;
-        --accent: #E1A13D; --danger: #C1443C;
+        --bg: #F7F7F9; --surface: #FFFFFF; --surface-alt: #EFEFF3; --border: #E1E1E8;
+        --text: #14151C; --text-muted: #6E7180; --primary: #33409E; --primary-dark: #262F78;
+        --accent: #C99A46; --danger: #C0433A;
         --font-display: 'Kantumruy Pro', 'Noto Sans Khmer', 'Inter', sans-serif;
         --font-body: 'Noto Sans Khmer', 'Inter', sans-serif;
         --font-mono: 'JetBrains Mono', monospace;
+
+        /* ---- Standardized scale (use these everywhere instead of
+           one-off px values, so radius/shadow/spacing stay consistent
+           across the whole app) ---- */
+        --radius-sm: 8px;   /* small badges, chips, inputs */
+        --radius-md: 10px;  /* buttons, inputs, small cards */
+        --radius-lg: 14px;  /* primary cards, panels */
+        --radius-xl: 18px;  /* modals, large surfaces */
+        --radius-pill: 999px; /* pill badges, toggles */
+
+        --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+        --space-5: 20px; --space-6: 24px; --space-8: 32px;
+
+        --shadow-sm: 0 2px 8px rgba(20, 21, 28, .06);
+        --shadow-md: 0 6px 16px rgba(20, 21, 28, .1);
+        --shadow-lg: 0 12px 32px rgba(20, 21, 28, .16);
       }
       [data-theme="dark"] {
-        --bg: #14201C; --surface: #1B2723; --surface-alt: #24322D; --border: #35443D;
-        --text: #EDF1EE; --text-muted: #93A29A; --primary: #35B695; --primary-dark: #2A9179;
-        --accent: #E9B45C; --danger: #E06B62;
+        --bg: #14161C; --surface: #1B1E27; --surface-alt: #232732; --border: #333846;
+        --text: #EDEEF3; --text-muted: #9297A8; --primary: #6C7AE0; --primary-dark: #4A57B8;
+        --accent: #E0B563; --danger: #E6685C;
+        /* dark surfaces need darker, less diffuse shadows or they look washed out */
+        --shadow-sm: 0 2px 8px rgba(0, 0, 0, .25);
+        --shadow-md: 0 6px 18px rgba(0, 0, 0, .35);
+        --shadow-lg: 0 14px 36px rgba(0, 0, 0, .45);
       }
       [data-theme="dark"] img { filter: brightness(.92); }
       body { background: var(--bg); transition: background .2s ease, color .2s ease; }
@@ -7007,7 +7027,7 @@ function FontStyles() {
       input, select { font-family: var(--font-body); outline: none; }
       input:focus, select:focus { border-color: var(--primary) !important; }
       ::-webkit-scrollbar { width: 9px; height: 9px; }
-      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-sm); }
       button { font-family: var(--font-body); color: inherit; }
 
       /* ---- Universal button hover/press feedback ---- */
@@ -7047,7 +7067,7 @@ function FontStyles() {
       }
       .pos-product-card:hover:not(:disabled) {
         transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(15, 30, 26, .1);
+        box-shadow: var(--shadow-md);
         filter: none;
       }
       .pos-product-card:active:not(:disabled) {
@@ -7058,18 +7078,18 @@ function FontStyles() {
       }
       .stat-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(15, 30, 26, .08);
+        box-shadow: var(--shadow-md);
       }
       .order-card {
         transition: transform .12s ease, box-shadow .12s ease;
       }
       .order-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(15, 30, 26, .08);
+        box-shadow: var(--shadow-md);
       }
       .dash-row {
         transition: background-color .12s ease;
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
       }
       .dash-row:hover {
         background: var(--surface-alt);
@@ -7077,7 +7097,7 @@ function FontStyles() {
       .cart-line-row {
         position: relative;
         transition: background-color .12s ease;
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
       }
       .cart-line-row:hover {
         background: var(--surface-alt);
@@ -7086,7 +7106,7 @@ function FontStyles() {
         display: flex;
         align-items: center;
         border: 1px solid var(--border);
-        border-radius: 7px;
+        border-radius: var(--radius-sm);
         overflow: hidden;
         flex-shrink: 0;
       }
@@ -7122,7 +7142,7 @@ function FontStyles() {
       }
       .quick-cash-btn {
         padding: 6px 4px;
-        border-radius: 7px;
+        border-radius: var(--radius-sm);
         border: 1px solid var(--border);
         background: var(--surface);
         color: var(--text);
@@ -7138,9 +7158,19 @@ function FontStyles() {
       }
       .theme-toggle-btn {
         display: flex; align-items: center; justify-content: center;
-        width: 38px; height: 38px; border-radius: 8px;
+        width: 38px; height: 38px; border-radius: var(--radius-sm);
         border: 1px solid var(--border); background: var(--surface-alt);
         color: var(--text); cursor: pointer; flex-shrink: 0;
+      }
+      .ghost-btn:hover:not(:disabled) {
+        background: var(--surface-alt);
+        color: var(--text);
+        filter: none;
+      }
+      .danger-btn:hover:not(:disabled) {
+        background: var(--danger);
+        color: #fff;
+        filter: none;
       }
 
       /* ---- Login screen polish ---- */
@@ -7210,7 +7240,7 @@ function FontStyles() {
         justify-content: center;
         width: 38px;
         height: 38px;
-        border-radius: 9px;
+        border-radius: var(--radius-md);
         border: 1px solid var(--border);
         background: var(--surface);
         color: var(--text);
@@ -7298,7 +7328,7 @@ function LangSwitch({ lang, setLang, style }) {
         display: "flex",
         background: "var(--surface-alt)",
         border: "1px solid var(--border)",
-        borderRadius: "999px",
+        borderRadius: "var(--radius-pill)",
         padding: "3px",
         ...style,
       }}
@@ -7311,7 +7341,7 @@ function LangSwitch({ lang, setLang, style }) {
           style={{
             flex: 1,
             padding: "6px 12px",
-            borderRadius: "999px",
+            borderRadius: "var(--radius-pill)",
             border: "none",
             cursor: "pointer",
             fontSize: "12.5px",
@@ -7340,7 +7370,7 @@ function ThemeSwitch({ theme, setTheme, t }) {
       style={{
         width: "44px",
         height: "26px",
-        borderRadius: "999px",
+        borderRadius: "var(--radius-pill)",
         border: "1px solid var(--border)",
         background: isDark ? "var(--primary)" : "var(--surface-alt)",
         position: "relative",
@@ -7443,7 +7473,7 @@ function LoginScreen({
           width: "340px",
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "18px",
+          borderRadius: "var(--radius-xl)",
           padding: "30px 28px",
           boxShadow: "0 20px 50px rgba(0,0,0,.10)",
         }}
@@ -7461,7 +7491,7 @@ function LoginScreen({
             style={{
               width: "52px",
               height: "52px",
-              borderRadius: "14px",
+              borderRadius: "var(--radius-lg)",
               background: shopLogo ? "transparent" : "var(--primary)",
               display: "flex",
               alignItems: "center",
@@ -7688,7 +7718,7 @@ function ShopLoginScreen({
           width: "340px",
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "18px",
+          borderRadius: "var(--radius-xl)",
           padding: "30px 28px",
           boxShadow: "0 20px 50px rgba(0,0,0,.10)",
         }}
@@ -7705,7 +7735,7 @@ function ShopLoginScreen({
             style={{
               width: "52px",
               height: "52px",
-              borderRadius: "14px",
+              borderRadius: "var(--radius-lg)",
               background: "var(--primary)",
               display: "flex",
               alignItems: "center",
@@ -7907,7 +7937,7 @@ function ShopPickerScreen({
           flexDirection: "column",
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "18px",
+          borderRadius: "var(--radius-xl)",
           padding: "26px 24px",
           boxShadow: "0 20px 50px rgba(0,0,0,.10)",
         }}
@@ -7924,7 +7954,7 @@ function ShopPickerScreen({
             style={{
               width: "52px",
               height: "52px",
-              borderRadius: "14px",
+              borderRadius: "var(--radius-lg)",
               background: "var(--primary)",
               display: "flex",
               alignItems: "center",
@@ -7994,7 +8024,7 @@ function ShopPickerScreen({
                   gap: "10px",
                   padding: "12px 14px",
                   marginBottom: "8px",
-                  borderRadius: "12px",
+                  borderRadius: "var(--radius-lg)",
                   border: "1px solid var(--border)",
                   background: "var(--surface-alt)",
                   cursor: "pointer",
@@ -8005,7 +8035,7 @@ function ShopPickerScreen({
                   style={{
                     width: "34px",
                     height: "34px",
-                    borderRadius: "9px",
+                    borderRadius: "var(--radius-md)",
                     background: "var(--primary)",
                     display: "flex",
                     alignItems: "center",
@@ -8116,7 +8146,7 @@ function SuperAdminTab({
           alignItems: "center",
           justifyContent: "space-between",
           padding: "12px 14px",
-          borderRadius: "12px",
+          borderRadius: "var(--radius-lg)",
           border: "1px solid var(--border)",
           background: "var(--surface-alt)",
           marginBottom: "18px",
@@ -8264,7 +8294,7 @@ function OrderStatusBadge({ status, t }) {
         alignItems: "center",
         gap: "5px",
         padding: "4px 10px",
-        borderRadius: "999px",
+        borderRadius: "var(--radius-pill)",
         fontSize: "11.5px",
         fontWeight: 700,
         background: s.bg,
@@ -8291,7 +8321,7 @@ function Toast({ msg, kind }) {
         background: kind === "error" ? "var(--danger)" : "var(--primary)",
         color: "#fff",
         padding: "12px 18px",
-        borderRadius: "9px",
+        borderRadius: "var(--radius-md)",
         fontSize: "14px",
         fontWeight: 600,
         boxShadow: "0 6px 16px rgba(0,0,0,.18)",
@@ -8317,7 +8347,7 @@ const iconBtnStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  borderRadius: "6px",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border)",
   background: "var(--surface)",
   cursor: "pointer",
@@ -8328,7 +8358,7 @@ const primaryBtnStyle = {
   alignItems: "center",
   gap: "7px",
   padding: "11px 16px",
-  borderRadius: "9px",
+  borderRadius: "var(--radius-md)",
   border: "none",
   background: "var(--primary)",
   color: "#fff",
@@ -8341,10 +8371,45 @@ const secondaryBtnStyle = {
   alignItems: "center",
   gap: "7px",
   padding: "9px 14px",
-  borderRadius: "9px",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--border)",
   background: "var(--surface)",
   color: "var(--text)",
+  fontSize: "13.5px",
+  fontWeight: 600,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+// Low-emphasis action (e.g. "cancel", a secondary link-like action inside a
+// row) — no border/fill, just text, so it doesn't compete with the primary
+// action on the same screen.
+const ghostBtnStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "7px",
+  padding: "9px 14px",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  background: "transparent",
+  color: "var(--text-muted)",
+  fontSize: "13.5px",
+  fontWeight: 600,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+// Destructive action (delete, refund, remove staff...). Outlined rather than
+// solid-filled so it doesn't read with the same visual weight as the
+// primary action — a destructive button shouldn't be the loudest thing on
+// the screen, but it must still be unambiguous.
+const dangerBtnStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "7px",
+  padding: "9px 14px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--danger)",
+  background: "var(--surface)",
+  color: "var(--danger)",
   fontSize: "13.5px",
   fontWeight: 600,
   cursor: "pointer",
@@ -8361,7 +8426,7 @@ function ToggleSwitch({ on, onClick, disabled }) {
       style={{
         width: "40px",
         height: "23px",
-        borderRadius: "12px",
+        borderRadius: "var(--radius-lg)",
         border: "none",
         background: on ? "var(--primary)" : "var(--border)",
         position: "relative",
@@ -8394,7 +8459,7 @@ function CategoryPill({ active, onClick, label }) {
       onClick={onClick}
       style={{
         padding: "6px 14px",
-        borderRadius: "999px",
+        borderRadius: "var(--radius-pill)",
         border: "1px solid " + (active ? "var(--primary)" : "var(--border)"),
         background: active ? "var(--primary)" : "var(--surface)",
         color: active ? "#fff" : "var(--text)",
@@ -8430,7 +8495,7 @@ function EmptyState({ icon: Icon, title, description, actionLabel, onAction }) {
           style={{
             width: "52px",
             height: "52px",
-            borderRadius: "14px",
+            borderRadius: "var(--radius-lg)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -8479,7 +8544,7 @@ function ProductThumb({ image, size = 40 }) {
         style={{
           width: size,
           height: size,
-          borderRadius: "8px",
+          borderRadius: "var(--radius-sm)",
           objectFit: "cover",
           flexShrink: 0,
         }}
@@ -8490,7 +8555,7 @@ function ProductThumb({ image, size = 40 }) {
       style={{
         width: size,
         height: size,
-        borderRadius: "8px",
+        borderRadius: "var(--radius-sm)",
         background: "var(--surface-alt)",
         display: "flex",
         alignItems: "center",
@@ -8606,7 +8671,7 @@ function POSTab(props) {
               style={{
                 width: "100%",
                 padding: "11px 40px 11px 38px",
-                borderRadius: "9px",
+                borderRadius: "var(--radius-md)",
                 border: "1px solid var(--border)",
                 fontSize: "14px",
                 background: "var(--surface-alt)",
@@ -8627,7 +8692,7 @@ function POSTab(props) {
                 justifyContent: "center",
                 background: "none",
                 border: "none",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-sm)",
                 cursor: "pointer",
                 color: "var(--text-muted)",
               }}
@@ -8682,7 +8747,7 @@ function POSTab(props) {
                   position: "relative",
                   textAlign: "left",
                   padding: "12px",
-                  borderRadius: "12px",
+                  borderRadius: "var(--radius-lg)",
                   border:
                     "1px solid " +
                     (inCartQty > 0 ? "var(--primary)" : "var(--border)"),
@@ -8704,7 +8769,7 @@ function POSTab(props) {
                       minWidth: "20px",
                       height: "20px",
                       padding: "0 5px",
-                      borderRadius: "999px",
+                      borderRadius: "var(--radius-pill)",
                       background: "var(--primary)",
                       color: "#fff",
                       fontSize: "11px",
@@ -8724,7 +8789,7 @@ function POSTab(props) {
                   style={{
                     width: "100%",
                     aspectRatio: "16/10",
-                    borderRadius: "8px",
+                    borderRadius: "var(--radius-sm)",
                     overflow: "hidden",
                     background: "var(--surface-alt)",
                   }}
@@ -8785,7 +8850,7 @@ function POSTab(props) {
                       fontSize: "10.5px",
                       fontWeight: 600,
                       padding: "2px 7px",
-                      borderRadius: "999px",
+                      borderRadius: "var(--radius-pill)",
                       background:
                         p.stock <= 5
                           ? "color-mix(in srgb, var(--danger) 14%, transparent)"
@@ -8852,7 +8917,7 @@ function POSTab(props) {
                     color: "var(--primary)",
                     background:
                       "color-mix(in srgb, var(--primary) 12%, transparent)",
-                    borderRadius: "999px",
+                    borderRadius: "var(--radius-pill)",
                     padding: "2px 8px",
                   }}
                 >
@@ -8869,7 +8934,7 @@ function POSTab(props) {
                   gap: "5px",
                   background: "none",
                   border: "1px solid var(--border)",
-                  borderRadius: "999px",
+                  borderRadius: "var(--radius-pill)",
                   color: "var(--text-muted)",
                   fontSize: "11.5px",
                   fontWeight: 600,
@@ -8887,7 +8952,7 @@ function POSTab(props) {
                       fontWeight: 700,
                       color: "#fff",
                       background: "var(--primary)",
-                      borderRadius: "999px",
+                      borderRadius: "var(--radius-pill)",
                       padding: "1px 6px",
                     }}
                   >
@@ -8944,7 +9009,7 @@ function POSTab(props) {
                 flex: 1,
                 minWidth: "120px",
                 padding: "7px 10px",
-                borderRadius: "8px",
+                borderRadius: "var(--radius-sm)",
                 border: "1px solid var(--border)",
                 fontSize: "12.5px",
               }}
@@ -8958,7 +9023,7 @@ function POSTab(props) {
                 alignItems: "center",
                 gap: "5px",
                 padding: "7px 10px",
-                borderRadius: "8px",
+                borderRadius: "var(--radius-sm)",
                 border: "1px solid var(--primary)",
                 background: "none",
                 color: "var(--primary)",
@@ -8980,7 +9045,7 @@ function POSTab(props) {
               marginTop: "12px",
               width: "100%",
               padding: "9px 10px",
-              borderRadius: "8px",
+              borderRadius: "var(--radius-sm)",
               border: "1px solid var(--border)",
               fontSize: "13.5px",
               background: "var(--surface-alt)",
@@ -9099,7 +9164,7 @@ function POSTab(props) {
                         padding: "1px 4px",
                         fontSize: "11px",
                         fontFamily: "var(--font-mono)",
-                        borderRadius: "5px",
+                        borderRadius: "var(--radius-sm)",
                         border: "1px solid var(--border)",
                         textAlign: "right",
                       }}
@@ -9222,7 +9287,7 @@ function POSTab(props) {
                 style={{
                   display: "flex",
                   border: "1px solid var(--border)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-sm)",
                   overflow: "hidden",
                 }}
               >
@@ -9287,7 +9352,7 @@ function POSTab(props) {
                 width: "86px",
                 textAlign: "right",
                 padding: "5px 9px",
-                borderRadius: "7px",
+                borderRadius: "var(--radius-sm)",
                 border: "1px solid var(--border)",
                 fontFamily: "var(--font-mono)",
                 fontSize: "13px",
@@ -9321,7 +9386,7 @@ function POSTab(props) {
                       style={{
                         flex: 1,
                         padding: "8px 10px",
-                        borderRadius: "9px",
+                        borderRadius: "var(--radius-md)",
                         border:
                           paymentMethod === "cash"
                             ? "2px solid var(--primary)"
@@ -9343,7 +9408,7 @@ function POSTab(props) {
                       style={{
                         flex: 1,
                         padding: "8px 10px",
-                        borderRadius: "9px",
+                        borderRadius: "var(--radius-md)",
                         border:
                           paymentMethod === "khqr"
                             ? "2px solid var(--primary)"
@@ -9367,7 +9432,7 @@ function POSTab(props) {
                       textAlign: "center",
                       padding: "12px",
                       margin: "5px 0",
-                      borderRadius: "12px",
+                      borderRadius: "var(--radius-lg)",
                       border: "1px solid var(--border)",
                       background: "var(--surface-alt)",
                     }}
@@ -9389,7 +9454,7 @@ function POSTab(props) {
                               onClick={() => setKhqrCurrency(cur)}
                               style={{
                                 padding: "4px 12px",
-                                borderRadius: "999px",
+                                borderRadius: "var(--radius-pill)",
                                 border:
                                   khqrCurrency === cur
                                     ? "2px solid var(--primary)"
@@ -9446,7 +9511,7 @@ function POSTab(props) {
                           objectFit: "contain",
                           margin: "0 auto",
                           background: "#fff",
-                          borderRadius: "8px",
+                          borderRadius: "var(--radius-sm)",
                           padding: "6px",
                         }}
                       />
@@ -9486,7 +9551,7 @@ function POSTab(props) {
                   width: "106px",
                   textAlign: "right",
                   padding: "6px 9px",
-                  borderRadius: "7px",
+                  borderRadius: "var(--radius-sm)",
                   border: "1px solid var(--border)",
                   fontFamily: "var(--font-mono)",
                   fontSize: "14px",
@@ -9544,7 +9609,7 @@ function POSTab(props) {
               width: "100%",
               marginTop: "14px",
               padding: "13px",
-              borderRadius: "10px",
+              borderRadius: "var(--radius-md)",
               border: "none",
               background: "var(--primary)",
               color: "#fff",
@@ -9595,7 +9660,7 @@ function OpenTabsModal({ openTabs, onClose, onResume, onCancel, khrRate }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
-          borderRadius: "14px",
+          borderRadius: "var(--radius-lg)",
           width: "380px",
           maxWidth: "100%",
           maxHeight: "80vh",
@@ -9682,7 +9747,7 @@ function OpenTabsModal({ openTabs, onClose, onResume, onCancel, khrRate }) {
                 onClick={() => onResume(tab)}
                 style={{
                   padding: "6px 10px",
-                  borderRadius: "7px",
+                  borderRadius: "var(--radius-sm)",
                   border: "1px solid var(--primary)",
                   background: "none",
                   color: "var(--primary)",
@@ -9697,7 +9762,7 @@ function OpenTabsModal({ openTabs, onClose, onResume, onCancel, khrRate }) {
                 onClick={() => setCancelTargetId(tab.id)}
                 style={{
                   padding: "6px 8px",
-                  borderRadius: "7px",
+                  borderRadius: "var(--radius-sm)",
                   border: "none",
                   background: "none",
                   color: "var(--danger)",
@@ -9842,7 +9907,7 @@ function DashboardTab({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "14px",
+            borderRadius: "var(--radius-lg)",
             padding: "18px",
           }}
         >
@@ -9876,7 +9941,7 @@ function DashboardTab({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "14px",
+            borderRadius: "var(--radius-lg)",
             padding: "18px",
           }}
         >
@@ -9954,7 +10019,7 @@ function DashboardTab({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "14px",
+            borderRadius: "var(--radius-lg)",
             padding: "18px",
           }}
         >
@@ -10040,7 +10105,7 @@ function StatCard({ label, value, icon: Icon, tone = "primary" }) {
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
-        borderRadius: "14px",
+        borderRadius: "var(--radius-lg)",
         padding: "16px",
       }}
     >
@@ -10064,7 +10129,7 @@ function StatCard({ label, value, icon: Icon, tone = "primary" }) {
           style={{
             width: "30px",
             height: "30px",
-            borderRadius: "9px",
+            borderRadius: "var(--radius-md)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -10112,7 +10177,7 @@ function ProductActionMenu({ t, onEdit, onDelete }) {
     padding: "8px 10px",
     background: "none",
     border: "none",
-    borderRadius: "7px",
+    borderRadius: "var(--radius-sm)",
     fontSize: "13px",
     fontWeight: 600,
     color: "var(--text)",
@@ -10144,7 +10209,7 @@ function ProductActionMenu({ t, onEdit, onDelete }) {
             zIndex: 55,
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "10px",
+            borderRadius: "var(--radius-md)",
             boxShadow: "0 12px 30px rgba(0,0,0,.16)",
             padding: "5px",
             minWidth: "160px",
@@ -10224,7 +10289,7 @@ function InventoryTab({
             style={{
               width: "100%",
               padding: "9px 12px 9px 34px",
-              borderRadius: "9px",
+              borderRadius: "var(--radius-md)",
               border: "1px solid var(--border)",
               fontSize: "14px",
             }}
@@ -10235,7 +10300,7 @@ function InventoryTab({
           onChange={(e) => setCategoryFilter(e.target.value)}
           style={{
             padding: "9px 12px",
-            borderRadius: "9px",
+            borderRadius: "var(--radius-md)",
             border: "1px solid var(--border)",
             fontSize: "14px",
           }}
@@ -10268,7 +10333,7 @@ function InventoryTab({
               key={p.id}
               style={{
                 border: "1px solid var(--border)",
-                borderRadius: "14px",
+                borderRadius: "var(--radius-lg)",
                 background: "var(--surface)",
               }}
             >
@@ -10280,7 +10345,7 @@ function InventoryTab({
                   alignItems: "center",
                   gap: "12px",
                   padding: "11px 14px",
-                  borderRadius: "13px",
+                  borderRadius: "var(--radius-lg)",
                   cursor: "pointer",
                 }}
               >
@@ -10322,7 +10387,7 @@ function InventoryTab({
                 <span
                   style={{
                     padding: "3px 10px",
-                    borderRadius: "999px",
+                    borderRadius: "var(--radius-pill)",
                     fontSize: "11.5px",
                     fontWeight: 700,
                     flexShrink: 0,
@@ -10586,7 +10651,7 @@ function ReportsTab({
             style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderRadius: "14px",
+              borderRadius: "var(--radius-lg)",
               padding: "18px",
             }}
           >
@@ -10788,7 +10853,7 @@ function ReportsTab({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "14px",
+            borderRadius: "var(--radius-lg)",
             padding: "18px 18px 6px",
           }}
         >
@@ -10821,7 +10886,7 @@ function ReportsTab({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "14px",
+            borderRadius: "var(--radius-lg)",
             padding: "18px",
           }}
         >
@@ -10854,7 +10919,7 @@ function ReportsTab({
                   style={{
                     width: "20px",
                     height: "20px",
-                    borderRadius: "6px",
+                    borderRadius: "var(--radius-sm)",
                     background: "var(--surface-alt)",
                     display: "flex",
                     alignItems: "center",
@@ -10885,7 +10950,7 @@ function ReportsTab({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "14px",
+            borderRadius: "var(--radius-lg)",
             padding: "18px",
             maxHeight: "380px",
             overflowY: "auto",
@@ -10978,7 +11043,7 @@ function ReportsTab({
                       fontWeight: 700,
                       color: "var(--danger)",
                       background: "rgba(220,38,38,.1)",
-                      borderRadius: "6px",
+                      borderRadius: "var(--radius-sm)",
                       padding: "2px 7px",
                       flexShrink: 0,
                     }}
@@ -11224,7 +11289,7 @@ function CustomersTab({
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
-                borderRadius: "14px",
+                borderRadius: "var(--radius-lg)",
                 padding: "16px",
               }}
             >
@@ -11242,7 +11307,7 @@ function CustomersTab({
                     style={{
                       width: "34px",
                       height: "34px",
-                      borderRadius: "999px",
+                      borderRadius: "var(--radius-pill)",
                       background: tier
                         ? tierStyle[tier].bg
                         : "var(--surface-alt)",
@@ -11273,7 +11338,7 @@ function CustomersTab({
                         <span
                           style={{
                             padding: "2px 8px",
-                            borderRadius: "999px",
+                            borderRadius: "var(--radius-pill)",
                             fontSize: "11px",
                             fontWeight: 700,
                             background: "var(--primary)",
@@ -11291,7 +11356,7 @@ function CustomersTab({
                             alignItems: "center",
                             gap: "3px",
                             padding: "2px 8px",
-                            borderRadius: "999px",
+                            borderRadius: "var(--radius-pill)",
                             fontSize: "10.5px",
                             fontWeight: 700,
                             background: tierStyle[tier].bg,
@@ -11455,7 +11520,7 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
             style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderRadius: "14px",
+              borderRadius: "var(--radius-lg)",
               overflow: "hidden",
             }}
           >
@@ -11651,7 +11716,7 @@ function ShiftTab({
             style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderRadius: "14px",
+              borderRadius: "var(--radius-lg)",
               padding: "18px",
               maxWidth: "360px",
             }}
@@ -11697,7 +11762,7 @@ function ShiftTab({
             style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderRadius: "14px",
+              borderRadius: "var(--radius-lg)",
               padding: "18px",
             }}
           >
@@ -11781,7 +11846,7 @@ function ShiftTab({
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
-                borderRadius: "14px",
+                borderRadius: "var(--radius-lg)",
                 overflow: "hidden",
                 overflowX: "auto",
               }}
@@ -11959,7 +12024,7 @@ function EndShiftModal({ liveExpected, onClose, onConfirm }) {
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "16px",
+          borderRadius: "var(--radius-xl)",
           padding: "22px",
           width: "380px",
           maxWidth: "100%",
@@ -11999,7 +12064,7 @@ function EndShiftModal({ liveExpected, onClose, onConfirm }) {
             fontWeight: 700,
             padding: "10px 12px",
             background: "var(--bg)",
-            borderRadius: "10px",
+            borderRadius: "var(--radius-md)",
             marginBottom: "14px",
           }}
         >
@@ -12029,7 +12094,7 @@ function EndShiftModal({ liveExpected, onClose, onConfirm }) {
               fontSize: "13.5px",
               fontWeight: 700,
               padding: "10px 12px",
-              borderRadius: "10px",
+              borderRadius: "var(--radius-md)",
               marginBottom: "14px",
               background: `color-mix(in srgb, ${
                 Math.abs(diff) < 0.01 ? "var(--success)" : "var(--danger)"
@@ -12122,7 +12187,7 @@ function EditShiftModal({ shift, onClose, onConfirm }) {
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "16px",
+          borderRadius: "var(--radius-xl)",
           padding: "22px",
           width: "380px",
           maxWidth: "100%",
@@ -12162,7 +12227,7 @@ function EditShiftModal({ shift, onClose, onConfirm }) {
             fontWeight: 700,
             padding: "10px 12px",
             background: "var(--bg)",
-            borderRadius: "10px",
+            borderRadius: "var(--radius-md)",
             marginBottom: "14px",
           }}
         >
@@ -12192,7 +12257,7 @@ function EditShiftModal({ shift, onClose, onConfirm }) {
               fontSize: "13.5px",
               fontWeight: 700,
               padding: "10px 12px",
-              borderRadius: "10px",
+              borderRadius: "var(--radius-md)",
               marginBottom: "14px",
               background: `color-mix(in srgb, ${
                 Math.abs(diff) < 0.01 ? "var(--success)" : "var(--danger)"
@@ -12394,7 +12459,7 @@ function OnlineOrdersTab({
           style={{
             margin: "20px 26px",
             padding: "20px",
-            borderRadius: "12px",
+            borderRadius: "var(--radius-lg)",
             background: "var(--surface-alt)",
             border: "1px dashed var(--border)",
           }}
@@ -12453,7 +12518,7 @@ function OnlineOrdersTab({
           alignItems: "center",
           gap: "4px",
           padding: "3px 9px",
-          borderRadius: "999px",
+          borderRadius: "var(--radius-pill)",
           fontSize: "11px",
           fontWeight: 700,
           background: s.bg,
@@ -12608,7 +12673,7 @@ function OnlineOrdersTab({
         style={{
           margin: "4px 26px 0",
           padding: "14px 16px",
-          borderRadius: "12px",
+          borderRadius: "var(--radius-lg)",
           background: "var(--surface)",
           border: "1px solid var(--border)",
           display: "flex",
@@ -12666,7 +12731,7 @@ function OnlineOrdersTab({
           style={{
             margin: "10px 26px 0",
             padding: "20px",
-            borderRadius: "12px",
+            borderRadius: "var(--radius-lg)",
             background: "var(--surface)",
             border: "1px solid var(--border)",
             display: "flex",
@@ -12680,7 +12745,11 @@ function OnlineOrdersTab({
             alt="QR code"
             width={220}
             height={220}
-            style={{ borderRadius: "8px", background: "#fff", padding: "8px" }}
+            style={{
+              borderRadius: "var(--radius-sm)",
+              background: "#fff",
+              padding: "8px",
+            }}
           />
           <div
             style={{
@@ -12764,7 +12833,7 @@ function OnlineOrdersTab({
                 o.status === "pending"
                   ? "4px solid var(--accent)"
                   : "1px solid var(--border)",
-              borderRadius: "14px",
+              borderRadius: "var(--radius-lg)",
               padding: "16px",
               display: "flex",
               flexDirection: "column",
@@ -12794,7 +12863,7 @@ function OnlineOrdersTab({
                       fontSize: "10.5px",
                       fontWeight: 700,
                       padding: "2px 7px",
-                      borderRadius: "999px",
+                      borderRadius: "var(--radius-pill)",
                       background:
                         o.payment_method === "khqr"
                           ? "color-mix(in srgb, var(--primary) 15%, transparent)"
@@ -12857,7 +12926,7 @@ function OnlineOrdersTab({
                         style={{
                           width: "26px",
                           height: "26px",
-                          borderRadius: "6px",
+                          borderRadius: "var(--radius-sm)",
                           overflow: "hidden",
                           flexShrink: 0,
                           background: "var(--surface-alt)",
@@ -12916,7 +12985,7 @@ function OnlineOrdersTab({
                       fontFamily: "var(--font-body)",
                       marginTop: "6px",
                       padding: "7px 9px",
-                      borderRadius: "8px",
+                      borderRadius: "var(--radius-sm)",
                       background: "var(--surface-alt)",
                       fontSize: "12px",
                     }}
@@ -13186,7 +13255,7 @@ function UserActionMenu({ t, disabled, onEdit, onToggle, onDelete }) {
     padding: "8px 10px",
     background: "none",
     border: "none",
-    borderRadius: "7px",
+    borderRadius: "var(--radius-sm)",
     fontSize: "13px",
     fontWeight: 600,
     color: "var(--text)",
@@ -13218,7 +13287,7 @@ function UserActionMenu({ t, disabled, onEdit, onToggle, onDelete }) {
             zIndex: 55,
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "10px",
+            borderRadius: "var(--radius-md)",
             boxShadow: "0 12px 30px rgba(0,0,0,.16)",
             padding: "5px",
             minWidth: "170px",
@@ -13465,7 +13534,7 @@ function UsersTab({
                 key={u.id}
                 style={{
                   border: "1px solid var(--border)",
-                  borderRadius: "14px",
+                  borderRadius: "var(--radius-lg)",
                   background: "var(--surface)",
                   opacity: disabled ? 0.65 : 1,
                   // no overflow:hidden here — the Action menu is an absolutely
@@ -13482,7 +13551,7 @@ function UsersTab({
                     alignItems: "center",
                     gap: "12px",
                     padding: "13px 14px",
-                    borderRadius: "13px",
+                    borderRadius: "var(--radius-lg)",
                     cursor: "pointer",
                   }}
                 >
@@ -13491,7 +13560,7 @@ function UsersTab({
                       width: "38px",
                       height: "38px",
                       flexShrink: 0,
-                      borderRadius: "999px",
+                      borderRadius: "var(--radius-pill)",
                       background: "var(--surface-alt)",
                       display: "flex",
                       alignItems: "center",
@@ -13527,7 +13596,7 @@ function UsersTab({
                         <span
                           style={{
                             padding: "2px 8px",
-                            borderRadius: "999px",
+                            borderRadius: "var(--radius-pill)",
                             fontSize: "10.5px",
                             fontWeight: 700,
                             background: "rgba(220,38,38,.12)",
@@ -13552,7 +13621,7 @@ function UsersTab({
                   <span
                     style={{
                       padding: "3px 10px",
-                      borderRadius: "999px",
+                      borderRadius: "var(--radius-pill)",
                       fontSize: "11.5px",
                       fontWeight: 700,
                       flexShrink: 0,
@@ -13948,7 +14017,7 @@ function AuditLogTab({ auditLog }) {
             style={{
               width: "100%",
               padding: "9px 12px 9px 34px",
-              borderRadius: "9px",
+              borderRadius: "var(--radius-md)",
               border: "1px solid var(--border)",
               fontSize: "14px",
             }}
@@ -14034,7 +14103,7 @@ function AuditLogTab({ auditLog }) {
                         alignItems: "center",
                         gap: "5px",
                         padding: "3px 10px 3px 8px",
-                        borderRadius: "999px",
+                        borderRadius: "var(--radius-pill)",
                         fontSize: "11.5px",
                         fontWeight: 700,
                         color: "#fff",
@@ -14332,7 +14401,7 @@ function SettingsTab({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "14px",
+            borderRadius: "var(--radius-lg)",
             overflow: "hidden",
           }}
         >
@@ -14410,7 +14479,7 @@ function SettingsTab({
                     style={{
                       width: "68px",
                       height: "68px",
-                      borderRadius: "12px",
+                      borderRadius: "var(--radius-lg)",
                       overflow: "hidden",
                       background: "var(--surface-alt)",
                       border: "1px solid var(--border)",
@@ -14455,7 +14524,7 @@ function SettingsTab({
                         alignItems: "center",
                         gap: "6px",
                         padding: "7px 12px",
-                        borderRadius: "7px",
+                        borderRadius: "var(--radius-sm)",
                         border: "1px solid var(--border)",
                         background: "var(--surface)",
                         fontSize: "12.5px",
@@ -14627,7 +14696,7 @@ function SettingsTab({
                     style={{
                       width: "84px",
                       height: "84px",
-                      borderRadius: "10px",
+                      borderRadius: "var(--radius-md)",
                       border: "1px solid var(--border)",
                       background: "var(--surface-alt)",
                       display: "flex",
@@ -14673,7 +14742,7 @@ function SettingsTab({
                         alignItems: "center",
                         gap: "6px",
                         padding: "7px 12px",
-                        borderRadius: "7px",
+                        borderRadius: "var(--radius-sm)",
                         border: "1px solid var(--border)",
                         background: "var(--surface)",
                         fontSize: "12.5px",
@@ -14776,7 +14845,7 @@ function SettingsTab({
                           style={{
                             width: "100%",
                             padding: "7px 10px",
-                            borderRadius: "7px",
+                            borderRadius: "var(--radius-sm)",
                             border: "1px solid var(--border)",
                             fontFamily: "var(--font-mono)",
                             fontSize: "13px",
@@ -14797,7 +14866,7 @@ function SettingsTab({
                           style={{
                             width: "100%",
                             padding: "7px 10px",
-                            borderRadius: "7px",
+                            borderRadius: "var(--radius-sm)",
                             border: "1px solid var(--border)",
                             fontSize: "13px",
                           }}
@@ -14817,7 +14886,7 @@ function SettingsTab({
                           style={{
                             width: "100%",
                             padding: "7px 10px",
-                            borderRadius: "7px",
+                            borderRadius: "var(--radius-sm)",
                             border: "1px solid var(--border)",
                             fontSize: "13px",
                           }}
@@ -14838,7 +14907,7 @@ function SettingsTab({
                           style={{
                             width: "100%",
                             padding: "7px 10px",
-                            borderRadius: "7px",
+                            borderRadius: "var(--radius-sm)",
                             border: "1px solid var(--border)",
                             fontSize: "13px",
                           }}
@@ -14916,7 +14985,7 @@ function SettingsTab({
                     style={{
                       width: "120px",
                       padding: "8px 10px",
-                      borderRadius: "8px",
+                      borderRadius: "var(--radius-sm)",
                       border: "1px solid var(--border)",
                       fontFamily: "var(--font-mono)",
                       fontSize: "14px",
@@ -15018,7 +15087,7 @@ function SettingsTab({
                   style={{
                     width: "100%",
                     padding: "9px 10px",
-                    borderRadius: "8px",
+                    borderRadius: "var(--radius-sm)",
                     border: "1px solid var(--border)",
                     fontSize: "13.5px",
                     background: "var(--surface-alt)",
@@ -15057,7 +15126,7 @@ function SettingsTab({
                       alignItems: "center",
                       gap: "6px",
                       padding: "7px 12px",
-                      borderRadius: "7px",
+                      borderRadius: "var(--radius-sm)",
                       border: "1px solid var(--border)",
                       background: "var(--surface)",
                       fontSize: "12.5px",
@@ -15206,7 +15275,7 @@ function SettingsTab({
                         alignItems: "center",
                         gap: "8px",
                         padding: "14px 10px",
-                        borderRadius: "10px",
+                        borderRadius: "var(--radius-md)",
                         border:
                           printWidthDraft === opt.id
                             ? "2px solid var(--primary)"
@@ -15222,7 +15291,7 @@ function SettingsTab({
                         style={{
                           width: opt.id === "58mm" ? "34px" : "46px",
                           height: "54px",
-                          borderRadius: "3px",
+                          borderRadius: "var(--radius-sm)",
                           border: "1px solid var(--border)",
                           background: "var(--surface-alt)",
                           position: "relative",
@@ -15539,7 +15608,7 @@ function DynamicQrImage({ payload, size = 150 }) {
         width: size,
         height: size,
         background: "#fff",
-        borderRadius: "8px",
+        borderRadius: "var(--radius-sm)",
       }}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
@@ -15716,7 +15785,7 @@ function BarcodeScanModal({ onClose, onDetected }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
-          borderRadius: "16px",
+          borderRadius: "var(--radius-xl)",
           width: "380px",
           maxWidth: "100%",
           padding: "18px",
@@ -15751,7 +15820,7 @@ function BarcodeScanModal({ onClose, onDetected }) {
           style={{
             width: "100%",
             minHeight: "220px",
-            borderRadius: "10px",
+            borderRadius: "var(--radius-md)",
             overflow: "hidden",
             background: "#000",
           }}
@@ -15803,7 +15872,7 @@ function ModalShell({ title, onClose, children, width = "380px" }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
-          borderRadius: "16px",
+          borderRadius: "var(--radius-xl)",
           width,
           maxWidth: "100%",
           maxHeight: "88%",
@@ -15880,7 +15949,7 @@ function ConfirmDialog({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
-          borderRadius: "16px",
+          borderRadius: "var(--radius-xl)",
           width: "360px",
           maxWidth: "100%",
           boxShadow: "0 20px 50px rgba(0,0,0,.3)",
@@ -15961,7 +16030,7 @@ const fieldLabel = {
 const fieldInput = {
   width: "100%",
   padding: "10px 12px",
-  borderRadius: "9px",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--border)",
   fontSize: "14px",
   marginBottom: "14px",
@@ -16013,7 +16082,7 @@ function ProductModal({ data, onClose, onSave }) {
           style={{
             width: "68px",
             height: "68px",
-            borderRadius: "10px",
+            borderRadius: "var(--radius-md)",
             overflow: "hidden",
             background: "var(--surface-alt)",
             display: "flex",
@@ -16047,7 +16116,7 @@ function ProductModal({ data, onClose, onSave }) {
               alignItems: "center",
               gap: "6px",
               padding: "7px 12px",
-              borderRadius: "7px",
+              borderRadius: "var(--radius-sm)",
               border: "1px solid var(--border)",
               background: "var(--surface)",
               fontSize: "12.5px",
@@ -16186,7 +16255,7 @@ function ProductModal({ data, onClose, onSave }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: "9px",
+            borderRadius: "var(--radius-md)",
             border: "1px solid var(--border)",
             background: "var(--surface)",
             cursor: "pointer",
@@ -16370,7 +16439,7 @@ function DateField({ value, onChange, style }) {
             zIndex: 55,
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "12px",
+            borderRadius: "var(--radius-lg)",
             boxShadow: "0 12px 30px rgba(0,0,0,.16)",
             padding: "14px",
             width: "260px",
@@ -16449,7 +16518,7 @@ function DateField({ value, onChange, style }) {
                     width: "100%",
                     aspectRatio: "1",
                     border: "none",
-                    borderRadius: "7px",
+                    borderRadius: "var(--radius-sm)",
                     fontSize: "12px",
                     cursor: "pointer",
                     background: isSelected ? "var(--primary)" : "transparent",
@@ -16638,7 +16707,7 @@ function CategoryModal({ categories, products, onClose, onAdd, onDelete }) {
                   alignItems: "center",
                   justifyContent: "space-between",
                   padding: "8px 12px",
-                  borderRadius: "9px",
+                  borderRadius: "var(--radius-md)",
                   border: "1px solid var(--border)",
                   background: "var(--surface-alt)",
                 }}
@@ -16831,7 +16900,7 @@ function UserModal({ data, roles, onClose, onSave }) {
             onClick={() => setForm({ ...form, role: r.id })}
             style={{
               padding: "9px 14px",
-              borderRadius: "9px",
+              borderRadius: "var(--radius-md)",
               cursor: "pointer",
               fontSize: "13.5px",
               fontWeight: 700,
@@ -17030,7 +17099,7 @@ function ReceiptModal({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
-          borderRadius: "12px",
+          borderRadius: "var(--radius-lg)",
           width: areaWidthPx,
           maxWidth: "100%",
           boxShadow: "0 20px 50px rgba(0,0,0,.25)",
@@ -17051,7 +17120,7 @@ function ReceiptModal({
                 width: "44px",
                 height: "44px",
                 objectFit: "cover",
-                borderRadius: "8px",
+                borderRadius: "var(--radius-sm)",
                 margin: "0 auto 9px",
                 display: "block",
               }}
@@ -17748,7 +17817,7 @@ function StorefrontApp() {
                 style={{
                   width: "38px",
                   height: "38px",
-                  borderRadius: "10px",
+                  borderRadius: "var(--radius-md)",
                   background: "var(--primary)",
                   display: "flex",
                   alignItems: "center",
@@ -17779,7 +17848,7 @@ function StorefrontApp() {
                       justifyContent: "center",
                       width: "38px",
                       height: "38px",
-                      borderRadius: "10px",
+                      borderRadius: "var(--radius-md)",
                       border: "1px solid var(--border)",
                       background: "var(--surface)",
                       color: "var(--text)",
@@ -17799,7 +17868,7 @@ function StorefrontApp() {
                         overflowY: "auto",
                         background: "var(--surface)",
                         border: "1px solid var(--border)",
-                        borderRadius: "12px",
+                        borderRadius: "var(--radius-lg)",
                         boxShadow: "0 12px 30px rgba(0,0,0,.15)",
                         zIndex: 40,
                         padding: "8px",
@@ -17824,7 +17893,7 @@ function StorefrontApp() {
                             justifyContent: "space-between",
                             alignItems: "center",
                             padding: "8px",
-                            borderRadius: "8px",
+                            borderRadius: "var(--radius-sm)",
                             cursor: "pointer",
                           }}
                           onMouseEnter={(e) =>
@@ -17867,7 +17936,7 @@ function StorefrontApp() {
             <div
               style={{
                 padding: "20px",
-                borderRadius: "12px",
+                borderRadius: "var(--radius-lg)",
                 background: "var(--surface-alt)",
                 border: "1px dashed var(--border)",
               }}
@@ -17891,7 +17960,7 @@ function StorefrontApp() {
             <div
               style={{
                 padding: "20px",
-                borderRadius: "12px",
+                borderRadius: "var(--radius-lg)",
                 background: "var(--surface-alt)",
                 border: "1px dashed var(--border)",
                 textAlign: "center",
@@ -17925,7 +17994,7 @@ function StorefrontApp() {
                 textAlign: "center",
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
-                borderRadius: "16px",
+                borderRadius: "var(--radius-xl)",
               }}
             >
               <CheckCircle2
@@ -17957,7 +18026,7 @@ function StorefrontApp() {
                   style={{
                     background: "var(--surface-alt)",
                     border: "1px solid var(--border)",
-                    borderRadius: "13px",
+                    borderRadius: "var(--radius-lg)",
                     padding: "16px",
                     textAlign: "start",
                     marginBottom: "18px",
@@ -18059,7 +18128,7 @@ function StorefrontApp() {
                   style={{
                     width: "100%",
                     padding: "11px 14px 11px 38px",
-                    borderRadius: "10px",
+                    borderRadius: "var(--radius-md)",
                     border: "1px solid var(--border)",
                     fontSize: "14px",
                     background: "var(--surface)",
@@ -18113,7 +18182,7 @@ function StorefrontApp() {
                         border:
                           "1px solid " +
                           (inCartQty > 0 ? "var(--primary)" : "var(--border)"),
-                        borderRadius: "12px",
+                        borderRadius: "var(--radius-lg)",
                         padding: "10px",
                         cursor: p.stock > 0 ? "pointer" : "not-allowed",
                         opacity: p.stock > 0 ? 1 : 0.5,
@@ -18128,7 +18197,7 @@ function StorefrontApp() {
                             minWidth: "20px",
                             height: "20px",
                             padding: "0 5px",
-                            borderRadius: "999px",
+                            borderRadius: "var(--radius-pill)",
                             background: "var(--primary)",
                             color: "#fff",
                             fontSize: "11px",
@@ -18148,7 +18217,7 @@ function StorefrontApp() {
                         style={{
                           width: "100%",
                           aspectRatio: "1",
-                          borderRadius: "9px",
+                          borderRadius: "var(--radius-md)",
                           overflow: "hidden",
                           marginBottom: "8px",
                           background: "var(--surface-alt)",
@@ -18209,7 +18278,7 @@ function StorefrontApp() {
                             fontSize: "10px",
                             fontWeight: 600,
                             padding: "2px 6px",
-                            borderRadius: "999px",
+                            borderRadius: "var(--radius-pill)",
                             background:
                               p.stock > 0 && p.stock <= 5
                                 ? "color-mix(in srgb, var(--danger) 14%, transparent)"
@@ -18277,7 +18346,7 @@ function StorefrontApp() {
                             fontWeight: 700,
                             color: "#fff",
                             background: "var(--primary)",
-                            borderRadius: "999px",
+                            borderRadius: "var(--radius-pill)",
                             padding: "2px 7px",
                           }}
                         >
@@ -18412,7 +18481,7 @@ function StorefrontApp() {
                                   style={{
                                     flex: 1,
                                     padding: "9px 10px",
-                                    borderRadius: "9px",
+                                    borderRadius: "var(--radius-md)",
                                     border:
                                       paymentMethod === "cash"
                                         ? "2px solid var(--primary)"
@@ -18435,7 +18504,7 @@ function StorefrontApp() {
                                   style={{
                                     flex: 1,
                                     padding: "9px 10px",
-                                    borderRadius: "9px",
+                                    borderRadius: "var(--radius-md)",
                                     border:
                                       paymentMethod === "khqr"
                                         ? "2px solid var(--primary)"
@@ -18460,7 +18529,7 @@ function StorefrontApp() {
                                   style={{
                                     marginTop: "12px",
                                     padding: "14px",
-                                    borderRadius: "12px",
+                                    borderRadius: "var(--radius-lg)",
                                     border: "1px solid var(--border)",
                                     background: "var(--surface-alt)",
                                     textAlign: "center",
@@ -18475,7 +18544,7 @@ function StorefrontApp() {
                                       objectFit: "contain",
                                       margin: "0 auto 10px",
                                       background: "#fff",
-                                      borderRadius: "8px",
+                                      borderRadius: "var(--radius-sm)",
                                       padding: "8px",
                                     }}
                                   />
@@ -18575,7 +18644,7 @@ class ErrorBoundary extends Component {
             onClick={() => window.location.reload()}
             style={{
               padding: "10px 22px",
-              borderRadius: "9px",
+              borderRadius: "var(--radius-md)",
               border: "none",
               background: "#0f6e56",
               color: "#fff",
