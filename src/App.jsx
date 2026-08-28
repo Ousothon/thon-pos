@@ -7466,6 +7466,19 @@ function LoginScreen({
         <LangSwitch lang={lang} setLang={setLang} />
         <ThemeSwitch theme={theme} setTheme={setTheme} t={t} />
       </div>
+      <div
+        style={{
+          position: "absolute",
+          bottom: "18px",
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          fontSize: "12px",
+          color: "var(--text-muted)",
+        }}
+      >
+        Powered by Ou SoThon
+      </div>
       <form
         onSubmit={submit}
         className="login-card"
@@ -7710,6 +7723,19 @@ function ShopLoginScreen({
       >
         <LangSwitch lang={lang} setLang={setLang} />
         <ThemeSwitch theme={theme} setTheme={setTheme} t={t} />
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          bottom: "18px",
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          fontSize: "12px",
+          color: "var(--text-muted)",
+        }}
+      >
+        Powered by Ou SoThon
       </div>
       <form
         onSubmit={submit}
@@ -17072,6 +17098,30 @@ function ReceiptModal({
   const { t, lang } = useT();
   const isNarrow = receiptWidth === "58mm";
   const areaWidthPx = isNarrow ? "220px" : "300px";
+  // The @page `size` CSS property has no real "auto height" — a length can't
+  // be mixed with the `auto` keyword (that combination is invalid and gets
+  // the whole @page rule dropped, which is why printing used to fall back to
+  // full Letter/A4 paper). And a single fixed mm height (e.g. 1200mm) "works"
+  // but leaves a long blank strip below short receipts. So instead we measure
+  // the actual rendered receipt height in pixels and convert that to mm for
+  // the page size, re-measuring whenever the content changes.
+  const printAreaRef = useRef(null);
+  const [printHeightMm, setPrintHeightMm] = useState(297);
+  useEffect(() => {
+    const el = printAreaRef.current;
+    if (!el) return;
+    const PX_TO_MM = 25.4 / 96;
+    const measure = () => {
+      // + a little buffer so rounding/sub-pixel layout never clips the
+      // last line of the receipt.
+      const mm = Math.ceil(el.scrollHeight * PX_TO_MM) + 6;
+      setPrintHeightMm(mm);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sale]);
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
@@ -17094,8 +17144,17 @@ function ReceiptModal({
         "--receipt-print-width": areaWidthPx,
       }}
     >
+      <style>{`
+        @media print {
+          @page {
+            size: ${isNarrow ? "58mm" : "80mm"} ${printHeightMm}mm;
+            margin: 3mm;
+          }
+        }
+      `}</style>
       <div
         id="receipt-print-area"
+        ref={printAreaRef}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
@@ -17332,6 +17391,16 @@ function ReceiptModal({
               </>
             )}
           </div>
+        </div>
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: "10.5px",
+            color: "var(--text-muted)",
+            padding: "10px 22px 4px",
+          }}
+        >
+          Powered by Ou SoThon
         </div>
         <div
           id="receipt-print-actions"
