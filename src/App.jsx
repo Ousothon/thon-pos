@@ -45,6 +45,7 @@ import {
   Clock3,
   XCircle,
   QrCode,
+  Monitor,
   Menu,
   Sun,
   Moon,
@@ -1308,12 +1309,17 @@ function makeQrMatrix(text) {
 // Builds an EMVCo-based "KHQR" payload string per the National Bank of
 // Cambodia's Bakong spec, with a transaction amount baked in (Point of
 // Initiation Method "12" = dynamic, vs "11" = static/any-amount).
-// This only uses the standard/public tag set (00,01,29,52,53,54,58,59,60,63)
-// — bank apps like ABA add their own proprietary tag (40) with a P2P
+// Uses the standard/public tag set (00,01,29,52,53,54,58,59,60,99,63) —
+// tag 99 (a Bakong-specific creation-timestamp template) is required for
+// dynamic KHQR specifically; leaving it out (or adding a non-spec sub-tag
+// under 29, like a bank-name field) makes Bakong-compliant scanners reject
+// the whole QR as invalid, even though it still parses as generic EMVCo.
+// Bank apps like ABA add their own further proprietary tag (40) with a P2P
 // reference on top, but that's not required for a Bakong-compliant scanner
 // to read the amount and account correctly.
-// Verified against a real decoded ABA static KHQR: the CRC16 implementation
-// below reproduces that QR's checksum byte-for-byte.
+// Verified against real decoded KHQR strings from three independent
+// Bakong-KHQR SDKs (PHP, Python, TypeScript): the CRC16 implementation
+// below reproduces those QRs' checksums byte-for-byte.
 const KHQR_CURRENCY_CODE = { usd: "840", khr: "116" };
 // CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflect) — the checksum
 // algorithm EMVCo QR codes use for the trailing tag 63.
@@ -1336,9 +1342,10 @@ const khqrTlv = (tag, value) =>
 // ('usd' | 'khr'); KHR amounts are whole numbers, USD amounts keep cents.
 const buildDynamicKhqr = ({
   accountId,
+  accountNumber,
+  bankName,
   merchantName,
   merchantCity,
-  bankName,
   amount,
   currency = "usd",
 }) => {
@@ -1347,18 +1354,41 @@ const buildDynamicKhqr = ({
     currency === "khr"
       ? String(Math.max(0, Math.round(Number(amount) || 0)))
       : Math.max(0, Number(amount) || 0).toFixed(2);
-  const accountInfo =
-    khqrTlv("00", accountId) + (bankName ? khqrTlv("02", bankName) : "");
+  // Individual Bakong account info (tag 29). For most banks the account id
+  // itself (sub-tag 00, e.g. "name@wing") is enough to identify the unique
+  // recipient. ABA (and some other banks) instead issue a *shared* id in
+  // sub-tag 00 — the same string for every ABA customer — and put the
+  // actual, recipient-specific account number in sub-tag 01, with the bank
+  // name in sub-tag 02. This matches Bakong's own "Remittance KHQR" layout
+  // (tag 29, sub-tag 00 = bank's shared wallet id, sub-tag 01 = customer
+  // account number/phone) and is exactly what's decoded out of a real,
+  // working ABA static KHQR image. Leaving sub-tag 01 out (as this
+  // function previously did) means the QR only ever points at "ABA Bank"
+  // in general with no specific account attached — which is why every
+  // bank's scanner reported the recipient as unidentified/unverified even
+  // though the QR still parsed as valid EMVCo. sub-tag 02 (bank name) is
+  // optional/cosmetic and only added when provided.
+  let accountInfo = khqrTlv("00", accountId);
+  if (accountNumber) accountInfo += khqrTlv("01", String(accountNumber));
+  if (bankName) accountInfo += khqrTlv("02", bankName);
+  // Bakong-specific creation-timestamp template (tag 99, 13-digit epoch
+  // ms). Confirmed against decoded output from three independent Bakong
+  // KHQR SDKs: it's present in every generated string and is documented
+  // as required specifically for *dynamic* KHQR (one with an amount baked
+  // in, Point of Initiation "12") — omitting it is the other reason a
+  // dynamic QR gets rejected even though it still decodes as valid EMVCo.
+  const timestampTag = khqrTlv("99", khqrTlv("00", String(Date.now())));
   const payload =
     khqrTlv("00", "01") + // Payload Format Indicator
     khqrTlv("01", "12") + // Point of Initiation Method: 12 = dynamic (fixed amount)
-    khqrTlv("29", accountInfo) + // Individual/merchant account info
-    khqrTlv("52", "0000") + // Merchant category code (unset)
+    khqrTlv("29", accountInfo) + // Individual account info
+    khqrTlv("52", "5999") + // Merchant Category Code — 5999 (misc. retail) is the standard default every KHQR generator uses; scanners can reject an unrecognised/zero code
     khqrTlv("53", KHQR_CURRENCY_CODE[currency] || KHQR_CURRENCY_CODE.usd) +
     khqrTlv("54", amt) + // Transaction amount
     khqrTlv("58", "KH") +
     khqrTlv("59", merchantName.toUpperCase().slice(0, 25)) +
     khqrTlv("60", merchantCity.toUpperCase().slice(0, 15)) +
+    timestampTag +
     "6304"; // CRC tag+length, value appended below
   return payload + khqrCrc16(payload);
 };
@@ -2162,6 +2192,14 @@ const STRINGS = {
     km: "Bakong Account ID",
     en: "Bakong Account ID",
   },
+  settings_khqrAccountNumberLabel: {
+    km: "លេខគណនីធនាគារ",
+    en: "Bank account number",
+  },
+  settings_khqrAccountNumberHint: {
+    km: "ត្រូវការសម្រាប់ធនាគារខ្លះ (ដូចជា ABA) ដែល Bakong Account ID ខាងលើ ជាកូដរួមរបស់ធនាគារ មិនមែនគណនីជាក់លាក់របស់អ្នកទេ។ Decode QR ស្ថិតរបស់អ្នកផ្ទាល់ដើម្បីរកលេខនេះ — វាស្ថិតនៅក្នុង sub-tag 01 ។",
+    en: "Required for some banks (e.g. ABA) where the Bakong Account ID above is a shared bank-wide code, not your specific account. Decode your own static QR to find it — it's in sub-tag 01.",
+  },
   settings_khqrMerchantNameLabel: {
     km: "ឈ្មោះម្ចាស់គណនី (English)",
     en: "Account holder name (English)",
@@ -2181,6 +2219,26 @@ const STRINGS = {
   },
   order_paidVia_cash: { km: "សាច់ប្រាក់", en: "Cash" },
   order_paidVia_khqr: { km: "KHQR", en: "KHQR" },
+
+  // ---- Customer-facing display (second monitor at checkout) ----
+  display_openBtn: { km: "អេក្រង់អតិថិជន", en: "Customer display" },
+  display_welcome: { km: "សូមស្វាគមន៍", en: "Welcome" },
+  display_welcomeSub: {
+    km: "បុគ្គលិកកំពុងរៀបចំការបញ្ជាទិញរបស់អ្នក",
+    en: "We're preparing your order",
+  },
+  display_yourOrder: { km: "ការបញ្ជាទិញរបស់អ្នក", en: "Your Order" },
+  display_subtotal: { km: "សរុបរង", en: "Subtotal" },
+  display_discount: { km: "បញ្ចុះតម្លៃ", en: "Discount" },
+  display_total: { km: "សរុប", en: "Total" },
+  display_scanToPay: { km: "ស្កេន QR ដើម្បីទូទាត់", en: "Scan QR to pay" },
+  display_payCashAtCounter: {
+    km: "សូមបង់ប្រាក់សាច់ជាមួយបុគ្គលិក",
+    en: "Please pay cash at the counter",
+  },
+  display_thankYou: { km: "សូមអរគុណ!", en: "Thank you!" },
+  display_paidAmount: { km: "បានទូទាត់ចំនួន", en: "Amount paid" },
+  display_paidVia: { km: "តាមរយៈ", en: "via" },
 
   settings_soundTitle: {
     km: "សំឡេងជូនដំណឹង",
@@ -2805,6 +2863,7 @@ function POSApp() {
   // in Settings for dynamic mode to actually turn on at checkout.
   const [khqrDynamicEnabled, setKhqrDynamicEnabled] = useState(false);
   const [khqrAccountId, setKhqrAccountId] = useState("");
+  const [khqrAccountNumber, setKhqrAccountNumber] = useState("");
   const [khqrMerchantName, setKhqrMerchantName] = useState("");
   const [khqrMerchantCity, setKhqrMerchantCity] = useState("");
   const [khqrBankName, setKhqrBankName] = useState("");
@@ -3202,6 +3261,7 @@ function POSApp() {
         setKhqrImage(parsed.khqrImage || "");
         setKhqrDynamicEnabled(!!parsed.khqrDynamicEnabled);
         setKhqrAccountId(parsed.khqrAccountId || "");
+        setKhqrAccountNumber(parsed.khqrAccountNumber || "");
         setKhqrMerchantName(parsed.khqrMerchantName || "");
         setKhqrMerchantCity(parsed.khqrMerchantCity || "");
         setKhqrBankName(parsed.khqrBankName || "");
@@ -3253,6 +3313,7 @@ function POSApp() {
             khqrImage,
             khqrDynamicEnabled,
             khqrAccountId,
+            khqrAccountNumber,
             khqrMerchantName,
             khqrMerchantCity,
             khqrBankName,
@@ -3284,6 +3345,7 @@ function POSApp() {
     khqrImage,
     khqrDynamicEnabled,
     khqrAccountId,
+    khqrAccountNumber,
     khqrMerchantName,
     khqrMerchantCity,
     khqrBankName,
@@ -3767,6 +3829,89 @@ function POSApp() {
   const total = afterDiscount - pointsDiscount;
   const paymentNum = Number(payment) || 0;
   const change = paymentNum - total;
+
+  // ---------- Customer-facing display (second monitor) ----------
+  // Mirrors the live order + payment QR to a separate window opened via
+  // "?display=1" (see CustomerDisplayApp / the Monitor button in the
+  // invoice header) so a screen facing the customer shows only the order
+  // and how to pay — never inventory, reports, or anything else in the
+  // POS. BroadcastChannel only reaches same-origin tabs/windows on this
+  // same device/browser, so nothing about the order leaves the till.
+  const displayChannelRef = useRef(null);
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return undefined;
+    const ch = new BroadcastChannel("pos-customer-display");
+    displayChannelRef.current = ch;
+    return () => {
+      ch.close();
+      displayChannelRef.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    const ch = displayChannelRef.current;
+    if (!ch) return;
+    const snapshot = {
+      type: "state",
+      shopName,
+      shopLogo,
+      lang,
+      cart: cart.map((c) => ({
+        name: c.name,
+        qty: c.qty,
+        price: c.price,
+        discountPercent: Number(c.discountPercent) || 0,
+      })),
+      subtotal,
+      itemDiscountTotal,
+      discountAmt,
+      total,
+      paymentMethod,
+      payCashEnabled,
+      payKhqrEnabled,
+      khqrImage,
+      khqrDynamicEnabled,
+      khqrAccountId,
+      khqrAccountNumber,
+      khqrMerchantName,
+      khqrMerchantCity,
+      khqrBankName,
+      tableLabel,
+    };
+    ch.postMessage(snapshot);
+    // A newly-opened display window has missed everything broadcast before
+    // it existed, so it asks for a fresh snapshot on mount — answer with
+    // whatever is current right now.
+    ch.onmessage = (e) => {
+      if (e.data?.type === "requestState") ch.postMessage(snapshot);
+    };
+  }, [
+    shopName,
+    shopLogo,
+    lang,
+    cart,
+    subtotal,
+    itemDiscountTotal,
+    discountAmt,
+    total,
+    paymentMethod,
+    payCashEnabled,
+    payKhqrEnabled,
+    khqrImage,
+    khqrDynamicEnabled,
+    khqrAccountId,
+    khqrAccountNumber,
+    khqrMerchantName,
+    khqrMerchantCity,
+    khqrBankName,
+    tableLabel,
+  ]);
+  // Sale completion is a separate, one-shot event (not part of the state
+  // snapshot above) so the display can show a distinct "Thank you / Paid"
+  // screen for a few seconds even though the cart itself clears right away.
+  useEffect(() => {
+    if (!receipt) return;
+    displayChannelRef.current?.postMessage({ type: "receipt", receipt });
+  }, [receipt]);
 
   // when a member customer with a discount % is selected, switch the field to percent mode
   // and prefill their rate — since it's a %, it stays correct even as the cart changes
@@ -4739,6 +4884,8 @@ function POSApp() {
         setKhqrDynamicEnabled(data.khqr_dynamic_enabled);
       if (data && typeof data.khqr_account_id === "string")
         setKhqrAccountId(data.khqr_account_id);
+      if (data && typeof data.khqr_account_number === "string")
+        setKhqrAccountNumber(data.khqr_account_number);
       if (data && typeof data.khqr_merchant_name === "string")
         setKhqrMerchantName(data.khqr_merchant_name);
       if (data && typeof data.khqr_merchant_city === "string")
@@ -4784,6 +4931,7 @@ function POSApp() {
     khqrImg,
     dynEnabled,
     acctId,
+    acctNumber,
     merchName,
     merchCity,
     bank,
@@ -4799,6 +4947,7 @@ function POSApp() {
           khqr_image: khqrImg || null,
           khqr_dynamic_enabled: !!dynEnabled,
           khqr_account_id: acctId || null,
+          khqr_account_number: acctNumber || null,
           khqr_merchant_name: merchName || null,
           khqr_merchant_city: merchCity || null,
           khqr_bank_name: bank || null,
@@ -6654,6 +6803,7 @@ function POSApp() {
               khqrImage={khqrImage}
               khqrDynamicEnabled={khqrDynamicEnabled}
               khqrAccountId={khqrAccountId}
+              khqrAccountNumber={khqrAccountNumber}
               khqrMerchantName={khqrMerchantName}
               khqrMerchantCity={khqrMerchantCity}
               khqrBankName={khqrBankName}
@@ -6822,6 +6972,7 @@ function POSApp() {
               khqrImage={khqrImage}
               khqrDynamicEnabled={khqrDynamicEnabled}
               khqrAccountId={khqrAccountId}
+              khqrAccountNumber={khqrAccountNumber}
               khqrMerchantName={khqrMerchantName}
               khqrMerchantCity={khqrMerchantCity}
               khqrBankName={khqrBankName}
@@ -6831,6 +6982,7 @@ function POSApp() {
                 img,
                 dynEnabled,
                 acctId,
+                acctNumber,
                 merchName,
                 merchCity,
                 bank,
@@ -6840,6 +6992,7 @@ function POSApp() {
                 setKhqrImage(img);
                 setKhqrDynamicEnabled(dynEnabled);
                 setKhqrAccountId(acctId);
+                setKhqrAccountNumber(acctNumber);
                 setKhqrMerchantName(merchName);
                 setKhqrMerchantCity(merchCity);
                 setKhqrBankName(bank);
@@ -6849,6 +7002,7 @@ function POSApp() {
                   img,
                   dynEnabled,
                   acctId,
+                  acctNumber,
                   merchName,
                   merchCity,
                   bank,
@@ -7111,8 +7265,8 @@ function FontStyles() {
         flex-shrink: 0;
       }
       .cart-line-qty button {
-        width: 24px;
-        height: 24px;
+        width: 38px;
+        height: 38px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -7126,10 +7280,10 @@ function FontStyles() {
         filter: none;
       }
       .cart-line-qty span {
-        min-width: 22px;
+        min-width: 28px;
         text-align: center;
         font-family: var(--font-mono);
-        font-size: 12.5px;
+        font-size: 13px;
         font-weight: 700;
       }
       .cart-line-remove {
@@ -7141,13 +7295,13 @@ function FontStyles() {
         opacity: 1;
       }
       .quick-cash-btn {
-        padding: 6px 4px;
+        padding: 11px 6px;
         border-radius: var(--radius-sm);
         border: 1px solid var(--border);
         background: var(--surface);
         color: var(--text);
         font-family: var(--font-mono);
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
         cursor: pointer;
       }
@@ -8368,8 +8522,8 @@ function Toast({ msg, kind }) {
 }
 
 const iconBtnStyle = {
-  width: "26px",
-  height: "26px",
+  width: "30px",
+  height: "30px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -8383,7 +8537,7 @@ const primaryBtnStyle = {
   display: "flex",
   alignItems: "center",
   gap: "7px",
-  padding: "11px 16px",
+  padding: "12px 18px",
   borderRadius: "var(--radius-md)",
   border: "none",
   background: "var(--primary)",
@@ -8484,12 +8638,12 @@ function CategoryPill({ active, onClick, label }) {
     <button
       onClick={onClick}
       style={{
-        padding: "6px 14px",
+        padding: "10px 16px",
         borderRadius: "var(--radius-pill)",
         border: "1px solid " + (active ? "var(--primary)" : "var(--border)"),
         background: active ? "var(--primary)" : "var(--surface)",
         color: active ? "#fff" : "var(--text)",
-        fontSize: "12.5px",
+        fontSize: "13px",
         fontWeight: 600,
         cursor: "pointer",
         whiteSpace: "nowrap",
@@ -8637,6 +8791,7 @@ function POSTab(props) {
     khqrImage,
     khqrDynamicEnabled,
     khqrAccountId,
+    khqrAccountNumber,
     khqrMerchantName,
     khqrMerchantCity,
     khqrBankName,
@@ -8696,7 +8851,7 @@ function POSTab(props) {
               placeholder={t("searchProducts")}
               style={{
                 width: "100%",
-                padding: "11px 40px 11px 38px",
+                padding: "13px 44px 13px 38px",
                 borderRadius: "var(--radius-md)",
                 border: "1px solid var(--border)",
                 fontSize: "14px",
@@ -8708,11 +8863,11 @@ function POSTab(props) {
               title={t("scanBarcode")}
               style={{
                 position: "absolute",
-                right: "6px",
+                right: "5px",
                 top: "50%",
                 transform: "translateY(-50%)",
-                width: "28px",
-                height: "28px",
+                width: "34px",
+                height: "34px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -8952,6 +9107,32 @@ function POSTab(props) {
               )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                onClick={() => {
+                  const w = window.open(
+                    window.location.pathname + "?display=1",
+                    "pos-customer-display",
+                    "width=1000,height=700",
+                  );
+                  if (w) w.focus();
+                }}
+                title={t("display_openBtn")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  background: "none",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-pill)",
+                  color: "var(--text-muted)",
+                  fontSize: "11.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: "4px 10px",
+                }}
+              >
+                <Monitor size={12} />
+              </button>
               <button
                 onClick={() => setTabListOpen(true)}
                 style={{
@@ -9224,11 +9405,11 @@ function POSTab(props) {
                 </div>
                 <div className="cart-line-qty">
                   <button onClick={() => changeQty(c.lineId, -1)}>
-                    <Minus size={12} />
+                    <Minus size={14} />
                   </button>
                   <span>{c.qty}</span>
                   <button onClick={() => changeQty(c.lineId, 1)}>
-                    <Plus size={12} />
+                    <Plus size={14} />
                   </button>
                 </div>
                 <button
@@ -9411,7 +9592,7 @@ function POSTab(props) {
                       onClick={() => setPaymentMethod("cash")}
                       style={{
                         flex: 1,
-                        padding: "8px 10px",
+                        padding: "13px 10px",
                         borderRadius: "var(--radius-md)",
                         border:
                           paymentMethod === "cash"
@@ -9421,7 +9602,7 @@ function POSTab(props) {
                           paymentMethod === "cash"
                             ? "color-mix(in srgb, var(--primary) 10%, transparent)"
                             : "var(--surface)",
-                        fontSize: "12.5px",
+                        fontSize: "13.5px",
                         fontWeight: 600,
                         cursor: "pointer",
                       }}
@@ -9433,7 +9614,7 @@ function POSTab(props) {
                       onClick={() => setPaymentMethod("khqr")}
                       style={{
                         flex: 1,
-                        padding: "8px 10px",
+                        padding: "13px 10px",
                         borderRadius: "var(--radius-md)",
                         border:
                           paymentMethod === "khqr"
@@ -9443,7 +9624,7 @@ function POSTab(props) {
                           paymentMethod === "khqr"
                             ? "color-mix(in srgb, var(--primary) 10%, transparent)"
                             : "var(--surface)",
-                        fontSize: "12.5px",
+                        fontSize: "13.5px",
                         fontWeight: 600,
                         cursor: "pointer",
                       }}
@@ -9501,9 +9682,10 @@ function POSTab(props) {
                         <DynamicQrImage
                           payload={buildDynamicKhqr({
                             accountId: khqrAccountId,
+                            accountNumber: khqrAccountNumber,
+                            bankName: khqrBankName,
                             merchantName: khqrMerchantName,
                             merchantCity: khqrMerchantCity,
-                            bankName: khqrBankName,
                             currency: khqrCurrency,
                             amount:
                               khqrCurrency === "khr"
@@ -14209,6 +14391,7 @@ function SettingsTab({
   khqrImage,
   khqrDynamicEnabled,
   khqrAccountId,
+  khqrAccountNumber,
   khqrMerchantName,
   khqrMerchantCity,
   khqrBankName,
@@ -14248,6 +14431,9 @@ function SettingsTab({
     useState(!!khqrDynamicEnabled);
   const [khqrAccountIdDraft, setKhqrAccountIdDraft] = useState(
     khqrAccountId || "",
+  );
+  const [khqrAccountNumberDraft, setKhqrAccountNumberDraft] = useState(
+    khqrAccountNumber || "",
   );
   const [khqrMerchantNameDraft, setKhqrMerchantNameDraft] = useState(
     khqrMerchantName || "",
@@ -14411,6 +14597,7 @@ function SettingsTab({
         khqrImageDraft,
         khqrDynamicDraft,
         khqrAccountIdDraft,
+        khqrAccountNumberDraft,
         khqrMerchantNameDraft,
         khqrMerchantCityDraft,
         khqrBankNameDraft,
@@ -14877,6 +15064,40 @@ function SettingsTab({
                             fontSize: "13px",
                           }}
                         />
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={fieldLabel}>
+                          {t("settings_khqrAccountNumberLabel")}{" "}
+                          <span style={{ fontWeight: 400, opacity: 0.7 }}>
+                            ({t("optional")})
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          value={khqrAccountNumberDraft}
+                          onChange={(e) =>
+                            setKhqrAccountNumberDraft(e.target.value.trim())
+                          }
+                          placeholder="003698633"
+                          disabled={!khqrFeatureOn}
+                          style={{
+                            width: "100%",
+                            padding: "7px 10px",
+                            borderRadius: "var(--radius-sm)",
+                            border: "1px solid var(--border)",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: "13px",
+                          }}
+                        />
+                        <div
+                          style={{
+                            fontSize: "11.5px",
+                            color: "var(--text-muted)",
+                            marginTop: "4px",
+                          }}
+                        >
+                          {t("settings_khqrAccountNumberHint")}
+                        </div>
                       </div>
                       <div>
                         <label style={fieldLabel}>
@@ -18669,6 +18890,628 @@ function StorefrontApp() {
   );
 }
 
+// ================= Customer-facing display (second monitor) =================
+//
+// Opened as its own browser window via "?display=1" (see the Monitor
+// button in the invoice header of POSTab). Deliberately a *separate*,
+// much smaller component rather than reusing any POS screen: it only ever
+// listens on a same-origin BroadcastChannel for the snapshots POSApp sends
+// out (see the "Customer-facing display" effects inside POSApp) and
+// renders the order + how to pay. It has no access to products, sales
+// history, settings, or any Supabase call of its own — there is simply
+// nothing in this component that could expose the rest of the system to
+// someone standing on the customer side of the counter.
+function CustomerDisplayApp() {
+  const [state, setState] = useState(null);
+  const [saleReceipt, setSaleReceipt] = useState(null);
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return undefined;
+    const ch = new BroadcastChannel("pos-customer-display");
+    ch.onmessage = (e) => {
+      const msg = e.data;
+      if (!msg) return;
+      if (msg.type === "state") setState(msg);
+      else if (msg.type === "receipt") setSaleReceipt(msg.receipt);
+    };
+    ch.postMessage({ type: "requestState" });
+    return () => ch.close();
+  }, []);
+  // The "Thank you" screen is shown for a few seconds after a sale
+  // completes, then clears itself so the display falls back to whatever
+  // the live state snapshot says (idle, or the start of the next order).
+  useEffect(() => {
+    if (!saleReceipt) return undefined;
+    const id = setTimeout(() => setSaleReceipt(null), 6000);
+    return () => clearTimeout(id);
+  }, [saleReceipt]);
+
+  const lang = state?.lang || "km";
+  const t = (key, vars) => {
+    const entry = STRINGS[key];
+    let str = entry ? entry[lang] || entry.km : key;
+    if (vars)
+      Object.keys(vars).forEach((k) => {
+        str = str.replace(`{${k}}`, vars[k]);
+      });
+    return str;
+  };
+
+  const cart = state?.cart || [];
+
+  // Forced dark, gold-accented "ticket" look regardless of the shop's own
+  // light/dark preference — this screen is a fixed kiosk facing the
+  // customer, not something staff configure, so it keeps one deliberate
+  // identity every time. Reuses the app's existing dark-theme tokens
+  // (--bg/--surface/--accent etc, see FontStyles) rather than inventing a
+  // parallel palette, so it still feels like the same product.
+  const shell = (children) => (
+    <div data-theme="dark" style={{ minHeight: "100vh" }}>
+      <FontStyles />
+      <style>{`
+        @keyframes cdFadeUp { from { opacity:0; transform:translateY(10px);} to { opacity:1; transform:translateY(0);} }
+        @keyframes cdPulseRing { 0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent);} 100%{ box-shadow:0 0 0 22px color-mix(in srgb, var(--accent) 0%, transparent);} }
+        @keyframes cdPop { 0%{ transform:scale(.6); opacity:0;} 60%{ transform:scale(1.06); opacity:1;} 100%{ transform:scale(1);} }
+        .cd-wrap { min-height:100vh; background:
+            radial-gradient(ellipse 900px 500px at 50% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
+            var(--bg);
+          color: var(--text); display:flex; flex-direction:column; align-items:center;
+          font-family: var(--font-body); padding: 48px 32px; }
+        .cd-eyebrow { text-transform:uppercase; letter-spacing:.16em; font-size:11.5px; font-weight:700; color: var(--accent); }
+        .cd-row-dots { flex:1; border-bottom: 2px dotted var(--border); margin: 0 10px 5px; }
+        .cd-corner { position:absolute; width:22px; height:22px; border-color: var(--accent); }
+      `}</style>
+      <div className="cd-wrap">{children}</div>
+    </div>
+  );
+
+  const brand = (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "10px",
+        marginBottom: "40px",
+        animation: "cdFadeUp .5s ease",
+      }}
+    >
+      {state?.shopLogo ? (
+        <img
+          src={state.shopLogo}
+          alt=""
+          style={{
+            width: "60px",
+            height: "60px",
+            borderRadius: "50%",
+            objectFit: "cover",
+            border: "2px solid var(--accent)",
+            boxShadow: "var(--shadow-md)",
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: "60px",
+            height: "60px",
+            borderRadius: "50%",
+            border: "2px solid var(--accent)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Store size={24} color="var(--accent)" />
+        </div>
+      )}
+      <div
+        style={{
+          fontFamily: "var(--font-display)",
+          fontWeight: 700,
+          fontSize: "20px",
+          letterSpacing: ".04em",
+          textTransform: "uppercase",
+        }}
+      >
+        {state?.shopName || ""}
+      </div>
+    </div>
+  );
+
+  // Not connected yet, or connected but nothing in the cart / no sale to
+  // celebrate — a calm idle screen instead of a blank page.
+  if (!saleReceipt && cart.length === 0) {
+    return shell(
+      <>
+        {brand}
+        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+          <div style={{ textAlign: "center", animation: "cdFadeUp .6s ease" }}>
+            <div
+              style={{
+                width: "84px",
+                height: "84px",
+                borderRadius: "50%",
+                border:
+                  "1px solid color-mix(in srgb, var(--accent) 50%, transparent)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 24px",
+                animation: "cdPulseRing 2.2s ease-out infinite",
+              }}
+            >
+              <QrCode size={30} color="var(--accent)" />
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: "42px",
+                fontWeight: 700,
+                marginBottom: "10px",
+              }}
+            >
+              {t("display_welcome")}
+            </div>
+            <div style={{ fontSize: "15.5px", color: "var(--text-muted)" }}>
+              {t("display_welcomeSub")}
+            </div>
+          </div>
+        </div>
+      </>,
+    );
+  }
+
+  if (saleReceipt) {
+    return shell(
+      <>
+        {brand}
+        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+          <div
+            style={{
+              textAlign: "center",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-xl)",
+              padding: "48px 64px",
+              boxShadow: "var(--shadow-lg)",
+              animation: "cdFadeUp .5s ease",
+            }}
+          >
+            <div
+              style={{
+                width: "72px",
+                height: "72px",
+                borderRadius: "50%",
+                background:
+                  "color-mix(in srgb, var(--accent) 16%, transparent)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 18px",
+                animation: "cdPop .5s ease",
+              }}
+            >
+              <CheckCircle2 size={38} color="var(--accent)" />
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: "32px",
+                fontWeight: 700,
+                marginBottom: "16px",
+              }}
+            >
+              {t("display_thankYou")}
+            </div>
+            <div
+              style={{
+                fontSize: "13px",
+                letterSpacing: ".1em",
+                textTransform: "uppercase",
+                color: "var(--text-muted)",
+                marginBottom: "4px",
+              }}
+            >
+              {t("display_paidAmount")}
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "44px",
+                fontWeight: 700,
+                color: "var(--accent)",
+                marginBottom: "10px",
+              }}
+            >
+              {fmt(saleReceipt.total)}
+            </div>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12.5px",
+                fontWeight: 600,
+                color: "var(--text-muted)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-pill)",
+                padding: "4px 12px",
+              }}
+            >
+              {t(
+                saleReceipt.paymentMethod === "khqr"
+                  ? "order_paidVia_khqr"
+                  : "order_paidVia_cash",
+              )}
+            </div>
+          </div>
+        </div>
+      </>,
+    );
+  }
+
+  // Active order in progress — items + running total, plus how to pay.
+  const khqrDynamicReady =
+    state.khqrDynamicEnabled &&
+    state.khqrAccountId &&
+    state.khqrMerchantName &&
+    state.khqrMerchantCity;
+  const khqrPayload = khqrDynamicReady
+    ? buildDynamicKhqr({
+        accountId: state.khqrAccountId,
+        accountNumber: state.khqrAccountNumber,
+        bankName: state.khqrBankName,
+        merchantName: state.khqrMerchantName,
+        merchantCity: state.khqrMerchantCity,
+        amount: state.total,
+        currency: "usd",
+      })
+    : null;
+  const showKhqr =
+    state.paymentMethod === "khqr" &&
+    state.payKhqrEnabled &&
+    (khqrPayload || state.khqrImage);
+  const hasDiscount =
+    (state.itemDiscountTotal || 0) + (state.discountAmt || 0) > 0;
+
+  return shell(
+    <>
+      {brand}
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          maxWidth: "880px",
+          display: "flex",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-xl)",
+          boxShadow: "var(--shadow-lg)",
+          overflow: "hidden",
+          animation: "cdFadeUp .45s ease",
+        }}
+      >
+        {/* ---- Order (ticket stub, left) ---- */}
+        <div
+          style={{
+            flex: "1.35 1 0",
+            padding: "30px 32px",
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              marginBottom: "18px",
+            }}
+          >
+            <div className="cd-eyebrow">{t("display_yourOrder")}</div>
+            {state.tableLabel && (
+              <div style={{ fontSize: "12.5px", color: "var(--text-muted)" }}>
+                {state.tableLabel}
+              </div>
+            )}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+              overflowY: "auto",
+              maxHeight: "360px",
+              paddingRight: "4px",
+            }}
+          >
+            {cart.map((c, i) => {
+              const lineGross = c.price * c.qty;
+              const lineNet =
+                lineGross - (lineGross * (c.discountPercent || 0)) / 100;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-end",
+                    fontSize: "15px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: "6px",
+                      maxWidth: "60%",
+                    }}
+                  >
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.name}
+                    </span>
+                    <span
+                      style={{
+                        color: "var(--text-muted)",
+                        fontSize: "13px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      × {c.qty}
+                    </span>
+                  </div>
+                  <div className="cd-row-dots" />
+                  <div
+                    style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}
+                  >
+                    {fmt(lineNet)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: "auto", paddingTop: "18px" }}>
+            <div
+              style={{
+                borderTop: "1px dashed var(--border)",
+                paddingTop: "14px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "13.5px",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <div>{t("display_subtotal")}</div>
+                <div style={{ fontFamily: "var(--font-mono)" }}>
+                  {fmt(state.subtotal)}
+                </div>
+              </div>
+              {hasDiscount && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: "13.5px",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  <div>{t("display_discount")}</div>
+                  <div style={{ fontFamily: "var(--font-mono)" }}>
+                    -
+                    {fmt(
+                      (state.itemDiscountTotal || 0) + (state.discountAmt || 0),
+                    )}
+                  </div>
+                </div>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  fontSize: "17px",
+                  fontWeight: 700,
+                  marginTop: "2px",
+                }}
+              >
+                <div style={{ fontFamily: "var(--font-display)" }}>
+                  {t("display_total")}
+                </div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "26px",
+                    color: "var(--accent)",
+                  }}
+                >
+                  {fmt(state.total)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ---- Perforated ticket divider ---- */}
+        <div
+          style={{
+            position: "relative",
+            width: "0",
+            borderLeft: "2px dashed var(--border)",
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: "-14px",
+              left: "-14px",
+              width: "28px",
+              height: "28px",
+              borderRadius: "50%",
+              background: "var(--bg)",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              bottom: "-14px",
+              left: "-14px",
+              width: "28px",
+              height: "28px",
+              borderRadius: "50%",
+              background: "var(--bg)",
+            }}
+          />
+        </div>
+
+        {/* ---- Payment (stamp panel, right) ---- */}
+        <div
+          style={{
+            flex: "1 1 0",
+            background: "var(--surface-alt)",
+            padding: "30px 30px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            gap: "16px",
+            minWidth: "260px",
+          }}
+        >
+          {showKhqr ? (
+            <>
+              <div className="cd-eyebrow">{t("display_scanToPay")}</div>
+              <div
+                style={{
+                  position: "relative",
+                  padding: "16px",
+                  background: "#fff",
+                  borderRadius: "var(--radius-lg)",
+                  boxShadow: "var(--shadow-md)",
+                }}
+              >
+                <div
+                  className="cd-corner"
+                  style={{
+                    top: "-2px",
+                    left: "-2px",
+                    borderTop: "3px solid var(--accent)",
+                    borderLeft: "3px solid var(--accent)",
+                    borderTopLeftRadius: "8px",
+                  }}
+                />
+                <div
+                  className="cd-corner"
+                  style={{
+                    top: "-2px",
+                    right: "-2px",
+                    borderTop: "3px solid var(--accent)",
+                    borderRight: "3px solid var(--accent)",
+                    borderTopRightRadius: "8px",
+                  }}
+                />
+                <div
+                  className="cd-corner"
+                  style={{
+                    bottom: "-2px",
+                    left: "-2px",
+                    borderBottom: "3px solid var(--accent)",
+                    borderLeft: "3px solid var(--accent)",
+                    borderBottomLeftRadius: "8px",
+                  }}
+                />
+                <div
+                  className="cd-corner"
+                  style={{
+                    bottom: "-2px",
+                    right: "-2px",
+                    borderBottom: "3px solid var(--accent)",
+                    borderRight: "3px solid var(--accent)",
+                    borderBottomRightRadius: "8px",
+                  }}
+                />
+                {khqrPayload ? (
+                  <DynamicQrImage payload={khqrPayload} size={176} />
+                ) : (
+                  <img
+                    src={state.khqrImage}
+                    alt="KHQR"
+                    style={{
+                      width: "176px",
+                      height: "176px",
+                      objectFit: "contain",
+                    }}
+                  />
+                )}
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "28px",
+                  fontWeight: 700,
+                  color: "var(--accent)",
+                }}
+              >
+                {fmt(state.total)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="cd-eyebrow">{t("checkout_payCash")}</div>
+              <div
+                style={{
+                  width: "96px",
+                  height: "96px",
+                  borderRadius: "50%",
+                  border: "2px solid var(--accent)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Banknote size={38} color="var(--accent)" />
+              </div>
+              <div
+                style={{
+                  fontSize: "14.5px",
+                  fontWeight: 600,
+                  maxWidth: "180px",
+                }}
+              >
+                {t("display_payCashAtCounter")}
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "30px",
+                  fontWeight: 700,
+                  color: "var(--accent)",
+                }}
+              >
+                {fmt(state.total)}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </>,
+  );
+}
+
 // ================= Root =================
 
 // Root-level safety net: if anything below throws during render (a rare
@@ -18732,12 +19575,21 @@ class ErrorBoundary extends Component {
 }
 
 export default function App() {
-  const isStorefront =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("order") === "1";
+  const params =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search)
+      : null;
+  const isStorefront = params?.get("order") === "1";
+  const isDisplay = params?.get("display") === "1";
   return (
     <ErrorBoundary>
-      {isStorefront ? <StorefrontApp /> : <POSApp />}
+      {isDisplay ? (
+        <CustomerDisplayApp />
+      ) : isStorefront ? (
+        <StorefrontApp />
+      ) : (
+        <POSApp />
+      )}
     </ErrorBoundary>
   );
 }
