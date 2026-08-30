@@ -1336,6 +1336,98 @@ const khqrCrc16 = (str) => {
 // tag/length/value helper — length is always 2 digits, per EMVCo.
 const khqrTlv = (tag, value) =>
   tag + String(value.length).padStart(2, "0") + value;
+// Pure-JS MD5 (the Web Crypto API doesn't support MD5) — needed only to
+// compute the hash Bakong's check_transaction_by_md5 endpoint expects for
+// a given dynamic KHQR string. Public-domain algorithm (Joseph Myers'
+// compact implementation), verified against Node's crypto.createHash
+// output for the sample strings used while building this feature.
+function khqrMd5(str) {
+  const rotl = (x, c) => (x << c) | (x >>> (32 - c));
+  const toUtf8Bytes = (s) => {
+    const out = [];
+    for (let i = 0; i < s.length; i++) {
+      let c = s.charCodeAt(i);
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) {
+        out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+      } else if (c >= 0xd800 && c < 0xdc00 && i + 1 < s.length) {
+        const c2 = s.charCodeAt(++i);
+        c = 0x10000 + ((c & 0x3ff) << 10) + (c2 & 0x3ff);
+        out.push(
+          0xf0 | (c >> 18),
+          0x80 | ((c >> 12) & 0x3f),
+          0x80 | ((c >> 6) & 0x3f),
+          0x80 | (c & 0x3f),
+        );
+      } else {
+        out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      }
+    }
+    return out;
+  };
+  const K = new Array(64);
+  for (let i = 0; i < 64; i++)
+    K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296);
+  const S = [
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5,
+    9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11,
+    16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10,
+    15, 21,
+  ];
+  const bytes = toUtf8Bytes(str);
+  const bitLen = bytes.length * 8;
+  bytes.push(0x80);
+  while (bytes.length % 64 !== 56) bytes.push(0);
+  for (let i = 0; i < 8; i++) bytes.push((bitLen / Math.pow(2, i * 8)) & 0xff);
+  let a0 = 0x67452301,
+    b0 = 0xefcdab89,
+    c0 = 0x98badcfe,
+    d0 = 0x10325476;
+  for (let chunk = 0; chunk < bytes.length; chunk += 64) {
+    const M = new Array(16);
+    for (let i = 0; i < 16; i++) {
+      M[i] =
+        bytes[chunk + i * 4] |
+        (bytes[chunk + i * 4 + 1] << 8) |
+        (bytes[chunk + i * 4 + 2] << 16) |
+        (bytes[chunk + i * 4 + 3] << 24);
+    }
+    let [A, B, C, D] = [a0, b0, c0, d0];
+    for (let i = 0; i < 64; i++) {
+      let F, g;
+      if (i < 16) {
+        F = (B & C) | (~B & D);
+        g = i;
+      } else if (i < 32) {
+        F = (D & B) | (~D & C);
+        g = (5 * i + 1) % 16;
+      } else if (i < 48) {
+        F = B ^ C ^ D;
+        g = (3 * i + 5) % 16;
+      } else {
+        F = C ^ (B | ~D);
+        g = (7 * i) % 16;
+      }
+      F = (F + A + K[i] + M[g]) | 0;
+      A = D;
+      D = C;
+      C = B;
+      B = (B + rotl(F, S[i])) | 0;
+    }
+    a0 = (a0 + A) | 0;
+    b0 = (b0 + B) | 0;
+    c0 = (c0 + C) | 0;
+    d0 = (d0 + D) | 0;
+  }
+  const toHex = (n) => {
+    let hex = "";
+    for (let i = 0; i < 4; i++) {
+      hex += (((n >> (i * 8)) & 0xff) + 0x100).toString(16).slice(1);
+    }
+    return hex;
+  };
+  return toHex(a0) + toHex(b0) + toHex(c0) + toHex(d0);
+}
 // Builds the full dynamic KHQR string. `accountId` is the Bakong Account ID
 // (format like "name@bank", found in the Bakong app or decoded from a bank
 // app's own static QR). `amount` is a plain number in the given currency
@@ -1517,6 +1609,10 @@ const STRINGS = {
   toast_saleSuccess: {
     km: "លក់ទំនិញបានជោគជ័យ",
     en: "Sale completed successfully",
+  },
+  toast_khqrAutoPaid: {
+    km: "ភ្ញៀវបានបង់ប្រាក់រួចហើយ!",
+    en: "Customer has paid!",
   },
   toast_tableRequired: {
     km: "សូមបញ្ចូលលេខ/ឈ្មោះតុជាមុនសិន",
@@ -2200,6 +2296,22 @@ const STRINGS = {
     km: "ត្រូវការសម្រាប់ធនាគារខ្លះ (ដូចជា ABA) ដែល Bakong Account ID ខាងលើ ជាកូដរួមរបស់ធនាគារ មិនមែនគណនីជាក់លាក់របស់អ្នកទេ។ Decode QR ស្ថិតរបស់អ្នកផ្ទាល់ដើម្បីរកលេខនេះ — វាស្ថិតនៅក្នុង sub-tag 01 ។",
     en: "Required for some banks (e.g. ABA) where the Bakong Account ID above is a shared bank-wide code, not your specific account. Decode your own static QR to find it — it's in sub-tag 01.",
   },
+  settings_khqrApiTokenLabel: {
+    km: "Bakong Open API Token",
+    en: "Bakong Open API Token",
+  },
+  settings_khqrApiTokenHint: {
+    km: "ចាំបាច់តែក្នុងករណីចង់អោយការលក់បញ្ចប់ដោយស្វ័យប្រវត្តិនៅពេលអតិថិជនបង់ប្រាក់រួច។ ចុះឈ្មោះទទួល token នៅ api-bakong.nbc.gov.kh — token ត្រូវបន្តរៀងរាល់ 90 ថ្ងៃ។ Token នេះរក្សាទុកតែលើឧបករណ៍នេះប៉ុណ្ណោះ មិនបញ្ជូនទៅ cloud ទេ។",
+    en: "Only needed if you want sales to auto-complete once the customer pays. Register for a token at api-bakong.nbc.gov.kh — it must be renewed every 90 days. This token is kept on this device only, never synced to the cloud.",
+  },
+  settings_khqrAutoCompleteLabel: {
+    km: "បញ្ចប់ការលក់ដោយស្វ័យប្រវត្តិនៅពេលបានបង់ប្រាក់",
+    en: "Auto-complete sale when payment is detected",
+  },
+  settings_khqrAutoCompleteHint: {
+    km: "នៅពេលបើក ប្រព័ន្ធនិងពិនិត្យមើលការទូទាត់រៀងរាល់ 15 វិនាទីតាមរយៈ Bakong Open API។ ចំណាំ៖ Bakong កំណត់ត្រឹម 100 requests/ថ្ងៃក្នុងមួយ token ចាប់ពីខែសីហា 2026 ហើយចែងថា API នេះមិនសម្រាប់ការប្រើប្រាស់ POS ធំៗទេ — បើហាងអ្នកលក់ច្រើន គួរពិចារណាប្រើសេវា third-party ជំនួសវិញ។ ត្រូវការ Token ខាងលើសិន។",
+    en: "When on, the app checks for payment every 15 seconds via the Bakong Open API. Note: Bakong caps this at 100 requests/day per token as of Aug 2026 and states this API isn't meant for high-volume POS use — if your shop does many sales, consider a third-party service instead. Requires the token above.",
+  },
   settings_khqrMerchantNameLabel: {
     km: "ឈ្មោះម្ចាស់គណនី (English)",
     en: "Account holder name (English)",
@@ -2867,6 +2979,11 @@ function POSApp() {
   const [khqrMerchantName, setKhqrMerchantName] = useState("");
   const [khqrMerchantCity, setKhqrMerchantCity] = useState("");
   const [khqrBankName, setKhqrBankName] = useState("");
+  // Bakong Open API bearer token — required only if the shop wants sales to
+  // auto-complete when a dynamic-QR payment is detected (see
+  // pollKhqrPayment below). Without it, staff still complete sales manually.
+  const [khqrApiToken, setKhqrApiToken] = useState("");
+  const [khqrAutoComplete, setKhqrAutoComplete] = useState(false);
   // Which premium features this shop currently has turned on — only a
   // Super Admin can change these (see pushFeatures / SuperAdminTab below).
   // Defaults closed until the cloud settings load confirms otherwise, so a
@@ -3265,6 +3382,8 @@ function POSApp() {
         setKhqrMerchantName(parsed.khqrMerchantName || "");
         setKhqrMerchantCity(parsed.khqrMerchantCity || "");
         setKhqrBankName(parsed.khqrBankName || "");
+        setKhqrApiToken(parsed.khqrApiToken || "");
+        setKhqrAutoComplete(!!parsed.khqrAutoComplete);
         setLang(parsed.lang || "km");
         setUsers(
           parsed.users && parsed.users.length ? parsed.users : seedUsers,
@@ -3317,6 +3436,8 @@ function POSApp() {
             khqrMerchantName,
             khqrMerchantCity,
             khqrBankName,
+            khqrApiToken,
+            khqrAutoComplete,
             lang,
             users,
             roles,
@@ -3349,6 +3470,8 @@ function POSApp() {
     khqrMerchantName,
     khqrMerchantCity,
     khqrBankName,
+    khqrApiToken,
+    khqrAutoComplete,
     lang,
     users,
     roles,
@@ -3830,6 +3953,17 @@ function POSApp() {
   const paymentNum = Number(payment) || 0;
   const change = paymentNum - total;
 
+  // ---------- Dynamic KHQR payload, mirrored for the customer display ----------
+  // POSTab still builds the actual QR string (it owns the usd/khr toggle and
+  // the poll that auto-completes the sale). It reports that exact string up
+  // here via onKhqrPayloadChange whenever it changes, so the broadcast to
+  // the Monitor window below can send the very same string — instead of the
+  // Monitor window recomputing its own (which baked in a different tag-99
+  // timestamp, and therefore a different MD5, than the one the poll was
+  // checking — so a payment against the Monitor's QR never matched and the
+  // sale never auto-completed there).
+  const [broadcastKhqrPayload, setBroadcastKhqrPayload] = useState(null);
+
   // ---------- Customer-facing display (second monitor) ----------
   // Mirrors the live order + payment QR to a separate window opened via
   // "?display=1" (see CustomerDisplayApp / the Monitor button in the
@@ -3876,6 +4010,15 @@ function POSApp() {
       khqrMerchantCity,
       khqrBankName,
       tableLabel,
+      // The *exact* dynamic-QR string already built above (with its baked-in
+      // timestamp) — send this string itself, not just the ingredients, so
+      // the customer-display window renders the very same QR whose MD5 the
+      // auto-complete poll below is checking. If the display recomputes its
+      // own QR from the ingredients, it bakes in a different timestamp and
+      // therefore a different MD5, so a payment against the QR the customer
+      // actually scanned never matches what the poll is looking for and the
+      // sale never auto-completes.
+      khqrPayload: broadcastKhqrPayload,
     };
     ch.postMessage(snapshot);
     // A newly-opened display window has missed everything broadcast before
@@ -3904,6 +4047,7 @@ function POSApp() {
     khqrMerchantCity,
     khqrBankName,
     tableLabel,
+    broadcastKhqrPayload,
   ]);
   // Sale completion is a separate, one-shot event (not part of the state
   // snapshot above) so the display can show a distinct "Thank you / Paid"
@@ -6807,6 +6951,9 @@ function POSApp() {
               khqrMerchantName={khqrMerchantName}
               khqrMerchantCity={khqrMerchantCity}
               khqrBankName={khqrBankName}
+              khqrApiToken={khqrApiToken}
+              khqrAutoComplete={khqrAutoComplete}
+              showToast={showToast}
               change={change}
               completeSale={completeSale}
               customers={customers}
@@ -6822,6 +6969,7 @@ function POSApp() {
                 unlockBeepAudio();
                 setScanModalOpen(true);
               }}
+              onKhqrPayloadChange={setBroadcastKhqrPayload}
             />
           )}
           {activeTab === "dashboard" && (
@@ -6976,6 +7124,8 @@ function POSApp() {
               khqrMerchantName={khqrMerchantName}
               khqrMerchantCity={khqrMerchantCity}
               khqrBankName={khqrBankName}
+              khqrApiToken={khqrApiToken}
+              khqrAutoComplete={khqrAutoComplete}
               onSavePaymentSettings={(
                 cash,
                 khqr,
@@ -6986,6 +7136,8 @@ function POSApp() {
                 merchName,
                 merchCity,
                 bank,
+                apiToken,
+                autoComplete,
               ) => {
                 setPayCashEnabled(cash);
                 setPayKhqrEnabled(khqr);
@@ -6996,6 +7148,8 @@ function POSApp() {
                 setKhqrMerchantName(merchName);
                 setKhqrMerchantCity(merchCity);
                 setKhqrBankName(bank);
+                setKhqrApiToken(apiToken);
+                setKhqrAutoComplete(autoComplete);
                 pushPaymentSettings(
                   cash,
                   khqr,
@@ -8795,6 +8949,9 @@ function POSTab(props) {
     khqrMerchantName,
     khqrMerchantCity,
     khqrBankName,
+    khqrApiToken,
+    khqrAutoComplete,
+    showToast,
     change,
     completeSale,
     customers,
@@ -8807,8 +8964,148 @@ function POSTab(props) {
     khrRate,
     onBarcodeScan,
     onOpenScanner,
+    // Reports the exact QR string (see below) up to POSApp so it can be
+    // mirrored to the Monitor window byte-for-byte — see comment there.
+    onKhqrPayloadChange,
   } = props;
   const [khqrCurrency, setKhqrCurrency] = useState("usd");
+  const khqrDynamicReady =
+    khqrDynamicEnabled && khqrAccountId && khqrMerchantName && khqrMerchantCity;
+  const khqrPollAmount =
+    khqrCurrency === "khr"
+      ? Math.round((Number(total) || 0) * (Number(khrRate) || 0))
+      : total;
+  // Stable payload for the currently-displayed QR: built once per
+  // amount/currency/account combo (not on every render) so the timestamp
+  // baked into tag 99 — and therefore the MD5 used to poll payment status
+  // below — stays the same string the customer actually scanned.
+  const dynamicKhqrPayload = useMemo(() => {
+    if (!khqrDynamicReady) return null;
+    return buildDynamicKhqr({
+      accountId: khqrAccountId,
+      accountNumber: khqrAccountNumber,
+      bankName: khqrBankName,
+      merchantName: khqrMerchantName,
+      merchantCity: khqrMerchantCity,
+      currency: khqrCurrency,
+      amount: khqrPollAmount,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    khqrDynamicReady,
+    khqrAccountId,
+    khqrAccountNumber,
+    khqrBankName,
+    khqrMerchantName,
+    khqrMerchantCity,
+    khqrCurrency,
+    khqrPollAmount,
+  ]);
+  // Mirrors the exact QR string up to POSApp any time it changes, so the
+  // Monitor window (a separate window/component with no access to this
+  // local state) can render precisely what's on screen here instead of
+  // building its own copy with a different timestamp/MD5.
+  useEffect(() => {
+    onKhqrPayloadChange?.(dynamicKhqrPayload);
+  }, [dynamicKhqrPayload, onKhqrPayloadChange]);
+  // Polls Bakong's Open API for this exact QR's payment status while it's
+  // on screen, and auto-completes the sale the moment it comes back paid.
+  // Needs a Bakong Open API token in Settings — without one this silently
+  // does nothing and staff complete sales with the button as before.
+  //
+  // Polling interval: as of NBC's Aug 1, 2026 Terms of Use amendment, this
+  // API is capped at 100 requests/day per token and is explicitly stated
+  // by NBC to not be designed for business/POS-scale use — real merchant
+  // integrations should go through a bank or licensed PSI instead. Polling
+  // every 15s (instead of every few seconds) buys roughly 25 minutes of
+  // total checkout-screen time per day before hitting that cap — still
+  // tight for a busy shop, but far more sustainable than a fast poll.
+  // Staff can always tap "Complete sale" manually at any time regardless.
+  //
+  // Also note: this calls a Supabase Edge Function (check-khqr-payment),
+  // not Bakong directly — the browser can't reach Bakong's endpoint on its
+  // own (it refuses the "authorization" header in CORS preflight). See
+  // check-khqr-payment.ts for the server-side proxy code; it must be
+  // deployed in the Supabase project (Dashboard -> Edge Functions) for
+  // auto-complete to work at all.
+  //
+  // completeSale/showToast are recreated fresh on every POSApp render (they
+  // aren't wrapped in useCallback), and POSApp re-renders constantly — every
+  // keystroke, the 15s online-orders poll, the 15s audit-log poll, cart
+  // edits, etc. Previously this effect listed them as dependencies, so
+  // nearly every render cancelled the pending timer and restarted it from
+  // zero before it ever reached 6s — the poll's fetch never actually fired.
+  // Reading them through refs instead means the effect only restarts when
+  // something that actually matters (the QR itself, the payment method...)
+  // changes, while still always calling the latest version of each function.
+  const completeSaleRef = useRef(completeSale);
+  completeSaleRef.current = completeSale;
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
+  useEffect(() => {
+    if (
+      !khqrAutoComplete ||
+      !khqrApiToken ||
+      paymentMethod !== "khqr" ||
+      !dynamicKhqrPayload ||
+      cart.length === 0
+    )
+      return;
+    let cancelled = false;
+    let timer = null;
+    const md5 = khqrMd5(dynamicKhqrPayload);
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        // Calls our own Supabase Edge Function, not Bakong directly — the
+        // browser can't reach Bakong's API itself (it refuses the
+        // "authorization" header in CORS preflight). The edge function
+        // calls Bakong server-to-server, where CORS doesn't apply, and
+        // forwards the exact same response shape back here.
+        const res = await fetch(
+          `${SUPABASE_URL}/functions/v1/check-khqr-payment`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ md5, token: khqrApiToken }),
+          },
+        );
+        const json = await res.json().catch(() => null);
+        if (!cancelled && json && json.responseCode === 0) {
+          const gotAmt = Number(json.data && json.data.amount);
+          const expectedAmt = Number(khqrPollAmount);
+          const amountOk =
+            !Number.isFinite(gotAmt) || Math.abs(gotAmt - expectedAmt) < 1;
+          if (amountOk) {
+            if (showToastRef.current)
+              showToastRef.current(t("toast_khqrAutoPaid"), "ok");
+            completeSaleRef.current();
+            return; // stop polling — sale is done
+          }
+        }
+      } catch {
+        /* network hiccup, CORS block, or Cambodia-only restriction —
+           just retry on the next tick rather than surfacing an error */
+      }
+      if (!cancelled) timer = setTimeout(poll, 15000);
+    };
+    timer = setTimeout(poll, 6000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    khqrAutoComplete,
+    khqrApiToken,
+    paymentMethod,
+    dynamicKhqrPayload,
+    cart.length,
+    khqrPollAmount,
+  ]);
 
   return (
     <div
@@ -9679,23 +9976,7 @@ function POSTab(props) {
                             </button>
                           ))}
                         </div>
-                        <DynamicQrImage
-                          payload={buildDynamicKhqr({
-                            accountId: khqrAccountId,
-                            accountNumber: khqrAccountNumber,
-                            bankName: khqrBankName,
-                            merchantName: khqrMerchantName,
-                            merchantCity: khqrMerchantCity,
-                            currency: khqrCurrency,
-                            amount:
-                              khqrCurrency === "khr"
-                                ? Math.round(
-                                    (Number(total) || 0) *
-                                      (Number(khrRate) || 0),
-                                  )
-                                : total,
-                          })}
-                        />
+                        <DynamicQrImage payload={dynamicKhqrPayload} />
                         <div
                           style={{
                             marginTop: "8px",
@@ -14395,6 +14676,8 @@ function SettingsTab({
   khqrMerchantName,
   khqrMerchantCity,
   khqrBankName,
+  khqrApiToken,
+  khqrAutoComplete,
   onSavePaymentSettings,
   receiptWidth,
   setReceiptWidth,
@@ -14444,6 +14727,11 @@ function SettingsTab({
   const [khqrBankNameDraft, setKhqrBankNameDraft] = useState(
     khqrBankName || "",
   );
+  const [khqrApiTokenDraft, setKhqrApiTokenDraft] = useState(
+    khqrApiToken || "",
+  );
+  const [khqrAutoCompleteDraft, setKhqrAutoCompleteDraft] =
+    useState(!!khqrAutoComplete);
   const [khqrError, setKhqrError] = useState("");
   const [paymentSaved, setPaymentSaved] = useState(false);
   const khqrFileRef = useRef(null);
@@ -14601,6 +14889,8 @@ function SettingsTab({
         khqrMerchantNameDraft,
         khqrMerchantCityDraft,
         khqrBankNameDraft,
+        khqrApiTokenDraft,
+        khqrAutoCompleteDraft,
       );
     setPaymentSaved(true);
     setTimeout(() => setPaymentSaved(false), 1800);
@@ -15158,6 +15448,75 @@ function SettingsTab({
                             border: "1px solid var(--border)",
                             fontSize: "13px",
                           }}
+                        />
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={fieldLabel}>
+                          {t("settings_khqrApiTokenLabel")}{" "}
+                          <span style={{ fontWeight: 400, opacity: 0.7 }}>
+                            ({t("optional")})
+                          </span>
+                        </label>
+                        <input
+                          type="password"
+                          value={khqrApiTokenDraft}
+                          onChange={(e) =>
+                            setKhqrApiTokenDraft(e.target.value.trim())
+                          }
+                          placeholder="eyJhbGciOi..."
+                          disabled={!khqrFeatureOn}
+                          style={{
+                            width: "100%",
+                            padding: "7px 10px",
+                            borderRadius: "var(--radius-sm)",
+                            border: "1px solid var(--border)",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: "13px",
+                          }}
+                        />
+                        <div
+                          style={{
+                            fontSize: "11.5px",
+                            color: "var(--text-muted)",
+                            marginTop: "4px",
+                          }}
+                        >
+                          {t("settings_khqrApiTokenHint")}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          gridColumn: "1 / -1",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "10px",
+                          padding: "10px 12px",
+                          borderRadius: "var(--radius-sm)",
+                          border: "1px solid var(--border)",
+                          background: "var(--surface)",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "13px", fontWeight: 600 }}>
+                            {t("settings_khqrAutoCompleteLabel")}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "11.5px",
+                              color: "var(--text-muted)",
+                              marginTop: "2px",
+                            }}
+                          >
+                            {t("settings_khqrAutoCompleteHint")}
+                          </div>
+                        </div>
+                        <ToggleSwitch
+                          on={khqrAutoCompleteDraft}
+                          onClick={() =>
+                            setKhqrAutoCompleteDraft(!khqrAutoCompleteDraft)
+                          }
+                          disabled={!khqrFeatureOn || !khqrApiTokenDraft}
                         />
                       </div>
                     </div>
@@ -19150,22 +19509,13 @@ function CustomerDisplayApp() {
   }
 
   // Active order in progress — items + running total, plus how to pay.
-  const khqrDynamicReady =
-    state.khqrDynamicEnabled &&
-    state.khqrAccountId &&
-    state.khqrMerchantName &&
-    state.khqrMerchantCity;
-  const khqrPayload = khqrDynamicReady
-    ? buildDynamicKhqr({
-        accountId: state.khqrAccountId,
-        accountNumber: state.khqrAccountNumber,
-        bankName: state.khqrBankName,
-        merchantName: state.khqrMerchantName,
-        merchantCity: state.khqrMerchantCity,
-        amount: state.total,
-        currency: "usd",
-      })
-    : null;
+  // Use the exact QR string POSApp already built and broadcast (see
+  // "khqrPayload" in the snapshot) instead of recomputing it here. Recomputing
+  // independently baked in a fresh tag-99 timestamp each time, which meant
+  // the QR the customer scanned on this screen had a different MD5 than the
+  // one the auto-complete poll (back in POSTab) was checking — so a payment
+  // against this screen's QR never matched and the sale never auto-completed.
+  const khqrPayload = state.khqrPayload || null;
   const showKhqr =
     state.paymentMethod === "khqr" &&
     state.payKhqrEnabled &&
