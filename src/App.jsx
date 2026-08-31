@@ -2312,6 +2312,65 @@ const STRINGS = {
     km: "នៅពេលបើក ប្រព័ន្ធនិងពិនិត្យមើលការទូទាត់រៀងរាល់ 15 វិនាទីតាមរយៈ Bakong Open API។ ចំណាំ៖ Bakong កំណត់ត្រឹម 100 requests/ថ្ងៃក្នុងមួយ token ចាប់ពីខែសីហា 2026 ហើយចែងថា API នេះមិនសម្រាប់ការប្រើប្រាស់ POS ធំៗទេ — បើហាងអ្នកលក់ច្រើន គួរពិចារណាប្រើសេវា third-party ជំនួសវិញ។ ត្រូវការ Token ខាងលើសិន។",
     en: "When on, the app checks for payment every 15 seconds via the Bakong Open API. Note: Bakong caps this at 100 requests/day per token as of Aug 2026 and states this API isn't meant for high-volume POS use — if your shop does many sales, consider a third-party service instead. Requires the token above.",
   },
+  settings_khqrTelegramLabel: {
+    km: "ជូនដំណឹងតាម Telegram នៅពេលបានបង់ប្រាក់",
+    en: "Send a Telegram alert when payment is detected",
+  },
+  settings_khqrTelegramHint: {
+    km: "នៅពេលបើក ប្រព័ន្ធនិងផ្ញើសារទៅ Telegram bot របស់អ្នកភ្លាមៗនៅពេលអតិថិជនស្កេន QR ហើយបង់ប្រាក់ចូល ដើម្បីអោយបុគ្គលិកដឹងថាបានបង់រួច ប៉ុន្តែ​មិនបញ្ចប់ការលក់ដោយស្វ័យប្រវត្តិទេ — បុគ្គលិកនៅតែត្រូវចុច \"បញ្ចប់ការលក់\" ដោយខ្លួនឯង។ អាចបើកព្រមគ្នាជាមួយមុខងារខាងលើក៏បាន។ ត្រូវការ Token ខាងលើសិន។",
+    en: "When on, the app messages your Telegram bot the instant the customer's KHQR payment comes through, so staff know the customer has paid — but the sale is NOT auto-completed; staff still tap \"Complete sale\" themselves. Can be used together with the auto-complete option above. Requires the token above.",
+  },
+  settings_khqrTelegramBotTokenLabel: { km: "Telegram Bot Token", en: "Telegram Bot Token" },
+  settings_khqrTelegramBotTokenHint: {
+    km: "បង្កើត bot ថ្មីជាមួយ @BotFather ក្នុង Telegram ដើម្បីទទួល token នេះ។ រក្សាទុកតែលើឧបករណ៍នេះប៉ុណ្ណោះ មិនបញ្ជូនទៅ cloud ទេ។",
+    en: "Create a new bot with @BotFather in Telegram to get this token. Kept on this device only, never synced to the cloud.",
+  },
+  settings_khqrTelegramChatIdLabel: { km: "Telegram Chat ID", en: "Telegram Chat ID" },
+  settings_khqrTelegramChatIdHint: {
+    km: "ID របស់ក្រុម ឬបុគ្គលដែលចង់ទទួលការជូនដំណឹង។ បន្ថែម bot របស់អ្នកទៅក្រុមហើយប្រើ @userinfobot ឬវិធីស្រដៀងគ្នាដើម្បីរក ID នេះ។",
+    en: "The ID of the group or person who should receive alerts. Add your bot to the group, then use @userinfobot or a similar tool to find this ID.",
+  },
+  settings_khqrTelegramTestButton: {
+    km: "សាកល្បងផ្ញើសារ",
+    en: "Send test message",
+  },
+  toast_khqrTelegramTestSent: { km: "បានផ្ញើ!", en: "Sent!" },
+  toast_khqrTelegramTestFailed: {
+    km: "ផ្ញើមិនរួច — ពិនិត្យ Token/Chat ID",
+    en: "Failed to send — check Token/Chat ID",
+  },
+  toast_khqrPaymentReceivedWaiting: {
+    km: "អតិថិជនបានបង់ប្រាក់ហើយ — សូមចុច \"បញ្ចប់ការលក់\"",
+    en: "Payment received — tap \"Complete sale\" when ready",
+  },
+  settings_khqrTelegramTestMessage: {
+    km: "នេះជាការសាកល្បងពី POS របស់អ្នក — ការភ្ជាប់ដំណើរការល្អ។",
+    en: "This is a test from your POS — the connection is working.",
+  },
+  settings_khqrPaywayLabel: {
+    km: "ប្រើ ABA PayWay (Webhook — គ្មានកំណត់ Token)",
+    en: "Use ABA PayWay (webhook — no token limit)",
+  },
+  settings_khqrPaywayHint: {
+    km: "ជំនួសការសួរ Bakong ម្តងហើយម្តងទៀត ABA PayWay និងជូនដំណឹងមកម្ចាស់ហាងភ្លាមៗពេលមានការទូទាត់ — លឿនជាង និងមិនកំណត់ 100 requests/ថ្ងៃទេ។ ត្រូវការគណនី Merchant ABA PayWay ផ្ទាល់ខ្លួន ព្រមទាំង Supabase Edge Functions (payway-generate-qr, payway-webhook) និងតារាង payway_qr — សូមមើលការណែនាំដំឡើងនៅដើមឯកសារកូដ។ ត្រូវផ្តល់ URL របស់ payway-webhook ទៅក្រុមការងារ ABA PayWay ដើម្បីចុះបញ្ជីជា Callback URL។",
+    en: "Instead of repeatedly asking Bakong, ABA PayWay pushes a payment notification to us the instant it happens — faster and not capped at 100 requests/day. Requires your own ABA PayWay merchant account, plus deploying the payway-generate-qr and payway-webhook Supabase Edge Functions and a payway_qr table — see the setup notes near the top of the code file. You must give ABA PayWay's team the payway-webhook URL to register as your callback URL.",
+  },
+  settings_khqrPaywayMerchantIdLabel: {
+    km: "ABA PayWay Merchant ID",
+    en: "ABA PayWay Merchant ID",
+  },
+  settings_khqrPaywaySandboxLabel: { km: "បរិយាកាស", en: "Environment" },
+  settings_khqrPaywaySandboxOn: { km: "សាកល្បង (Sandbox)", en: "Sandbox (testing)" },
+  settings_khqrPaywaySandboxOff: { km: "ផលិតកម្មពិត (Production)", en: "Production (live)" },
+  settings_khqrPaywayApiKeyLabel: { km: "ABA PayWay API Key", en: "ABA PayWay API Key" },
+  settings_khqrPaywayHint2: {
+    km: "ទទួលបានពី ABA បន្ទាប់ពីចុះឈ្មោះ Merchant PayWay។ រក្សាទុកតែលើឧបករណ៍នេះប៉ុណ្ណោះ មិនបញ្ជូនទៅ cloud ទេ — ផ្ញើទៅ Edge Function ផ្ទាល់តែក្នុងពេលបង្កើត QR ថ្មីមួយប៉ុណ្ណោះ។",
+    en: "Provided by ABA after your PayWay merchant registration. Kept on this device only, never synced to the cloud — sent directly to the Edge Function only at the moment a new QR is created.",
+  },
+  toast_khqrPaywayError: {
+    km: "មិនអាចបង្កើត QR PayWay បានទេ — ពិនិត្យ Merchant ID/API Key ឬសាកល្បងម្តងទៀត",
+    en: "Couldn't generate a PayWay QR — check Merchant ID/API Key, or try again",
+  },
   settings_khqrMerchantNameLabel: {
     km: "ឈ្មោះម្ចាស់គណនី (English)",
     en: "Account holder name (English)",
@@ -2984,6 +3043,29 @@ function POSApp() {
   // pollKhqrPayment below). Without it, staff still complete sales manually.
   const [khqrApiToken, setKhqrApiToken] = useState("");
   const [khqrAutoComplete, setKhqrAutoComplete] = useState(false);
+  // Telegram payment alert — sends a message to a Telegram bot/chat the
+  // instant a KHQR payment is detected, WITHOUT auto-completing the sale.
+  // Meant for shops that want staff to notice a customer has paid (so they
+  // can hand over the goods) but still tap "Complete sale" themselves
+  // afterward. Kept local-device-only, same as khqrApiToken/khqrAutoComplete
+  // above — a bot token is a secret and shouldn't sync to the cloud.
+  const [khqrTelegramEnabled, setKhqrTelegramEnabled] = useState(false);
+  const [khqrTelegramBotToken, setKhqrTelegramBotToken] = useState("");
+  const [khqrTelegramChatId, setKhqrTelegramChatId] = useState("");
+  // ABA PayWay (webhook-based KHQR) — an alternative to polling the Bakong
+  // Open API. PayWay pushes a payment notification to our own Supabase Edge
+  // Function (payway-webhook) the instant a customer pays, instead of this
+  // app repeatedly asking Bakong "has it been paid yet?" — so it isn't
+  // limited by Bakong's 100 requests/day cap. Requires a real ABA PayWay
+  // merchant account (merchant_id + API key from ABA), plus deploying the
+  // payway-generate-qr and payway-webhook Edge Functions and a payway_qr
+  // table — see the setup notes near the top of this file. Kept local-
+  // device-only like the Bakong token above, for the same reason (the API
+  // key is a secret).
+  const [khqrPaywayEnabled, setKhqrPaywayEnabled] = useState(false);
+  const [khqrPaywayMerchantId, setKhqrPaywayMerchantId] = useState("");
+  const [khqrPaywayApiKey, setKhqrPaywayApiKey] = useState("");
+  const [khqrPaywaySandbox, setKhqrPaywaySandbox] = useState(true);
   // Which premium features this shop currently has turned on — only a
   // Super Admin can change these (see pushFeatures / SuperAdminTab below).
   // Defaults closed until the cloud settings load confirms otherwise, so a
@@ -3384,6 +3466,17 @@ function POSApp() {
         setKhqrBankName(parsed.khqrBankName || "");
         setKhqrApiToken(parsed.khqrApiToken || "");
         setKhqrAutoComplete(!!parsed.khqrAutoComplete);
+        setKhqrTelegramEnabled(!!parsed.khqrTelegramEnabled);
+        setKhqrTelegramBotToken(parsed.khqrTelegramBotToken || "");
+        setKhqrTelegramChatId(parsed.khqrTelegramChatId || "");
+        setKhqrPaywayEnabled(!!parsed.khqrPaywayEnabled);
+        setKhqrPaywayMerchantId(parsed.khqrPaywayMerchantId || "");
+        setKhqrPaywayApiKey(parsed.khqrPaywayApiKey || "");
+        setKhqrPaywaySandbox(
+          parsed.khqrPaywaySandbox === undefined
+            ? true
+            : !!parsed.khqrPaywaySandbox,
+        );
         setLang(parsed.lang || "km");
         setUsers(
           parsed.users && parsed.users.length ? parsed.users : seedUsers,
@@ -3438,6 +3531,13 @@ function POSApp() {
             khqrBankName,
             khqrApiToken,
             khqrAutoComplete,
+            khqrTelegramEnabled,
+            khqrTelegramBotToken,
+            khqrTelegramChatId,
+            khqrPaywayEnabled,
+            khqrPaywayMerchantId,
+            khqrPaywayApiKey,
+            khqrPaywaySandbox,
             lang,
             users,
             roles,
@@ -3472,6 +3572,13 @@ function POSApp() {
     khqrBankName,
     khqrApiToken,
     khqrAutoComplete,
+    khqrTelegramEnabled,
+    khqrTelegramBotToken,
+    khqrTelegramChatId,
+    khqrPaywayEnabled,
+    khqrPaywayMerchantId,
+    khqrPaywayApiKey,
+    khqrPaywaySandbox,
     lang,
     users,
     roles,
@@ -6953,6 +7060,14 @@ function POSApp() {
               khqrBankName={khqrBankName}
               khqrApiToken={khqrApiToken}
               khqrAutoComplete={khqrAutoComplete}
+              khqrTelegramEnabled={khqrTelegramEnabled}
+              khqrTelegramBotToken={khqrTelegramBotToken}
+              khqrTelegramChatId={khqrTelegramChatId}
+              khqrPaywayEnabled={khqrPaywayEnabled}
+              khqrPaywayMerchantId={khqrPaywayMerchantId}
+              khqrPaywayApiKey={khqrPaywayApiKey}
+              khqrPaywaySandbox={khqrPaywaySandbox}
+              shopId={shopId}
               showToast={showToast}
               change={change}
               completeSale={completeSale}
@@ -7126,6 +7241,13 @@ function POSApp() {
               khqrBankName={khqrBankName}
               khqrApiToken={khqrApiToken}
               khqrAutoComplete={khqrAutoComplete}
+              khqrTelegramEnabled={khqrTelegramEnabled}
+              khqrTelegramBotToken={khqrTelegramBotToken}
+              khqrTelegramChatId={khqrTelegramChatId}
+              khqrPaywayEnabled={khqrPaywayEnabled}
+              khqrPaywayMerchantId={khqrPaywayMerchantId}
+              khqrPaywayApiKey={khqrPaywayApiKey}
+              khqrPaywaySandbox={khqrPaywaySandbox}
               onSavePaymentSettings={(
                 cash,
                 khqr,
@@ -7138,6 +7260,13 @@ function POSApp() {
                 bank,
                 apiToken,
                 autoComplete,
+                telegramEnabled,
+                telegramBotToken,
+                telegramChatId,
+                paywayEnabled,
+                paywayMerchantId,
+                paywayApiKey,
+                paywaySandbox,
               ) => {
                 setPayCashEnabled(cash);
                 setPayKhqrEnabled(khqr);
@@ -7150,6 +7279,13 @@ function POSApp() {
                 setKhqrBankName(bank);
                 setKhqrApiToken(apiToken);
                 setKhqrAutoComplete(autoComplete);
+                setKhqrTelegramEnabled(telegramEnabled);
+                setKhqrTelegramBotToken(telegramBotToken);
+                setKhqrTelegramChatId(telegramChatId);
+                setKhqrPaywayEnabled(paywayEnabled);
+                setKhqrPaywayMerchantId(paywayMerchantId);
+                setKhqrPaywayApiKey(paywayApiKey);
+                setKhqrPaywaySandbox(paywaySandbox);
                 pushPaymentSettings(
                   cash,
                   khqr,
@@ -8951,6 +9087,14 @@ function POSTab(props) {
     khqrBankName,
     khqrApiToken,
     khqrAutoComplete,
+    khqrTelegramEnabled,
+    khqrTelegramBotToken,
+    khqrTelegramChatId,
+    khqrPaywayEnabled,
+    khqrPaywayMerchantId,
+    khqrPaywayApiKey,
+    khqrPaywaySandbox,
+    shopId,
     showToast,
     change,
     completeSale,
@@ -9001,13 +9145,155 @@ function POSTab(props) {
     khqrCurrency,
     khqrPollAmount,
   ]);
+  // ---------- ABA PayWay dynamic QR (webhook-based, no Bakong token used) ----------
+  // An alternative to the Bakong-token flow below: instead of us repeatedly
+  // asking Bakong "has this been paid yet?", ABA PayWay pushes the answer to
+  // our own payway-webhook Edge Function the instant it happens. That
+  // function writes the result into the `payway_qr` table, which we listen
+  // to via Supabase Realtime just below — no polling, no 100/day cap.
+  const [paywayTranId, setPaywayTranId] = useState(null);
+  const [paywayQrString, setPaywayQrString] = useState(null);
+  const [paywayError, setPaywayError] = useState("");
+  const paywayReady = !!(
+    khqrPaywayEnabled &&
+    khqrPaywayMerchantId &&
+    khqrPaywayApiKey &&
+    shopId
+  );
+  // Requests a fresh QR from payway-generate-qr whenever the amount/currency
+  // changes while this screen is up. Debounced 600ms so quick cart edits
+  // (changing qty, applying a discount) don't fire off a QR request per
+  // keystroke — only once things settle.
+  useEffect(() => {
+    if (
+      !paywayReady ||
+      paymentMethod !== "khqr" ||
+      !khqrPollAmount ||
+      cart.length === 0
+    ) {
+      setPaywayTranId(null);
+      setPaywayQrString(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        setPaywayError("");
+        const res = await fetch(
+          `${SUPABASE_URL}/functions/v1/payway-generate-qr`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              shop_id: shopId,
+              merchant_id: khqrPaywayMerchantId,
+              api_key: khqrPaywayApiKey,
+              sandbox: khqrPaywaySandbox,
+              amount: khqrPollAmount,
+              currency: khqrCurrency,
+              telegram_bot_token: khqrTelegramEnabled
+                ? khqrTelegramBotToken
+                : "",
+              telegram_chat_id: khqrTelegramEnabled ? khqrTelegramChatId : "",
+            }),
+          },
+        );
+        const json = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (json && json.qrString && json.tran_id) {
+          setPaywayTranId(json.tran_id);
+          setPaywayQrString(json.qrString);
+        } else {
+          setPaywayError(t("toast_khqrPaywayError"));
+        }
+      } catch {
+        if (!cancelled) setPaywayError(t("toast_khqrPaywayError"));
+      }
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    // Deliberately omits `t` — it isn't memoized and POSApp re-renders very
+    // often (every keystroke, background polls, etc.), so including it here
+    // would keep resetting the 600ms debounce before the request ever fires,
+    // the same trap noted for completeSale/showToast below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    paywayReady,
+    paymentMethod,
+    khqrPollAmount,
+    khqrCurrency,
+    cart.length,
+    shopId,
+    khqrPaywayMerchantId,
+    khqrPaywayApiKey,
+    khqrPaywaySandbox,
+    khqrTelegramEnabled,
+    khqrTelegramBotToken,
+    khqrTelegramChatId,
+  ]);
+  const completeSaleRef = useRef(completeSale);
+  completeSaleRef.current = completeSale;
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
+  // Listens for payway-webhook marking this exact transaction paid. Needs
+  // `payway_qr` turned on under Database -> Replication in Supabase (same
+  // as `online_orders`), or this will simply never fire and staff will just
+  // use the "Complete sale" button manually as before.
+  useEffect(() => {
+    if (!supabase || !paywayTranId) return;
+    let done = false;
+    const channel = supabase
+      .channel(`payway-qr-${paywayTranId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "payway_qr",
+          filter: `tran_id=eq.${paywayTranId}`,
+        },
+        (payload) => {
+          if (done) return;
+          const row = payload.new;
+          if (row && row.status === "paid") {
+            done = true;
+            if (khqrAutoComplete) {
+              if (showToastRef.current)
+                showToastRef.current(t("toast_khqrAutoPaid"), "ok");
+              completeSaleRef.current();
+            } else if (showToastRef.current) {
+              showToastRef.current(
+                t("toast_khqrPaymentReceivedWaiting"),
+                "ok",
+              );
+            }
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paywayTranId, khqrAutoComplete]);
+  // Whichever engine is actually active decides what's on screen: PayWay's
+  // ready-made KHQR string when that's enabled and has produced one yet,
+  // otherwise the Bakong string we build ourselves.
+  const displayKhqrPayload =
+    paywayReady && paywayQrString ? paywayQrString : dynamicKhqrPayload;
   // Mirrors the exact QR string up to POSApp any time it changes, so the
   // Monitor window (a separate window/component with no access to this
   // local state) can render precisely what's on screen here instead of
   // building its own copy with a different timestamp/MD5.
   useEffect(() => {
-    onKhqrPayloadChange?.(dynamicKhqrPayload);
-  }, [dynamicKhqrPayload, onKhqrPayloadChange]);
+    onKhqrPayloadChange?.(displayKhqrPayload);
+  }, [displayKhqrPayload, onKhqrPayloadChange]);
   // Polls Bakong's Open API for this exact QR's payment status while it's
   // on screen, and auto-completes the sale the moment it comes back paid.
   // Needs a Bakong Open API token in Settings — without one this silently
@@ -9038,22 +9324,48 @@ function POSTab(props) {
   // Reading them through refs instead means the effect only restarts when
   // something that actually matters (the QR itself, the payment method...)
   // changes, while still always calling the latest version of each function.
-  const completeSaleRef = useRef(completeSale);
-  completeSaleRef.current = completeSale;
-  const showToastRef = useRef(showToast);
-  showToastRef.current = showToast;
   useEffect(() => {
+    // Either auto-complete or the Telegram-alert-only mode wants this poll
+    // running; either way we still need the Bakong Open API token to check
+    // payment status at all. Skipped entirely once ABA PayWay is producing
+    // QRs — that flow gets its answer via the Realtime subscription above,
+    // not by polling Bakong, so there's nothing for this effect to do.
+    const alertsWanted = khqrAutoComplete || khqrTelegramEnabled;
     if (
-      !khqrAutoComplete ||
+      !alertsWanted ||
       !khqrApiToken ||
       paymentMethod !== "khqr" ||
       !dynamicKhqrPayload ||
-      cart.length === 0
+      cart.length === 0 ||
+      paywayReady
     )
       return;
     let cancelled = false;
     let timer = null;
     const md5 = khqrMd5(dynamicKhqrPayload);
+    // Best-effort ping to a Telegram bot/chat so staff know a customer has
+    // paid. Fire-and-forget: a failed/slow Telegram send should never block
+    // or delay the checkout flow itself.
+    const notifyTelegram = async () => {
+      if (!khqrTelegramEnabled || !khqrTelegramBotToken || !khqrTelegramChatId)
+        return;
+      try {
+        await fetch(
+          `https://api.telegram.org/bot${khqrTelegramBotToken}/sendMessage`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: khqrTelegramChatId,
+              text: `✅ ${t("toast_khqrPaymentReceivedWaiting")}\n${fmt(total)}`,
+            }),
+          },
+        );
+      } catch {
+        /* Telegram unreachable/misconfigured — never surface this as an
+           error to the cashier, the sale flow is unaffected */
+      }
+    };
     const poll = async () => {
       if (cancelled) return;
       try {
@@ -9081,10 +9393,20 @@ function POSTab(props) {
           const amountOk =
             !Number.isFinite(gotAmt) || Math.abs(gotAmt - expectedAmt) < 1;
           if (amountOk) {
-            if (showToastRef.current)
-              showToastRef.current(t("toast_khqrAutoPaid"), "ok");
-            completeSaleRef.current();
-            return; // stop polling — sale is done
+            notifyTelegram();
+            if (khqrAutoComplete) {
+              if (showToastRef.current)
+                showToastRef.current(t("toast_khqrAutoPaid"), "ok");
+              completeSaleRef.current();
+            } else if (showToastRef.current) {
+              // Telegram-alert-only mode: let staff know payment landed,
+              // but leave the sale open for a manual "Complete sale" tap.
+              showToastRef.current(
+                t("toast_khqrPaymentReceivedWaiting"),
+                "ok",
+              );
+            }
+            return; // stop polling — payment already confirmed once
           }
         }
       } catch {
@@ -9100,11 +9422,16 @@ function POSTab(props) {
     };
   }, [
     khqrAutoComplete,
+    khqrTelegramEnabled,
+    khqrTelegramBotToken,
+    khqrTelegramChatId,
     khqrApiToken,
     paymentMethod,
     dynamicKhqrPayload,
     cart.length,
     khqrPollAmount,
+    total,
+    paywayReady,
   ]);
 
   return (
@@ -9976,7 +10303,19 @@ function POSTab(props) {
                             </button>
                           ))}
                         </div>
-                        <DynamicQrImage payload={dynamicKhqrPayload} />
+                        <DynamicQrImage payload={displayKhqrPayload} />
+                        {paywayReady && paywayError && (
+                          <div
+                            style={{
+                              marginTop: "4px",
+                              fontSize: "11.5px",
+                              color: "var(--danger)",
+                              textAlign: "center",
+                            }}
+                          >
+                            {paywayError}
+                          </div>
+                        )}
                         <div
                           style={{
                             marginTop: "8px",
@@ -14678,6 +15017,13 @@ function SettingsTab({
   khqrBankName,
   khqrApiToken,
   khqrAutoComplete,
+  khqrTelegramEnabled,
+  khqrTelegramBotToken,
+  khqrTelegramChatId,
+  khqrPaywayEnabled,
+  khqrPaywayMerchantId,
+  khqrPaywayApiKey,
+  khqrPaywaySandbox,
   onSavePaymentSettings,
   receiptWidth,
   setReceiptWidth,
@@ -14732,6 +15078,28 @@ function SettingsTab({
   );
   const [khqrAutoCompleteDraft, setKhqrAutoCompleteDraft] =
     useState(!!khqrAutoComplete);
+  const [khqrTelegramEnabledDraft, setKhqrTelegramEnabledDraft] = useState(
+    !!khqrTelegramEnabled,
+  );
+  const [khqrTelegramBotTokenDraft, setKhqrTelegramBotTokenDraft] = useState(
+    khqrTelegramBotToken || "",
+  );
+  const [khqrTelegramChatIdDraft, setKhqrTelegramChatIdDraft] = useState(
+    khqrTelegramChatId || "",
+  );
+  const [khqrTelegramTestState, setKhqrTelegramTestState] = useState(""); // "", "sending", "ok", "error"
+  const [khqrPaywayEnabledDraft, setKhqrPaywayEnabledDraft] = useState(
+    !!khqrPaywayEnabled,
+  );
+  const [khqrPaywayMerchantIdDraft, setKhqrPaywayMerchantIdDraft] = useState(
+    khqrPaywayMerchantId || "",
+  );
+  const [khqrPaywayApiKeyDraft, setKhqrPaywayApiKeyDraft] = useState(
+    khqrPaywayApiKey || "",
+  );
+  const [khqrPaywaySandboxDraft, setKhqrPaywaySandboxDraft] = useState(
+    khqrPaywaySandbox === undefined ? true : !!khqrPaywaySandbox,
+  );
   const [khqrError, setKhqrError] = useState("");
   const [paymentSaved, setPaymentSaved] = useState(false);
   const khqrFileRef = useRef(null);
@@ -14891,9 +15259,42 @@ function SettingsTab({
         khqrBankNameDraft,
         khqrApiTokenDraft,
         khqrAutoCompleteDraft,
+        khqrTelegramEnabledDraft,
+        khqrTelegramBotTokenDraft,
+        khqrTelegramChatIdDraft,
+        khqrPaywayEnabledDraft,
+        khqrPaywayMerchantIdDraft,
+        khqrPaywayApiKeyDraft,
+        khqrPaywaySandboxDraft,
       );
     setPaymentSaved(true);
     setTimeout(() => setPaymentSaved(false), 1800);
+  };
+
+  // Sends one test message via the Telegram Bot API using the token/chat id
+  // currently typed in the draft fields (not necessarily saved yet), so
+  // staff can confirm the bot is set up correctly before relying on it.
+  const sendTelegramTest = async () => {
+    if (!khqrTelegramBotTokenDraft || !khqrTelegramChatIdDraft) return;
+    setKhqrTelegramTestState("sending");
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${khqrTelegramBotTokenDraft}/sendMessage`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: khqrTelegramChatIdDraft,
+            text: "✅ " + t("settings_khqrTelegramTestMessage"),
+          }),
+        },
+      );
+      const json = await res.json().catch(() => null);
+      setKhqrTelegramTestState(json && json.ok ? "ok" : "error");
+    } catch {
+      setKhqrTelegramTestState("error");
+    }
+    setTimeout(() => setKhqrTelegramTestState(""), 3000);
   };
 
   return (
@@ -15519,6 +15920,292 @@ function SettingsTab({
                           disabled={!khqrFeatureOn || !khqrApiTokenDraft}
                         />
                       </div>
+                      <div
+                        style={{
+                          gridColumn: "1 / -1",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "10px",
+                          padding: "10px 12px",
+                          borderRadius: "var(--radius-sm)",
+                          border: "1px solid var(--border)",
+                          background: "var(--surface)",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "13px", fontWeight: 600 }}>
+                            {t("settings_khqrTelegramLabel")}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "11.5px",
+                              color: "var(--text-muted)",
+                              marginTop: "2px",
+                            }}
+                          >
+                            {t("settings_khqrTelegramHint")}
+                          </div>
+                        </div>
+                        <ToggleSwitch
+                          on={khqrTelegramEnabledDraft}
+                          onClick={() =>
+                            setKhqrTelegramEnabledDraft(
+                              !khqrTelegramEnabledDraft,
+                            )
+                          }
+                          disabled={!khqrFeatureOn || !khqrApiTokenDraft}
+                        />
+                      </div>
+                      {khqrTelegramEnabledDraft && (
+                        <>
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <label style={fieldLabel}>
+                              {t("settings_khqrTelegramBotTokenLabel")}
+                            </label>
+                            <input
+                              type="password"
+                              value={khqrTelegramBotTokenDraft}
+                              onChange={(e) =>
+                                setKhqrTelegramBotTokenDraft(
+                                  e.target.value.trim(),
+                                )
+                              }
+                              placeholder="123456789:AAExample-BotToken"
+                              disabled={!khqrFeatureOn}
+                              style={{
+                                width: "100%",
+                                padding: "7px 10px",
+                                borderRadius: "var(--radius-sm)",
+                                border: "1px solid var(--border)",
+                                fontFamily: "var(--font-mono)",
+                                fontSize: "13px",
+                              }}
+                            />
+                            <div
+                              style={{
+                                fontSize: "11.5px",
+                                color: "var(--text-muted)",
+                                marginTop: "4px",
+                              }}
+                            >
+                              {t("settings_khqrTelegramBotTokenHint")}
+                            </div>
+                          </div>
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <label style={fieldLabel}>
+                              {t("settings_khqrTelegramChatIdLabel")}
+                            </label>
+                            <input
+                              type="text"
+                              value={khqrTelegramChatIdDraft}
+                              onChange={(e) =>
+                                setKhqrTelegramChatIdDraft(
+                                  e.target.value.trim(),
+                                )
+                              }
+                              placeholder="-1001234567890"
+                              disabled={!khqrFeatureOn}
+                              style={{
+                                width: "100%",
+                                padding: "7px 10px",
+                                borderRadius: "var(--radius-sm)",
+                                border: "1px solid var(--border)",
+                                fontFamily: "var(--font-mono)",
+                                fontSize: "13px",
+                              }}
+                            />
+                            <div
+                              style={{
+                                fontSize: "11.5px",
+                                color: "var(--text-muted)",
+                                marginTop: "4px",
+                              }}
+                            >
+                              {t("settings_khqrTelegramChatIdHint")}
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              gridColumn: "1 / -1",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={sendTelegramTest}
+                              disabled={
+                                !khqrFeatureOn ||
+                                !khqrTelegramBotTokenDraft ||
+                                !khqrTelegramChatIdDraft ||
+                                khqrTelegramTestState === "sending"
+                              }
+                              style={{
+                                padding: "7px 14px",
+                                borderRadius: "var(--radius-sm)",
+                                border: "1px solid var(--border)",
+                                background: "var(--surface-alt)",
+                                fontSize: "12.5px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {t("settings_khqrTelegramTestButton")}
+                            </button>
+                            {khqrTelegramTestState === "sending" && (
+                              <span
+                                style={{
+                                  fontSize: "12px",
+                                  color: "var(--text-muted)",
+                                }}
+                              >
+                                …
+                              </span>
+                            )}
+                            {khqrTelegramTestState === "ok" && (
+                              <span
+                                style={{ fontSize: "12px", color: "#0f6e56" }}
+                              >
+                                {t("toast_khqrTelegramTestSent")}
+                              </span>
+                            )}
+                            {khqrTelegramTestState === "error" && (
+                              <span
+                                style={{ fontSize: "12px", color: "#c0392b" }}
+                              >
+                                {t("toast_khqrTelegramTestFailed")}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                      <div
+                        style={{
+                          gridColumn: "1 / -1",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "10px",
+                          padding: "10px 12px",
+                          borderRadius: "var(--radius-sm)",
+                          border: "1px solid var(--border)",
+                          background: "var(--surface)",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "13px", fontWeight: 600 }}>
+                            {t("settings_khqrPaywayLabel")}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "11.5px",
+                              color: "var(--text-muted)",
+                              marginTop: "2px",
+                            }}
+                          >
+                            {t("settings_khqrPaywayHint")}
+                          </div>
+                        </div>
+                        <ToggleSwitch
+                          on={khqrPaywayEnabledDraft}
+                          onClick={() =>
+                            setKhqrPaywayEnabledDraft(!khqrPaywayEnabledDraft)
+                          }
+                          disabled={!khqrFeatureOn}
+                        />
+                      </div>
+                      {khqrPaywayEnabledDraft && (
+                        <>
+                          <div>
+                            <label style={fieldLabel}>
+                              {t("settings_khqrPaywayMerchantIdLabel")}
+                            </label>
+                            <input
+                              type="text"
+                              value={khqrPaywayMerchantIdDraft}
+                              onChange={(e) =>
+                                setKhqrPaywayMerchantIdDraft(
+                                  e.target.value.trim(),
+                                )
+                              }
+                              disabled={!khqrFeatureOn}
+                              style={{
+                                width: "100%",
+                                padding: "7px 10px",
+                                borderRadius: "var(--radius-sm)",
+                                border: "1px solid var(--border)",
+                                fontFamily: "var(--font-mono)",
+                                fontSize: "13px",
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label style={fieldLabel}>
+                              {t("settings_khqrPaywaySandboxLabel")}
+                            </label>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                height: "31px",
+                              }}
+                            >
+                              <ToggleSwitch
+                                on={khqrPaywaySandboxDraft}
+                                onClick={() =>
+                                  setKhqrPaywaySandboxDraft(
+                                    !khqrPaywaySandboxDraft,
+                                  )
+                                }
+                                disabled={!khqrFeatureOn}
+                              />
+                              <span
+                                style={{
+                                  fontSize: "12px",
+                                  color: "var(--text-muted)",
+                                }}
+                              >
+                                {khqrPaywaySandboxDraft
+                                  ? t("settings_khqrPaywaySandboxOn")
+                                  : t("settings_khqrPaywaySandboxOff")}
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <label style={fieldLabel}>
+                              {t("settings_khqrPaywayApiKeyLabel")}
+                            </label>
+                            <input
+                              type="password"
+                              value={khqrPaywayApiKeyDraft}
+                              onChange={(e) =>
+                                setKhqrPaywayApiKeyDraft(e.target.value.trim())
+                              }
+                              disabled={!khqrFeatureOn}
+                              style={{
+                                width: "100%",
+                                padding: "7px 10px",
+                                borderRadius: "var(--radius-sm)",
+                                border: "1px solid var(--border)",
+                                fontFamily: "var(--font-mono)",
+                                fontSize: "13px",
+                              }}
+                            />
+                            <div
+                              style={{
+                                fontSize: "11.5px",
+                                color: "var(--text-muted)",
+                                marginTop: "4px",
+                              }}
+                            >
+                              {t("settings_khqrPaywayHint2")}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
