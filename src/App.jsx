@@ -25,6 +25,7 @@ import {
   LayoutDashboard,
   UserPlus,
   ChevronDown,
+  ChevronRight,
   CheckCircle2,
   ImagePlus,
   Printer,
@@ -1580,6 +1581,18 @@ const STRINGS = {
     km: "រក្សាទុក & Print (មិនទាន់បង់)",
     en: "Hold & Print (unpaid)",
   },
+  quickActionsLabel: { km: "សកម្មភាពរហ័ស", en: "Quick Actions" },
+  newSaleBtn: { km: "លក់ថ្មី", en: "New Sale" },
+  openTabBtn: { km: "បើក Tab", en: "Open Tab" },
+  printLastReceiptBtn: {
+    km: "បោះពុម្ពវិក្កយបត្រចុងក្រោយ",
+    en: "Print Last Receipt",
+  },
+  noLastReceipt: { km: "មិនទាន់មានការលក់នៅឡើយ", en: "No sale yet" },
+  currentOrderTitle: { km: "Order បច្ចុប្បន្ន", en: "Current Order" },
+  allProductsLabel: { km: "ទំនិញទាំងអស់", en: "All Products" },
+  gridViewLabel: { km: "ទិដ្ឋភាព Grid", en: "Grid view" },
+  listViewLabel: { km: "ទិដ្ឋភាព List", en: "List view" },
   editingTabBadge: {
     km: "កំពុងកែ order តុ {table}",
     en: "Editing tab — {table}",
@@ -2317,15 +2330,21 @@ const STRINGS = {
     en: "Send a Telegram alert when payment is detected",
   },
   settings_khqrTelegramHint: {
-    km: "នៅពេលបើក ប្រព័ន្ធនិងផ្ញើសារទៅ Telegram bot របស់អ្នកភ្លាមៗនៅពេលអតិថិជនស្កេន QR ហើយបង់ប្រាក់ចូល ដើម្បីអោយបុគ្គលិកដឹងថាបានបង់រួច ប៉ុន្តែ​មិនបញ្ចប់ការលក់ដោយស្វ័យប្រវត្តិទេ — បុគ្គលិកនៅតែត្រូវចុច \"បញ្ចប់ការលក់\" ដោយខ្លួនឯង។ អាចបើកព្រមគ្នាជាមួយមុខងារខាងលើក៏បាន។ ត្រូវការ Token ខាងលើសិន។",
-    en: "When on, the app messages your Telegram bot the instant the customer's KHQR payment comes through, so staff know the customer has paid — but the sale is NOT auto-completed; staff still tap \"Complete sale\" themselves. Can be used together with the auto-complete option above. Requires the token above.",
+    km: 'នៅពេលបើក ប្រព័ន្ធនិងផ្ញើសារទៅ Telegram bot របស់អ្នកភ្លាមៗនៅពេលអតិថិជនស្កេន QR ហើយបង់ប្រាក់ចូល ដើម្បីអោយបុគ្គលិកដឹងថាបានបង់រួច ប៉ុន្តែ​មិនបញ្ចប់ការលក់ដោយស្វ័យប្រវត្តិទេ — បុគ្គលិកនៅតែត្រូវចុច "បញ្ចប់ការលក់" ដោយខ្លួនឯង។ អាចបើកព្រមគ្នាជាមួយមុខងារខាងលើក៏បាន។ ត្រូវការ Token ខាងលើសិន។',
+    en: 'When on, the app messages your Telegram bot the instant the customer\'s KHQR payment comes through, so staff know the customer has paid — but the sale is NOT auto-completed; staff still tap "Complete sale" themselves. Can be used together with the auto-complete option above. Requires the token above.',
   },
-  settings_khqrTelegramBotTokenLabel: { km: "Telegram Bot Token", en: "Telegram Bot Token" },
+  settings_khqrTelegramBotTokenLabel: {
+    km: "Telegram Bot Token",
+    en: "Telegram Bot Token",
+  },
   settings_khqrTelegramBotTokenHint: {
     km: "បង្កើត bot ថ្មីជាមួយ @BotFather ក្នុង Telegram ដើម្បីទទួល token នេះ។ រក្សាទុកតែលើឧបករណ៍នេះប៉ុណ្ណោះ មិនបញ្ជូនទៅ cloud ទេ។",
     en: "Create a new bot with @BotFather in Telegram to get this token. Kept on this device only, never synced to the cloud.",
   },
-  settings_khqrTelegramChatIdLabel: { km: "Telegram Chat ID", en: "Telegram Chat ID" },
+  settings_khqrTelegramChatIdLabel: {
+    km: "Telegram Chat ID",
+    en: "Telegram Chat ID",
+  },
   settings_khqrTelegramChatIdHint: {
     km: "ID របស់ក្រុម ឬបុគ្គលដែលចង់ទទួលការជូនដំណឹង។ បន្ថែម bot របស់អ្នកទៅក្រុមហើយប្រើ @userinfobot ឬវិធីស្រដៀងគ្នាដើម្បីរក ID នេះ។",
     en: "The ID of the group or person who should receive alerts. Add your bot to the group, then use @userinfobot or a similar tool to find this ID.",
@@ -2340,8 +2359,8 @@ const STRINGS = {
     en: "Failed to send — check Token/Chat ID",
   },
   toast_khqrPaymentReceivedWaiting: {
-    km: "អតិថិជនបានបង់ប្រាក់ហើយ — សូមចុច \"បញ្ចប់ការលក់\"",
-    en: "Payment received — tap \"Complete sale\" when ready",
+    km: 'អតិថិជនបានបង់ប្រាក់ហើយ — សូមចុច "បញ្ចប់ការលក់"',
+    en: 'Payment received — tap "Complete sale" when ready',
   },
   settings_khqrTelegramTestMessage: {
     km: "នេះជាការសាកល្បងពី POS របស់អ្នក — ការភ្ជាប់ដំណើរការល្អ។",
@@ -2360,9 +2379,18 @@ const STRINGS = {
     en: "ABA PayWay Merchant ID",
   },
   settings_khqrPaywaySandboxLabel: { km: "បរិយាកាស", en: "Environment" },
-  settings_khqrPaywaySandboxOn: { km: "សាកល្បង (Sandbox)", en: "Sandbox (testing)" },
-  settings_khqrPaywaySandboxOff: { km: "ផលិតកម្មពិត (Production)", en: "Production (live)" },
-  settings_khqrPaywayApiKeyLabel: { km: "ABA PayWay API Key", en: "ABA PayWay API Key" },
+  settings_khqrPaywaySandboxOn: {
+    km: "សាកល្បង (Sandbox)",
+    en: "Sandbox (testing)",
+  },
+  settings_khqrPaywaySandboxOff: {
+    km: "ផលិតកម្មពិត (Production)",
+    en: "Production (live)",
+  },
+  settings_khqrPaywayApiKeyLabel: {
+    km: "ABA PayWay API Key",
+    en: "ABA PayWay API Key",
+  },
   settings_khqrPaywayHint2: {
     km: "ទទួលបានពី ABA បន្ទាប់ពីចុះឈ្មោះ Merchant PayWay។ រក្សាទុកតែលើឧបករណ៍នេះប៉ុណ្ណោះ មិនបញ្ជូនទៅ cloud ទេ — ផ្ញើទៅ Edge Function ផ្ទាល់តែក្នុងពេលបង្កើត QR ថ្មីមួយប៉ុណ្ណោះ។",
     en: "Provided by ABA after your PayWay merchant registration. Kept on this device only, never synced to the cloud — sent directly to the Edge Function only at the moment a new QR is created.",
@@ -7085,6 +7113,8 @@ function POSApp() {
                 setScanModalOpen(true);
               }}
               onKhqrPayloadChange={setBroadcastKhqrPayload}
+              lastSale={sales[0] || null}
+              onPrintLastReceipt={() => sales[0] && setReceipt(sales[0])}
             />
           )}
           {activeTab === "dashboard" && (
@@ -7577,7 +7607,7 @@ function FontStyles() {
         font-weight: 700;
       }
       .cart-line-remove {
-        opacity: 0;
+        opacity: 0.55;
         transition: opacity .12s ease;
       }
       .cart-line-row:hover .cart-line-remove,
@@ -7721,7 +7751,8 @@ function FontStyles() {
         }
         .app-main { padding-top: 54px; }
 
-        .pos-layout { flex-direction: column; overflow-y: auto; }
+        .pos-layout { overflow-y: auto; }
+        .pos-layout-row { flex-direction: column; }
         .pos-products { border-right: none !important; border-bottom: 1px solid var(--border); }
         .pos-invoice { width: 100% !important; }
 
@@ -8923,6 +8954,25 @@ function ToggleSwitch({ on, onClick, disabled }) {
   );
 }
 
+// Deterministic color chip per category key, purely cosmetic (shops define
+// their own category names, so this can't be a fixed name->color map) — used
+// on the product-card badge in the POS grid.
+const CATEGORY_BADGE_PALETTE = [
+  { bg: "#f3e8ff", fg: "#8b3dd1" },
+  { bg: "#fde8e8", fg: "#d1493d" },
+  { bg: "#e8f3ff", fg: "#2f6fd1" },
+  { bg: "#fff3d6", fg: "#b8790a" },
+  { bg: "#e6f7ec", fg: "#1f9d55" },
+  { bg: "#fde8f4", fg: "#c23b8e" },
+];
+function categoryBadgeColor(key) {
+  const str = String(key || "");
+  let hash = 0;
+  for (let i = 0; i < str.length; i++)
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  return CATEGORY_BADGE_PALETTE[hash % CATEGORY_BADGE_PALETTE.length];
+}
+
 function CategoryPill({ active, onClick, label }) {
   return (
     <button
@@ -9111,8 +9161,12 @@ function POSTab(props) {
     // Reports the exact QR string (see below) up to POSApp so it can be
     // mirrored to the Monitor window byte-for-byte — see comment there.
     onKhqrPayloadChange,
+    lastSale,
+    onPrintLastReceipt,
   } = props;
   const [khqrCurrency, setKhqrCurrency] = useState("usd");
+  const [viewMode, setViewMode] = useState("grid");
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const khqrDynamicReady =
     khqrDynamicEnabled && khqrAccountId && khqrMerchantName && khqrMerchantCity;
   const khqrPollAmount =
@@ -9268,10 +9322,7 @@ function POSTab(props) {
                 showToastRef.current(t("toast_khqrAutoPaid"), "ok");
               completeSaleRef.current();
             } else if (showToastRef.current) {
-              showToastRef.current(
-                t("toast_khqrPaymentReceivedWaiting"),
-                "ok",
-              );
+              showToastRef.current(t("toast_khqrPaymentReceivedWaiting"), "ok");
             }
           }
         },
@@ -9401,10 +9452,7 @@ function POSTab(props) {
             } else if (showToastRef.current) {
               // Telegram-alert-only mode: let staff know payment landed,
               // but leave the sale open for a manual "Complete sale" tap.
-              showToastRef.current(
-                t("toast_khqrPaymentReceivedWaiting"),
-                "ok",
-              );
+              showToastRef.current(t("toast_khqrPaymentReceivedWaiting"), "ok");
             }
             return; // stop polling — payment already confirmed once
           }
@@ -9434,584 +9482,833 @@ function POSTab(props) {
     paywayReady,
   ]);
 
+  const quickActionBtnStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "7px",
+    padding: "9px 14px",
+    borderRadius: "var(--radius-md)",
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+    color: "var(--text)",
+    fontSize: "12.5px",
+    fontWeight: 700,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
+  const dropdownItemStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    width: "100%",
+    padding: "10px 14px",
+    background: "none",
+    border: "none",
+    borderBottom: "1px solid var(--border)",
+    fontSize: "13px",
+    fontWeight: 600,
+    color: "var(--text)",
+    cursor: "pointer",
+    textAlign: "left",
+  };
   return (
     <div
       className="pos-layout"
-      style={{ flex: 1, display: "flex", minHeight: 0 }}
+      style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+      }}
     >
       <div
-        className="pos-products"
-        style={{
-          flex: 1.4,
-          display: "flex",
-          flexDirection: "column",
-          minWidth: 0,
-          borderRight: "1px solid var(--border)",
-        }}
+        className="pos-layout-row"
+        style={{ flex: 1, display: "flex", minHeight: 0 }}
       >
         <div
+          className="pos-products"
           style={{
-            padding: "18px 22px 14px",
-            borderBottom: "1px solid var(--border)",
-          }}
-        >
-          <div style={{ position: "relative", marginBottom: "12px" }}>
-            <Search
-              size={16}
-              style={{
-                position: "absolute",
-                left: "13px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "var(--text-muted)",
-              }}
-            />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onBarcodeScan(search);
-              }}
-              placeholder={t("searchProducts")}
-              style={{
-                width: "100%",
-                padding: "13px 44px 13px 38px",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid var(--border)",
-                fontSize: "14px",
-                background: "var(--surface-alt)",
-              }}
-            />
-            <button
-              onClick={onOpenScanner}
-              title={t("scanBarcode")}
-              style={{
-                position: "absolute",
-                right: "5px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: "34px",
-                height: "34px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "none",
-                border: "none",
-                borderRadius: "var(--radius-sm)",
-                cursor: "pointer",
-                color: "var(--text-muted)",
-              }}
-            >
-              <Camera size={16} />
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: "7px", flexWrap: "wrap" }}>
-            <CategoryPill
-              active={categoryFilter === "all"}
-              onClick={() => setCategoryFilter("all")}
-              label={t("cat_all")}
-            />
-            {categories.map(({ key: c }) => (
-              <CategoryPill
-                key={c}
-                active={categoryFilter === c}
-                onClick={() => setCategoryFilter(c)}
-                label={catLabel(c)}
-              />
-            ))}
-          </div>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "16px 22px",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-            gap: "12px",
-            alignContent: "start",
-          }}
-        >
-          {products.length === 0 && (
-            <EmptyState
-              icon={Search}
-              title={t("noProductsFound")}
-              actionLabel={search ? t("clearSearch") : undefined}
-              onAction={search ? () => setSearch("") : undefined}
-            />
-          )}
-          {products.map((p) => {
-            const inCartQty = cart.find((c) => c.id === p.id)?.qty || 0;
-            return (
-              <button
-                key={p.id}
-                className="pos-product-card"
-                onClick={() => addToCart(p)}
-                disabled={p.stock === 0}
-                style={{
-                  position: "relative",
-                  textAlign: "left",
-                  padding: "12px",
-                  borderRadius: "var(--radius-lg)",
-                  border:
-                    "1px solid " +
-                    (inCartQty > 0 ? "var(--primary)" : "var(--border)"),
-                  background:
-                    p.stock === 0 ? "var(--surface-alt)" : "var(--surface)",
-                  cursor: p.stock === 0 ? "not-allowed" : "pointer",
-                  opacity: p.stock === 0 ? 0.5 : 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px",
-                }}
-              >
-                {inCartQty > 0 && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: "-7px",
-                      right: "-7px",
-                      minWidth: "20px",
-                      height: "20px",
-                      padding: "0 5px",
-                      borderRadius: "var(--radius-pill)",
-                      background: "var(--primary)",
-                      color: "#fff",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      fontFamily: "var(--font-mono)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      boxShadow: "0 2px 6px rgba(0,0,0,.18)",
-                      zIndex: 1,
-                    }}
-                  >
-                    {inCartQty}
-                  </span>
-                )}
-                <div
-                  style={{
-                    width: "100%",
-                    aspectRatio: "16/10",
-                    borderRadius: "var(--radius-sm)",
-                    overflow: "hidden",
-                    background: "var(--surface-alt)",
-                  }}
-                >
-                  {p.image ? (
-                    <img
-                      src={p.image}
-                      alt=""
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Package size={22} color="var(--text-muted)" />
-                    </div>
-                  )}
-                </div>
-                <div
-                  style={{
-                    fontSize: "13.5px",
-                    fontWeight: 600,
-                    lineHeight: 1.35,
-                    minHeight: "36px",
-                  }}
-                >
-                  {prodName(p)}
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontWeight: 700,
-                      fontSize: "15px",
-                      color: "var(--primary)",
-                    }}
-                  >
-                    {fmt(p.price)}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "10.5px",
-                      fontWeight: 600,
-                      padding: "2px 7px",
-                      borderRadius: "var(--radius-pill)",
-                      background:
-                        p.stock <= 5
-                          ? "color-mix(in srgb, var(--danger) 14%, transparent)"
-                          : "var(--surface-alt)",
-                      color:
-                        p.stock <= 5 ? "var(--danger)" : "var(--text-muted)",
-                    }}
-                  >
-                    {p.stock === 0
-                      ? t("outOfStock")
-                      : `${p.stock} ${prodUnit(p)}`}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div
-        className="pos-invoice"
-        style={{
-          width: "340px",
-          flexShrink: 0,
-          display: "flex",
-          flexDirection: "column",
-          background: "var(--surface)",
-        }}
-      >
-        <div
-          style={{
-            padding: "18px 20px 12px",
-            borderBottom: "1px dashed var(--border)",
+            flex: 1.4,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            borderRight: "1px solid var(--border)",
           }}
         >
           <div
-            className="invoice-header-row"
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              rowGap: "6px",
-              gap: "9px",
+              padding: "18px 22px 14px",
+              borderBottom: "1px solid var(--border)",
             }}
           >
+            <div style={{ position: "relative", marginBottom: "12px" }}>
+              <Search
+                size={16}
+                style={{
+                  position: "absolute",
+                  left: "13px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "var(--text-muted)",
+                }}
+              />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onBarcodeScan(search);
+                }}
+                placeholder={t("searchProducts")}
+                style={{
+                  width: "100%",
+                  padding: "13px 44px 13px 38px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--border)",
+                  fontSize: "14px",
+                  background: "var(--surface-alt)",
+                }}
+              />
+              <button
+                onClick={onOpenScanner}
+                title={t("scanBarcode")}
+                style={{
+                  position: "absolute",
+                  right: "5px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: "34px",
+                  height: "34px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "none",
+                  border: "none",
+                  borderRadius: "var(--radius-sm)",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <Camera size={16} />
+              </button>
+            </div>
             <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "7px",
+                  flexWrap: "wrap",
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                <CategoryPill
+                  active={categoryFilter === "all"}
+                  onClick={() => setCategoryFilter("all")}
+                  label={t("cat_all")}
+                />
+                {categories.map(({ key: c }) => (
+                  <CategoryPill
+                    key={c}
+                    active={categoryFilter === c}
+                    onClick={() => setCategoryFilter(c)}
+                    label={catLabel(c)}
+                  />
+                ))}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-md)",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setViewMode("grid")}
+                  title={t("gridViewLabel")}
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "none",
+                    cursor: "pointer",
+                    background:
+                      viewMode === "grid" ? "var(--primary)" : "var(--surface)",
+                    color: viewMode === "grid" ? "#fff" : "var(--text-muted)",
+                  }}
+                >
+                  <LayoutDashboard size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  title={t("listViewLabel")}
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "none",
+                    borderLeft: "1px solid var(--border)",
+                    cursor: "pointer",
+                    background:
+                      viewMode === "list" ? "var(--primary)" : "var(--surface)",
+                    color: viewMode === "list" ? "#fff" : "var(--text-muted)",
+                  }}
+                >
+                  <Menu size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              padding: "13px 22px 3px",
+              display: "flex",
+              alignItems: "baseline",
+              gap: "7px",
+            }}
+          >
+            <span
               style={{
                 fontFamily: "var(--font-display)",
                 fontWeight: 700,
-                fontSize: "16px",
+                fontSize: "15px",
+              }}
+            >
+              {t("allProductsLabel")}
+            </span>
+            <span style={{ fontSize: "12.5px", color: "var(--text-muted)" }}>
+              ({products.length})
+            </span>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "10px 22px 16px",
+              display: "grid",
+              gridTemplateColumns:
+                viewMode === "grid"
+                  ? "repeat(auto-fill, minmax(160px, 1fr))"
+                  : "1fr",
+              gap: "12px",
+              alignContent: "start",
+            }}
+          >
+            {products.length === 0 && (
+              <EmptyState
+                icon={Search}
+                title={t("noProductsFound")}
+                actionLabel={search ? t("clearSearch") : undefined}
+                onAction={search ? () => setSearch("") : undefined}
+              />
+            )}
+            {products.map((p) => {
+              const cartLine = cart.find((c) => c.id === p.id);
+              const inCartQty = cartLine?.qty || 0;
+              const badge = categoryBadgeColor(p.category);
+              const outOfStock = p.stock === 0;
+              if (viewMode === "list") {
+                return (
+                  <div
+                    key={p.id}
+                    className="pos-product-card"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      padding: "9px 12px",
+                      borderRadius: "var(--radius-lg)",
+                      border:
+                        "1px solid " +
+                        (inCartQty > 0 ? "var(--primary)" : "var(--border)"),
+                      background: outOfStock
+                        ? "var(--surface-alt)"
+                        : "var(--surface)",
+                      opacity: outOfStock ? 0.5 : 1,
+                    }}
+                  >
+                    <ProductThumb image={p.image} size={40} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: "13.5px",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {prodName(p)}
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "7px",
+                          marginTop: "2px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            fontWeight: 700,
+                            fontSize: "13.5px",
+                            color: "var(--primary)",
+                          }}
+                        >
+                          {fmt(p.price)}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10.5px",
+                            fontWeight: 600,
+                            padding: "1px 6px",
+                            borderRadius: "var(--radius-pill)",
+                            background:
+                              p.stock <= 5
+                                ? "color-mix(in srgb, var(--danger) 14%, transparent)"
+                                : "var(--surface-alt)",
+                            color:
+                              p.stock <= 5
+                                ? "var(--danger)"
+                                : "var(--text-muted)",
+                          }}
+                        >
+                          {outOfStock
+                            ? t("outOfStock")
+                            : `${p.stock} ${prodUnit(p)}`}
+                        </span>
+                      </div>
+                    </div>
+                    {inCartQty > 0 ? (
+                      <div className="cart-line-qty">
+                        <button
+                          style={{ width: "28px", height: "28px" }}
+                          onClick={() => changeQty(cartLine.lineId, -1)}
+                        >
+                          <Minus size={13} />
+                        </button>
+                        <span>{inCartQty}</span>
+                        <button
+                          style={{ width: "28px", height: "28px" }}
+                          onClick={() => changeQty(cartLine.lineId, 1)}
+                        >
+                          <Plus size={13} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => addToCart(p)}
+                        disabled={outOfStock}
+                        style={{
+                          width: "30px",
+                          height: "30px",
+                          borderRadius: "50%",
+                          border: "none",
+                          background: outOfStock
+                            ? "var(--border)"
+                            : "var(--primary)",
+                          color: "#fff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: outOfStock ? "not-allowed" : "pointer",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Plus size={16} />
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={p.id}
+                  className="pos-product-card"
+                  onClick={() => !outOfStock && addToCart(p)}
+                  role="button"
+                  tabIndex={outOfStock ? -1 : 0}
+                  style={{
+                    position: "relative",
+                    textAlign: "left",
+                    padding: "10px",
+                    borderRadius: "var(--radius-lg)",
+                    border:
+                      "1px solid " +
+                      (inCartQty > 0 ? "var(--primary)" : "var(--border)"),
+                    background: outOfStock
+                      ? "var(--surface-alt)"
+                      : "var(--surface)",
+                    cursor: outOfStock ? "not-allowed" : "pointer",
+                    opacity: outOfStock ? 0.5 : 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      left: "8px",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: "var(--radius-pill)",
+                      background: badge.bg,
+                      color: badge.fg,
+                      zIndex: 1,
+                    }}
+                  >
+                    {catLabel(p.category)}
+                  </div>
+                  {inCartQty > 0 && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: "8px",
+                        right: "8px",
+                        minWidth: "22px",
+                        height: "22px",
+                        padding: "0 5px",
+                        borderRadius: "50%",
+                        background: "var(--primary)",
+                        color: "#fff",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        fontFamily: "var(--font-mono)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px solid var(--surface)",
+                        zIndex: 1,
+                      }}
+                    >
+                      <Check size={12} />
+                    </span>
+                  )}
+                  <div
+                    style={{
+                      width: "100%",
+                      aspectRatio: "1/1",
+                      borderRadius: "var(--radius-md)",
+                      overflow: "hidden",
+                      background: "var(--surface-alt)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {p.image ? (
+                      <img
+                        src={p.image}
+                        alt=""
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "contain",
+                        }}
+                      />
+                    ) : (
+                      <Package size={26} color="var(--text-muted)" />
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "13.5px",
+                      fontWeight: 600,
+                      lineHeight: 1.35,
+                      minHeight: "36px",
+                    }}
+                  >
+                    {prodName(p)}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontWeight: 700,
+                          fontSize: "15px",
+                          color: "var(--primary)",
+                        }}
+                      >
+                        {fmt(p.price)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "10.5px",
+                          fontWeight: 600,
+                          color: outOfStock
+                            ? "var(--danger)"
+                            : "var(--text-muted)",
+                        }}
+                      >
+                        {outOfStock
+                          ? t("outOfStock")
+                          : `${p.stock} ${prodUnit(p)}`}
+                      </div>
+                    </div>
+                    {inCartQty > 0 ? (
+                      <div
+                        className="cart-line-qty"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          style={{ width: "28px", height: "28px" }}
+                          onClick={() => changeQty(cartLine.lineId, -1)}
+                        >
+                          <Minus size={13} />
+                        </button>
+                        <span>{inCartQty}</span>
+                        <button
+                          style={{ width: "28px", height: "28px" }}
+                          onClick={() => changeQty(cartLine.lineId, 1)}
+                        >
+                          <Plus size={13} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!outOfStock) addToCart(p);
+                        }}
+                        disabled={outOfStock}
+                        style={{
+                          width: "30px",
+                          height: "30px",
+                          borderRadius: "50%",
+                          border: "none",
+                          background: outOfStock
+                            ? "var(--border)"
+                            : "var(--primary)",
+                          color: "#fff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: outOfStock ? "not-allowed" : "pointer",
+                          boxShadow: "0 2px 6px rgba(0,0,0,.18)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Plus size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div
+          className="pos-invoice"
+          style={{
+            width: "360px",
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            background: "var(--surface)",
+          }}
+        >
+          <div
+            style={{
+              padding: "18px 20px 14px",
+              borderBottom: "1px dashed var(--border)",
+            }}
+          >
+            <div
+              className="invoice-header-row"
+              style={{
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "space-between",
                 gap: "9px",
               }}
             >
-              <Receipt size={18} color="var(--primary)" /> {t("invoice")}
+              <div
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 700,
+                  fontSize: "17px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "9px",
+                }}
+              >
+                <ShoppingCart size={19} color="var(--primary)" />{" "}
+                {t("currentOrderTitle")}
+              </div>
               {cart.length > 0 && (
                 <span
                   style={{
                     fontFamily: "var(--font-mono)",
-                    fontSize: "11px",
+                    fontSize: "11.5px",
                     fontWeight: 700,
                     color: "var(--primary)",
                     background:
                       "color-mix(in srgb, var(--primary) 12%, transparent)",
                     borderRadius: "var(--radius-pill)",
-                    padding: "2px 8px",
+                    padding: "3px 10px",
                   }}
                 >
-                  {cart.reduce((n, c) => n + c.qty, 0)}
+                  {cart.length} {t("itemsWord")}
                 </span>
               )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <button
-                onClick={() => {
-                  const w = window.open(
-                    window.location.pathname + "?display=1",
-                    "pos-customer-display",
-                    "width=1000,height=700",
-                  );
-                  if (w) w.focus();
-                }}
-                title={t("display_openBtn")}
+            {editingTabId && (
+              <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  background: "none",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-pill)",
-                  color: "var(--text-muted)",
+                  marginTop: "8px",
                   fontSize: "11.5px",
                   fontWeight: 600,
-                  cursor: "pointer",
-                  padding: "4px 10px",
+                  color: "var(--primary)",
                 }}
               >
-                <Monitor size={12} />
-              </button>
-              <button
-                onClick={() => setTabListOpen(true)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  background: "none",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-pill)",
-                  color: "var(--text-muted)",
-                  fontSize: "11.5px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  padding: "4px 10px",
-                }}
-              >
-                <Clock3 size={12} />
-                {t("openTabsLabel")}
-                {openTabs.length > 0 && (
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "10.5px",
-                      fontWeight: 700,
-                      color: "#fff",
-                      background: "var(--primary)",
-                      borderRadius: "var(--radius-pill)",
-                      padding: "1px 6px",
-                    }}
-                  >
-                    {openTabs.length}
-                  </span>
-                )}
-              </button>
-              {cart.length > 0 && (
-                <button
-                  onClick={clearCart}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "11.5px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    padding: "4px 2px",
-                    textDecoration: "underline",
-                  }}
-                >
-                  {t("clearCart")}
-                </button>
-              )}
-            </div>
-          </div>
-          {editingTabId && (
+                {t("editingTabBadge", { table: tableLabel })}
+              </div>
+            )}
             <div
               style={{
-                marginTop: "8px",
-                fontSize: "11.5px",
-                fontWeight: 600,
-                color: "var(--primary)",
+                marginTop: "12px",
+                display: "flex",
+                alignItems: "center",
+                gap: "9px",
+                padding: "3px 6px 3px 12px",
+                borderRadius: "var(--radius-pill)",
+                border: "1px solid var(--border)",
+                background: "var(--surface-alt)",
               }}
             >
-              {t("editingTabBadge", { table: tableLabel })}
+              <UserIcon size={15} color="var(--text-muted)" />
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: "8px 0",
+                  border: "none",
+                  background: "none",
+                  fontSize: "13.5px",
+                  fontWeight: 600,
+                }}
+              >
+                <option value="">{t("walkInCustomer")}</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {Number(c.discount_percent) > 0
+                      ? ` (-${c.discount_percent}%)`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} color="var(--text-muted)" />
             </div>
-          )}
-          <div
-            className="invoice-table-row"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginTop: "10px",
-              flexWrap: "wrap",
-            }}
-          >
             <input
               value={tableLabel}
               onChange={(e) => setTableLabel(e.target.value)}
               placeholder={t("tableLabelPlaceholder")}
               style={{
-                flex: 1,
-                minWidth: "120px",
+                marginTop: "8px",
+                width: "100%",
                 padding: "7px 10px",
                 borderRadius: "var(--radius-sm)",
                 border: "1px solid var(--border)",
                 fontSize: "12.5px",
               }}
             />
-            <button
-              onClick={holdTab}
-              disabled={cart.length === 0}
-              title={t("holdTabBtn")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                padding: "7px 10px",
-                borderRadius: "var(--radius-sm)",
-                border: "1px solid var(--primary)",
-                background: "none",
-                color: "var(--primary)",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: cart.length === 0 ? "default" : "pointer",
-                opacity: cart.length === 0 ? 0.5 : 1,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <Clock3 size={13} />
-              {t("holdTabBtn")}
-            </button>
           </div>
-          <select
-            value={selectedCustomerId}
-            onChange={(e) => setSelectedCustomerId(e.target.value)}
-            style={{
-              marginTop: "12px",
-              width: "100%",
-              padding: "9px 10px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border)",
-              fontSize: "13.5px",
-              background: "var(--surface-alt)",
-            }}
-          >
-            <option value="">{t("walkInCustomer")}</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {Number(c.discount_percent) > 0
-                  ? ` (-${c.discount_percent}%)`
-                  : ""}
-              </option>
-            ))}
-          </select>
-        </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "10px 20px" }}>
-          {cart.length === 0 && (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "8px",
-                color: "var(--text-muted)",
-                fontSize: "13.5px",
-                textAlign: "center",
-                padding: "44px 0",
-              }}
-            >
-              <ShoppingCart size={26} color="var(--border)" />
-              {t("emptyCart")}
-            </div>
-          )}
-          {cart.map((c) => {
-            const lineGross = c.price * c.qty;
-            const lineDiscPct = Number(c.discountPercent) || 0;
-            const lineDisc = (lineGross * lineDiscPct) / 100;
-            const lineNet = lineGross - lineDisc;
-            return (
+          <div style={{ flex: 1, overflowY: "auto", padding: "10px 16px" }}>
+            {cart.length === 0 && (
               <div
-                key={c.lineId}
-                className="cart-line-row"
                 style={{
                   display: "flex",
-                  alignItems: "flex-start",
-                  gap: "10px",
-                  padding: "8px 6px",
-                  marginBottom: "2px",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "8px",
+                  color: "var(--text-muted)",
+                  fontSize: "13.5px",
+                  textAlign: "center",
+                  padding: "44px 0",
                 }}
               >
-                <ProductThumb image={c.image} size={34} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {c.name}
-                  </div>
-                  <div
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "11.5px",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    {fmt(c.price)} × {c.qty} ={" "}
-                    {lineDiscPct > 0 ? (
-                      <>
+                <ShoppingCart size={26} color="var(--border)" />
+                {t("emptyCart")}
+              </div>
+            )}
+            {cart.map((c) => {
+              const lineGross = c.price * c.qty;
+              const lineDiscPct = Number(c.discountPercent) || 0;
+              const lineDisc = (lineGross * lineDiscPct) / 100;
+              const lineNet = lineGross - lineDisc;
+              return (
+                <div
+                  key={c.lineId}
+                  className="cart-line-row"
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                    padding: "10px",
+                    marginBottom: "8px",
+                    borderRadius: "var(--radius-lg)",
+                    background: "var(--surface-alt)",
+                  }}
+                >
+                  <ProductThumb image={c.image} size={40} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "13.5px",
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {c.name}
+                      </div>
+                      <button
+                        className="cart-line-remove"
+                        onClick={() => removeFromCart(c.lineId)}
+                        style={{
+                          ...iconBtnStyle,
+                          color: "var(--danger)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "11.5px",
+                        color: "var(--text-muted)",
+                        marginTop: "1px",
+                      }}
+                    >
+                      {fmt(c.price)} × {c.qty} ={" "}
+                      {lineDiscPct > 0 ? (
+                        <>
+                          <span
+                            style={{
+                              textDecoration: "line-through",
+                              opacity: 0.55,
+                            }}
+                          >
+                            {fmt(lineGross)}
+                          </span>{" "}
+                          <span
+                            style={{ color: "var(--primary)", fontWeight: 700 }}
+                          >
+                            {fmt(lineNet)}
+                          </span>
+                        </>
+                      ) : (
+                        <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                          {fmt(lineGross)}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginTop: "8px",
+                        gap: "8px",
+                      }}
+                    >
+                      <div className="cart-line-qty" style={{ flexShrink: 0 }}>
+                        <button onClick={() => changeQty(c.lineId, -1)}>
+                          <Minus size={14} />
+                        </button>
+                        <span>{c.qty}</span>
+                        <button onClick={() => changeQty(c.lineId, 1)}>
+                          <Plus size={14} />
+                        </button>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          minWidth: 0,
+                        }}
+                      >
+                        <Percent size={10} color="var(--text-muted)" />
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={c.discountPercent || ""}
+                          onChange={(e) =>
+                            setItemDiscount(c.lineId, e.target.value)
+                          }
+                          placeholder="0"
+                          style={{
+                            width: "38px",
+                            padding: "2px 4px",
+                            fontSize: "11px",
+                            fontFamily: "var(--font-mono)",
+                            borderRadius: "var(--radius-sm)",
+                            border: "1px solid var(--border)",
+                            textAlign: "right",
+                            background: "var(--surface)",
+                          }}
+                        />
                         <span
                           style={{
-                            textDecoration: "line-through",
-                            opacity: 0.55,
+                            fontSize: "10px",
+                            color: "var(--text-muted)",
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          {fmt(lineGross)}
-                        </span>{" "}
-                        <span
-                          style={{ color: "var(--primary)", fontWeight: 700 }}
-                        >
-                          {fmt(lineNet)}
+                          {t("itemDiscountLabel")}
                         </span>
-                      </>
-                    ) : (
-                      <span style={{ color: "var(--text)", fontWeight: 700 }}>
-                        {fmt(lineGross)}
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      marginTop: "3px",
-                    }}
-                  >
-                    <Percent size={10} color="var(--text-muted)" />
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={c.discountPercent || ""}
-                      onChange={(e) =>
-                        setItemDiscount(c.lineId, e.target.value)
-                      }
-                      placeholder="0"
-                      style={{
-                        width: "42px",
-                        padding: "1px 4px",
-                        fontSize: "11px",
-                        fontFamily: "var(--font-mono)",
-                        borderRadius: "var(--radius-sm)",
-                        border: "1px solid var(--border)",
-                        textAlign: "right",
-                      }}
-                    />
-                    <span
-                      style={{ fontSize: "10.5px", color: "var(--text-muted)" }}
-                    >
-                      {t("itemDiscountLabel")}
-                    </span>
+                      </div>
+                    </div>
                     {c.qty >= 2 && (
                       <button
                         type="button"
                         onClick={() => splitCartLine(c.lineId)}
                         title={t("splitLine")}
                         style={{
-                          marginLeft: "auto",
+                          marginTop: "4px",
                           background: "none",
                           border: "none",
                           color: "var(--primary)",
@@ -10027,433 +10324,588 @@ function POSTab(props) {
                     )}
                   </div>
                 </div>
-                <div className="cart-line-qty">
-                  <button onClick={() => changeQty(c.lineId, -1)}>
-                    <Minus size={14} />
-                  </button>
-                  <span>{c.qty}</span>
-                  <button onClick={() => changeQty(c.lineId, 1)}>
-                    <Plus size={14} />
-                  </button>
-                </div>
-                <button
-                  className="cart-line-remove"
-                  onClick={() => removeFromCart(c.lineId)}
-                  style={{ ...iconBtnStyle, color: "var(--danger)" }}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
 
-        <div
-          style={{
-            padding: "16px 20px",
-            borderTop: "1px dashed var(--border)",
-            background: "var(--surface-alt)",
-          }}
-        >
-          <Row label={t("subtotal")} value={fmt(subtotal)} />
-          {itemDiscountTotal > 0 && (
-            <Row
-              label={t("itemDiscountLabel")}
-              value={`-${fmt(itemDiscountTotal)}`}
-            />
-          )}
-          {customerDiscountPercent > 0 && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                margin: "2px 0 3px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "11.5px",
-                  color: "var(--primary)",
-                  fontWeight: 600,
-                }}
-              >
-                {t("customerDiscountBadge", {
-                  percent: customerDiscountPercent,
-                })}
-              </span>
-              {(discountMode !== "percent" ||
-                discount !== String(customerDiscountPercent)) && (
-                <button
-                  onClick={resetCustomerDiscount}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--primary)",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    textDecoration: "underline",
-                    padding: 0,
-                  }}
-                >
-                  {t("reapplyDiscount")}
-                </button>
-              )}
-            </div>
-          )}
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              margin: "7px 0",
+              padding: "16px 20px",
+              borderTop: "1px dashed var(--border)",
+              background: "var(--surface-alt)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-              <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                {t("discountLabel")}
-              </span>
+            <Row label={t("subtotal")} value={fmt(subtotal)} />
+            {itemDiscountTotal > 0 && (
+              <Row
+                label={t("itemDiscountLabel")}
+                value={`-${fmt(itemDiscountTotal)}`}
+              />
+            )}
+            {customerDiscountPercent > 0 && (
               <div
                 style={{
                   display: "flex",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-sm)",
-                  overflow: "hidden",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  margin: "2px 0 3px",
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (discountMode !== "amount") {
-                      setDiscountMode("amount");
-                      setDiscount("");
-                    }
-                  }}
+                <span
                   style={{
-                    padding: "2px 8px",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    border: "none",
-                    cursor: "pointer",
-                    background:
-                      discountMode === "amount"
-                        ? "var(--primary)"
-                        : "var(--surface)",
-                    color:
-                      discountMode === "amount" ? "#fff" : "var(--text-muted)",
+                    fontSize: "11.5px",
+                    color: "var(--primary)",
+                    fontWeight: 600,
                   }}
                 >
-                  $
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (discountMode !== "percent") {
-                      setDiscountMode("percent");
-                      setDiscount("");
-                    }
-                  }}
-                  style={{
-                    padding: "2px 8px",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    border: "none",
-                    cursor: "pointer",
-                    background:
-                      discountMode === "percent"
-                        ? "var(--primary)"
-                        : "var(--surface)",
-                    color:
-                      discountMode === "percent" ? "#fff" : "var(--text-muted)",
-                  }}
-                >
-                  %
-                </button>
-              </div>
-            </div>
-            <input
-              type="number"
-              min="0"
-              max={discountMode === "percent" ? 100 : undefined}
-              value={discount}
-              onChange={(e) => setDiscount(e.target.value)}
-              placeholder="0.00"
-              style={{
-                width: "86px",
-                textAlign: "right",
-                padding: "5px 9px",
-                borderRadius: "var(--radius-sm)",
-                border: "1px solid var(--border)",
-                fontFamily: "var(--font-mono)",
-                fontSize: "13px",
-              }}
-            />
-          </div>
-          <Row
-            label={t("total")}
-            value={fmt(total)}
-            subValue={fmtKhr(total, khrRate)}
-            bold
-            big
-          />
-          {(() => {
-            const khqrDynamicReady =
-              khqrDynamicEnabled &&
-              khqrAccountId &&
-              khqrMerchantName &&
-              khqrMerchantCity;
-            const khqrAvailable =
-              payKhqrEnabled && (khqrDynamicReady || khqrImage);
-            return (
-              <>
-                {khqrAvailable && (
-                  <div
-                    style={{ display: "flex", gap: "8px", margin: "9px 0 5px" }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("cash")}
-                      style={{
-                        flex: 1,
-                        padding: "13px 10px",
-                        borderRadius: "var(--radius-md)",
-                        border:
-                          paymentMethod === "cash"
-                            ? "2px solid var(--primary)"
-                            : "1px solid var(--border)",
-                        background:
-                          paymentMethod === "cash"
-                            ? "color-mix(in srgb, var(--primary) 10%, transparent)"
-                            : "var(--surface)",
-                        fontSize: "13.5px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {t("pos_payCash")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("khqr")}
-                      style={{
-                        flex: 1,
-                        padding: "13px 10px",
-                        borderRadius: "var(--radius-md)",
-                        border:
-                          paymentMethod === "khqr"
-                            ? "2px solid var(--primary)"
-                            : "1px solid var(--border)",
-                        background:
-                          paymentMethod === "khqr"
-                            ? "color-mix(in srgb, var(--primary) 10%, transparent)"
-                            : "var(--surface)",
-                        fontSize: "13.5px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {t("pos_payKhqr")}
-                    </button>
-                  </div>
-                )}
-                {paymentMethod === "khqr" && khqrAvailable ? (
-                  <div
+                  {t("customerDiscountBadge", {
+                    percent: customerDiscountPercent,
+                  })}
+                </span>
+                {(discountMode !== "percent" ||
+                  discount !== String(customerDiscountPercent)) && (
+                  <button
+                    onClick={resetCustomerDiscount}
                     style={{
-                      textAlign: "center",
-                      padding: "12px",
-                      margin: "5px 0",
-                      borderRadius: "var(--radius-lg)",
-                      border: "1px solid var(--border)",
-                      background: "var(--surface-alt)",
+                      background: "none",
+                      border: "none",
+                      color: "var(--primary)",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      padding: 0,
                     }}
                   >
-                    {khqrDynamicReady ? (
-                      <>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "6px",
-                            justifyContent: "center",
-                            marginBottom: "10px",
-                          }}
-                        >
-                          {["usd", "khr"].map((cur) => (
-                            <button
-                              key={cur}
-                              type="button"
-                              onClick={() => setKhqrCurrency(cur)}
-                              style={{
-                                padding: "4px 12px",
-                                borderRadius: "var(--radius-pill)",
-                                border:
-                                  khqrCurrency === cur
-                                    ? "2px solid var(--primary)"
-                                    : "1px solid var(--border)",
-                                background:
-                                  khqrCurrency === cur
-                                    ? "color-mix(in srgb, var(--primary) 10%, transparent)"
-                                    : "var(--surface)",
-                                fontSize: "11.5px",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                            >
-                              {cur === "usd" ? "USD $" : "KHR ៛"}
-                            </button>
-                          ))}
-                        </div>
-                        <DynamicQrImage payload={displayKhqrPayload} />
-                        {paywayReady && paywayError && (
-                          <div
-                            style={{
-                              marginTop: "4px",
-                              fontSize: "11.5px",
-                              color: "var(--danger)",
-                              textAlign: "center",
-                            }}
-                          >
-                            {paywayError}
-                          </div>
-                        )}
-                        <div
-                          style={{
-                            marginTop: "8px",
-                            fontSize: "12.5px",
-                            fontWeight: 700,
-                            fontFamily: "var(--font-mono)",
-                          }}
-                        >
-                          {khqrCurrency === "khr"
-                            ? fmtKhr(total, khrRate)
-                            : fmt(total)}
-                        </div>
-                      </>
-                    ) : (
-                      <img
-                        src={khqrImage}
-                        alt="KHQR"
-                        style={{
-                          width: "150px",
-                          height: "150px",
-                          objectFit: "contain",
-                          margin: "0 auto",
-                          background: "#fff",
-                          borderRadius: "var(--radius-sm)",
-                          padding: "6px",
-                        }}
-                      />
-                    )}
-                  </div>
-                ) : null}
-              </>
-            );
-          })()}
-          {!(
-            paymentMethod === "khqr" &&
-            payKhqrEnabled &&
-            (khqrImage ||
-              (khqrDynamicEnabled &&
-                khqrAccountId &&
-                khqrMerchantName &&
-                khqrMerchantCity))
-          ) && (
+                    {t("reapplyDiscount")}
+                  </button>
+                )}
+              </div>
+            )}
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                margin: "9px 0 5px",
+                margin: "7px 0",
               }}
             >
-              <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                {t("paymentReceived")}
-              </span>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "7px" }}
+              >
+                <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                  {t("discountLabel")}
+                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (discountMode !== "amount") {
+                        setDiscountMode("amount");
+                        setDiscount("");
+                      }
+                    }}
+                    style={{
+                      padding: "2px 8px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                      background:
+                        discountMode === "amount"
+                          ? "var(--primary)"
+                          : "var(--surface)",
+                      color:
+                        discountMode === "amount"
+                          ? "#fff"
+                          : "var(--text-muted)",
+                    }}
+                  >
+                    $
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (discountMode !== "percent") {
+                        setDiscountMode("percent");
+                        setDiscount("");
+                      }
+                    }}
+                    style={{
+                      padding: "2px 8px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                      background:
+                        discountMode === "percent"
+                          ? "var(--primary)"
+                          : "var(--surface)",
+                      color:
+                        discountMode === "percent"
+                          ? "#fff"
+                          : "var(--text-muted)",
+                    }}
+                  >
+                    %
+                  </button>
+                </div>
+              </div>
               <input
                 type="number"
                 min="0"
-                value={payment}
-                onChange={(e) => setPayment(e.target.value)}
+                max={discountMode === "percent" ? 100 : undefined}
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
                 placeholder="0.00"
                 style={{
-                  width: "106px",
+                  width: "86px",
                   textAlign: "right",
-                  padding: "6px 9px",
+                  padding: "5px 9px",
                   borderRadius: "var(--radius-sm)",
                   border: "1px solid var(--border)",
                   fontFamily: "var(--font-mono)",
-                  fontSize: "14px",
-                  fontWeight: 700,
+                  fontSize: "13px",
                 }}
               />
             </div>
-          )}
-          {paymentMethod !== "khqr" && total > 0 && (
-            <div
+            <Row
+              label={t("total")}
+              value={fmt(total)}
+              subValue={fmtKhr(total, khrRate)}
+              bold
+              big
+            />
+            {(() => {
+              const khqrDynamicReady =
+                khqrDynamicEnabled &&
+                khqrAccountId &&
+                khqrMerchantName &&
+                khqrMerchantCity;
+              const khqrAvailable =
+                payKhqrEnabled && (khqrDynamicReady || khqrImage);
+              return (
+                <>
+                  {khqrAvailable && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        margin: "9px 0 5px",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod("cash")}
+                        style={{
+                          flex: 1,
+                          padding: "14px 10px",
+                          borderRadius: "var(--radius-md)",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: "6px",
+                          border:
+                            paymentMethod === "cash"
+                              ? "none"
+                              : "1px solid var(--border)",
+                          background:
+                            paymentMethod === "cash"
+                              ? "var(--primary)"
+                              : "var(--surface)",
+                          color:
+                            paymentMethod === "cash" ? "#fff" : "var(--text)",
+                          fontSize: "13.5px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Banknote size={20} />
+                        {t("pos_payCash")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod("khqr")}
+                        style={{
+                          flex: 1,
+                          padding: "14px 10px",
+                          borderRadius: "var(--radius-md)",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: "6px",
+                          border:
+                            paymentMethod === "khqr"
+                              ? "none"
+                              : "1px solid var(--border)",
+                          background:
+                            paymentMethod === "khqr"
+                              ? "var(--primary)"
+                              : "var(--surface)",
+                          color:
+                            paymentMethod === "khqr" ? "#fff" : "var(--text)",
+                          fontSize: "13.5px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <QrCode size={20} />
+                        {t("pos_payKhqr")}
+                      </button>
+                    </div>
+                  )}
+                  {paymentMethod === "khqr" && khqrAvailable ? (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        padding: "12px",
+                        margin: "5px 0",
+                        borderRadius: "var(--radius-lg)",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface-alt)",
+                      }}
+                    >
+                      {khqrDynamicReady ? (
+                        <>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "6px",
+                              justifyContent: "center",
+                              marginBottom: "10px",
+                            }}
+                          >
+                            {["usd", "khr"].map((cur) => (
+                              <button
+                                key={cur}
+                                type="button"
+                                onClick={() => setKhqrCurrency(cur)}
+                                style={{
+                                  padding: "4px 12px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border:
+                                    khqrCurrency === cur
+                                      ? "2px solid var(--primary)"
+                                      : "1px solid var(--border)",
+                                  background:
+                                    khqrCurrency === cur
+                                      ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                                      : "var(--surface)",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {cur === "usd" ? "USD $" : "KHR ៛"}
+                              </button>
+                            ))}
+                          </div>
+                          <DynamicQrImage payload={displayKhqrPayload} />
+                          {paywayReady && paywayError && (
+                            <div
+                              style={{
+                                marginTop: "4px",
+                                fontSize: "11.5px",
+                                color: "var(--danger)",
+                                textAlign: "center",
+                              }}
+                            >
+                              {paywayError}
+                            </div>
+                          )}
+                          <div
+                            style={{
+                              marginTop: "8px",
+                              fontSize: "12.5px",
+                              fontWeight: 700,
+                              fontFamily: "var(--font-mono)",
+                            }}
+                          >
+                            {khqrCurrency === "khr"
+                              ? fmtKhr(total, khrRate)
+                              : fmt(total)}
+                          </div>
+                        </>
+                      ) : (
+                        <img
+                          src={khqrImage}
+                          alt="KHQR"
+                          style={{
+                            width: "150px",
+                            height: "150px",
+                            objectFit: "contain",
+                            margin: "0 auto",
+                            background: "#fff",
+                            borderRadius: "var(--radius-sm)",
+                            padding: "6px",
+                          }}
+                        />
+                      )}
+                    </div>
+                  ) : null}
+                </>
+              );
+            })()}
+            {!(
+              paymentMethod === "khqr" &&
+              payKhqrEnabled &&
+              (khqrImage ||
+                (khqrDynamicEnabled &&
+                  khqrAccountId &&
+                  khqrMerchantName &&
+                  khqrMerchantCity))
+            ) && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  margin: "9px 0 5px",
+                }}
+              >
+                <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                  {t("paymentReceived")}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  value={payment}
+                  onChange={(e) => setPayment(e.target.value)}
+                  placeholder="0.00"
+                  style={{
+                    width: "106px",
+                    textAlign: "right",
+                    padding: "6px 9px",
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px solid var(--border)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                  }}
+                />
+              </div>
+            )}
+            {paymentMethod !== "khqr" && total > 0 && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(5, 1fr)",
+                  gap: "5px",
+                  marginBottom: "9px",
+                }}
+              >
+                <button
+                  type="button"
+                  className="quick-cash-btn"
+                  onClick={() => setPayment(total.toFixed(2))}
+                >
+                  {t("exactAmount")}
+                </button>
+                {Array.from(
+                  new Set(
+                    [1, 5, 10, 20]
+                      .map((step) => Math.ceil(total / step) * step)
+                      .filter((v) => v > 0),
+                  ),
+                )
+                  .sort((a, b) => a - b)
+                  .slice(0, 4)
+                  .map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      className="quick-cash-btn"
+                      onClick={() => setPayment(String(v))}
+                    >
+                      ${v}
+                    </button>
+                  ))}
+              </div>
+            )}
+            <Row
+              label={t("changeDue")}
+              value={fmt(Math.max(change, 0))}
+              subValue={fmtKhr(Math.max(change, 0), khrRate)}
+              accent
+            />
+            <button
+              onClick={completeSale}
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, 1fr)",
-                gap: "5px",
-                marginBottom: "9px",
+                width: "100%",
+                marginTop: "14px",
+                padding: "14px",
+                borderRadius: "var(--radius-md)",
+                border: "none",
+                background: "var(--primary)",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: "15px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "9px",
               }}
             >
-              <button
-                type="button"
-                className="quick-cash-btn"
-                onClick={() => setPayment(total.toFixed(2))}
-              >
-                {t("exactAmount")}
-              </button>
-              {Array.from(
-                new Set(
-                  [1, 5, 10, 20]
-                    .map((step) => Math.ceil(total / step) * step)
-                    .filter((v) => v > 0),
-                ),
-              )
-                .sort((a, b) => a - b)
-                .slice(0, 4)
-                .map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    className="quick-cash-btn"
-                    onClick={() => setPayment(String(v))}
-                  >
-                    ${v}
-                  </button>
-                ))}
-            </div>
-          )}
-          <Row
-            label={t("changeDue")}
-            value={fmt(Math.max(change, 0))}
-            subValue={fmtKhr(Math.max(change, 0), khrRate)}
-            accent
-          />
-          <button
-            onClick={completeSale}
-            style={{
-              width: "100%",
-              marginTop: "14px",
-              padding: "13px",
-              borderRadius: "var(--radius-md)",
-              border: "none",
-              background: "var(--primary)",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: "15px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "9px",
-            }}
-          >
-            <CheckCircle2 size={18} /> {t("completeSale")}
-          </button>
+              {t("completeSale")} <ChevronRight size={18} />
+            </button>
+          </div>
         </div>
       </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          padding: "12px 22px",
+          borderTop: "1px solid var(--border)",
+          background: "var(--surface)",
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setQuickActionsOpen((o) => !o)}
+            style={quickActionBtnStyle}
+          >
+            <Menu size={15} /> {t("quickActionsLabel")}
+          </button>
+          {quickActionsOpen && (
+            <>
+              <div
+                onClick={() => setQuickActionsOpen(false)}
+                style={{ position: "fixed", inset: 0, zIndex: 19 }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 6px)",
+                  left: 0,
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-md)",
+                  boxShadow: "var(--shadow-md)",
+                  overflow: "hidden",
+                  zIndex: 20,
+                  minWidth: "190px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickActionsOpen(false);
+                    onOpenScanner();
+                  }}
+                  style={dropdownItemStyle}
+                >
+                  <Camera size={14} /> {t("scanBarcode")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickActionsOpen(false);
+                    const w = window.open(
+                      window.location.pathname + "?display=1",
+                      "pos-customer-display",
+                      "width=1000,height=700",
+                    );
+                    if (w) w.focus();
+                  }}
+                  style={{ ...dropdownItemStyle, borderBottom: "none" }}
+                >
+                  <Monitor size={14} /> {t("display_openBtn")}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={clearCart}
+          disabled={cart.length === 0}
+          style={{
+            ...quickActionBtnStyle,
+            border: "none",
+            background: "var(--primary)",
+            color: "#fff",
+            opacity: cart.length === 0 ? 0.5 : 1,
+            cursor: cart.length === 0 ? "default" : "pointer",
+          }}
+        >
+          <ShoppingCart size={15} /> {t("newSaleBtn")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTabListOpen(true)}
+          style={quickActionBtnStyle}
+        >
+          <Clock3 size={15} /> {t("openTabBtn")}
+          {openTabs.length > 0 && (
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "10.5px",
+                fontWeight: 700,
+                color: "#fff",
+                background: "var(--primary)",
+                borderRadius: "var(--radius-pill)",
+                padding: "1px 6px",
+              }}
+            >
+              {openTabs.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={holdTab}
+          disabled={cart.length === 0}
+          style={{
+            ...quickActionBtnStyle,
+            opacity: cart.length === 0 ? 0.5 : 1,
+            cursor: cart.length === 0 ? "default" : "pointer",
+          }}
+        >
+          <Clock3 size={15} /> {t("holdTabBtn")}
+        </button>
+        <button
+          type="button"
+          onClick={onPrintLastReceipt}
+          disabled={!lastSale}
+          title={!lastSale ? t("noLastReceipt") : undefined}
+          style={{
+            ...quickActionBtnStyle,
+            opacity: !lastSale ? 0.5 : 1,
+            cursor: !lastSale ? "default" : "pointer",
+          }}
+        >
+          <Printer size={15} /> {t("printLastReceiptBtn")}
+        </button>
+        <button
+          type="button"
+          onClick={clearCart}
+          disabled={cart.length === 0}
+          style={{
+            ...quickActionBtnStyle,
+            borderColor: "var(--danger)",
+            color: "var(--danger)",
+            opacity: cart.length === 0 ? 0.5 : 1,
+            cursor: cart.length === 0 ? "default" : "pointer",
+          }}
+        >
+          <Trash2 size={15} /> {t("clearCart")}
+        </button>
+      </div>
+
       {tabListOpen && (
         <OpenTabsModal
           openTabs={openTabs}
@@ -15078,9 +15530,8 @@ function SettingsTab({
   );
   const [khqrAutoCompleteDraft, setKhqrAutoCompleteDraft] =
     useState(!!khqrAutoComplete);
-  const [khqrTelegramEnabledDraft, setKhqrTelegramEnabledDraft] = useState(
-    !!khqrTelegramEnabled,
-  );
+  const [khqrTelegramEnabledDraft, setKhqrTelegramEnabledDraft] =
+    useState(!!khqrTelegramEnabled);
   const [khqrTelegramBotTokenDraft, setKhqrTelegramBotTokenDraft] = useState(
     khqrTelegramBotToken || "",
   );
@@ -15088,9 +15539,8 @@ function SettingsTab({
     khqrTelegramChatId || "",
   );
   const [khqrTelegramTestState, setKhqrTelegramTestState] = useState(""); // "", "sending", "ok", "error"
-  const [khqrPaywayEnabledDraft, setKhqrPaywayEnabledDraft] = useState(
-    !!khqrPaywayEnabled,
-  );
+  const [khqrPaywayEnabledDraft, setKhqrPaywayEnabledDraft] =
+    useState(!!khqrPaywayEnabled);
   const [khqrPaywayMerchantIdDraft, setKhqrPaywayMerchantIdDraft] = useState(
     khqrPaywayMerchantId || "",
   );
