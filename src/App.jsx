@@ -518,6 +518,35 @@ const fmtKhr = (usd, rate = KHR_PER_USD_DEFAULT) => {
     Math.round(((Number(usd) || 0) * (Number(rate) || 0)) / 100) * 100;
   return riel.toLocaleString("en-US") + "៛";
 };
+// Live thousands-separator formatting for a numeric text input while the
+// user is still typing. `raw` is the unformatted string kept in state
+// (digits, at most one ".", at most 2 decimal digits when allowDecimal).
+// Preserves a trailing "." or partial decimals so typing "20." or "20.5"
+// doesn't get stomped on every keystroke.
+const cleanMoneyInput = (value, allowDecimal) => {
+  let v = allowDecimal
+    ? value.replace(/[^0-9.]/g, "")
+    : value.replace(/\D/g, "");
+  if (allowDecimal) {
+    const firstDot = v.indexOf(".");
+    if (firstDot !== -1) {
+      v =
+        v.slice(0, firstDot + 1) +
+        v
+          .slice(firstDot + 1)
+          .replace(/\./g, "")
+          .slice(0, 2);
+    }
+  }
+  return v;
+};
+const formatMoneyInput = (raw, allowDecimal) => {
+  if (raw === "" || raw === undefined || raw === null) return "";
+  if (!allowDecimal) return Number(raw).toLocaleString("en-US");
+  const [intPart, decPart] = raw.split(".");
+  const formattedInt = Number(intPart || 0).toLocaleString("en-US");
+  return decPart !== undefined ? `${formattedInt}.${decPart}` : formattedInt;
+};
 // ---------------------------------------------------------------------
 // QRCode for JavaScript — Copyright (c) 2009 Kazuhiko Arase, MIT license
 // http://www.d-project.com/  |  http://www.opensource.org/licenses/mit-license.php
@@ -1614,7 +1643,8 @@ const STRINGS = {
   chartTitle: { km: "និន្នាការលក់", en: "Sales trend" },
   chartNoData: { km: "មិនទាន់មានទិន្នន័យលក់នៅឡើយ", en: "No sales data yet" },
   total: { km: "សរុប", en: "Total" },
-  paymentReceived: { km: "ប្រាក់ទទួល", en: "Cash received" },
+  paymentReceived: { km: "ប្រាក់ទទួល ($)", en: "Cash received ($)" },
+  paymentReceivedRiel: { km: "ប្រាក់ទទួល (៛)", en: "Cash received (៛)" },
   exactAmount: { km: "គ្រប់ចំនួន", en: "Exact" },
   changeDue: { km: "ប្រាក់អាប់", en: "Change due" },
   completeSale: { km: "បញ្ចប់ការលក់", en: "Complete sale" },
@@ -3145,6 +3175,7 @@ function POSApp() {
   const [discountMode, setDiscountMode] = useState("amount"); // 'amount' ($) or 'percent' (%)
   const [redeemPoints, setRedeemPoints] = useState("");
   const [payment, setPayment] = useState("");
+  const [paymentRiel, setPaymentRiel] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [receipt, setReceipt] = useState(null);
@@ -4085,7 +4116,13 @@ function POSApp() {
   );
   const pointsDiscount = redeemPointsNum / POINTS_PER_DOLLAR;
   const total = afterDiscount - pointsDiscount;
-  const paymentNum = Number(payment) || 0;
+  const paymentRielNum = Number(paymentRiel) || 0;
+  // Riel cash received converts to its USD equivalent at the shop's KHR
+  // rate so it can combine with USD cash received into one "amount
+  // tendered" total — common in Cambodia where a customer pays with a mix
+  // of dollar notes and riel notes for the same sale.
+  const paymentNum =
+    (Number(payment) || 0) + (khrRate ? paymentRielNum / khrRate : 0);
   const change = paymentNum - total;
 
   // ---------- Dynamic KHQR payload, mirrored for the customer display ----------
@@ -4219,6 +4256,7 @@ function POSApp() {
     setDiscountMode("amount");
     setRedeemPoints("");
     setPayment("");
+    setPaymentRiel("");
     setPaymentMethod("cash");
     setSelectedCustomerId("");
     setTableLabel("");
@@ -4333,6 +4371,8 @@ function POSApp() {
       total,
       paid: paymentMethod === "khqr" ? total : paymentNum,
       change: paymentMethod === "khqr" ? 0 : change,
+      paidUsd: paymentMethod === "cash" ? Number(payment) || 0 : null,
+      paidRiel: paymentMethod === "cash" ? Number(paymentRiel) || 0 : null,
       paymentMethod,
       customerId: customer ? customer.id : null,
       customerName: customer ? customer.name : null,
@@ -7075,6 +7115,8 @@ function POSApp() {
               total={total}
               payment={payment}
               setPayment={setPayment}
+              paymentRiel={paymentRiel}
+              setPaymentRiel={setPaymentRiel}
               paymentMethod={paymentMethod}
               setPaymentMethod={setPaymentMethod}
               payCashEnabled={payCashEnabled}
@@ -7615,7 +7657,7 @@ function FontStyles() {
         opacity: 1;
       }
       .quick-cash-btn {
-        padding: 11px 6px;
+        padding: 7px 6px;
         border-radius: var(--radius-sm);
         border: 1px solid var(--border);
         background: var(--surface);
@@ -7751,10 +7793,21 @@ function FontStyles() {
         }
         .app-main { padding-top: 54px; }
 
-        .pos-layout { overflow-y: auto; }
+        .pos-layout { overflow-y: hidden; }
         .pos-layout-row { flex-direction: column; }
-        .pos-products { border-right: none !important; border-bottom: 1px solid var(--border); }
-        .pos-invoice { width: 100% !important; }
+        .pos-products {
+          border-right: none !important;
+          border-bottom: 1px solid var(--border);
+          flex: 1.1 1 0 !important;
+          min-height: 0;
+          overflow-y: auto;
+        }
+        .pos-invoice {
+          width: 100% !important;
+          flex: 1 1 0 !important;
+          min-height: 0;
+          max-height: 58vh;
+        }
 
         .responsive-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
         .responsive-grid-2 { grid-template-columns: 1fr !important; }
@@ -9124,6 +9177,8 @@ function POSTab(props) {
     total,
     payment,
     setPayment,
+    paymentRiel,
+    setPaymentRiel,
     paymentMethod,
     setPaymentMethod,
     payCashEnabled,
@@ -10036,7 +10091,7 @@ function POSTab(props) {
         >
           <div
             style={{
-              padding: "18px 20px 14px",
+              padding: "12px 20px 8px",
               borderBottom: "1px dashed var(--border)",
             }}
           >
@@ -10093,11 +10148,11 @@ function POSTab(props) {
             )}
             <div
               style={{
-                marginTop: "12px",
+                marginTop: "8px",
                 display: "flex",
                 alignItems: "center",
                 gap: "9px",
-                padding: "3px 6px 3px 12px",
+                padding: "2px 6px 2px 12px",
                 borderRadius: "var(--radius-pill)",
                 border: "1px solid var(--border)",
                 background: "var(--surface-alt)",
@@ -10133,9 +10188,9 @@ function POSTab(props) {
               onChange={(e) => setTableLabel(e.target.value)}
               placeholder={t("tableLabelPlaceholder")}
               style={{
-                marginTop: "8px",
+                marginTop: "6px",
                 width: "100%",
-                padding: "7px 10px",
+                padding: "6px 10px",
                 borderRadius: "var(--radius-sm)",
                 border: "1px solid var(--border)",
                 fontSize: "12.5px",
@@ -10143,7 +10198,14 @@ function POSTab(props) {
             />
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: "10px 16px" }}>
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "10px 16px",
+              minHeight: "150px",
+            }}
+          >
             {cart.length === 0 && (
               <div
                 style={{
@@ -10330,9 +10392,10 @@ function POSTab(props) {
 
           <div
             style={{
-              padding: "16px 20px",
+              padding: "10px 20px 14px",
               borderTop: "1px dashed var(--border)",
               background: "var(--surface-alt)",
+              flexShrink: 0,
             }}
           >
             <Row label={t("subtotal")} value={fmt(subtotal)} />
@@ -10387,7 +10450,7 @@ function POSTab(props) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                margin: "7px 0",
+                margin: "4px 0",
               }}
             >
               <div
@@ -10498,7 +10561,7 @@ function POSTab(props) {
                       style={{
                         display: "flex",
                         gap: "8px",
-                        margin: "9px 0 5px",
+                        margin: "6px 0 4px",
                       }}
                     >
                       <button
@@ -10506,12 +10569,12 @@ function POSTab(props) {
                         onClick={() => setPaymentMethod("cash")}
                         style={{
                           flex: 1,
-                          padding: "14px 10px",
+                          padding: "9px 10px",
                           borderRadius: "var(--radius-md)",
                           display: "flex",
                           flexDirection: "column",
                           alignItems: "center",
-                          gap: "6px",
+                          gap: "4px",
                           border:
                             paymentMethod === "cash"
                               ? "none"
@@ -10535,12 +10598,12 @@ function POSTab(props) {
                         onClick={() => setPaymentMethod("khqr")}
                         style={{
                           flex: 1,
-                          padding: "14px 10px",
+                          padding: "9px 10px",
                           borderRadius: "var(--radius-md)",
                           display: "flex",
                           flexDirection: "column",
                           alignItems: "center",
-                          gap: "6px",
+                          gap: "4px",
                           border:
                             paymentMethod === "khqr"
                               ? "none"
@@ -10662,34 +10725,101 @@ function POSTab(props) {
                   khqrMerchantName &&
                   khqrMerchantCity))
             ) && (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    margin: "6px 0 4px",
+                  }}
+                >
+                  <span
+                    style={{ fontSize: "13px", color: "var(--text-muted)" }}
+                  >
+                    {t("paymentReceived")}
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={formatMoneyInput(payment, true)}
+                    onChange={(e) =>
+                      setPayment(cleanMoneyInput(e.target.value, true))
+                    }
+                    placeholder="0.00"
+                    style={{
+                      width: "106px",
+                      textAlign: "right",
+                      padding: "6px 9px",
+                      borderRadius: "var(--radius-sm)",
+                      border: "1px solid var(--border)",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                    }}
+                  />
+                </div>
+                {paymentMethod === "cash" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      margin: "0 0 4px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {t("paymentReceivedRiel")}
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatMoneyInput(paymentRiel, false)}
+                      onChange={(e) =>
+                        setPaymentRiel(cleanMoneyInput(e.target.value, false))
+                      }
+                      placeholder="0"
+                      style={{
+                        width: "106px",
+                        textAlign: "right",
+                        padding: "6px 9px",
+                        borderRadius: "var(--radius-sm)",
+                        border: "1px solid var(--border)",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "14px",
+                        fontWeight: 700,
+                      }}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+            {paymentMethod === "cash" && total > 0 && (
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  margin: "9px 0 5px",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(5, 1fr)",
+                  gap: "5px",
+                  marginBottom: "6px",
                 }}
               >
-                <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                  {t("paymentReceived")}
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  value={payment}
-                  onChange={(e) => setPayment(e.target.value)}
-                  placeholder="0.00"
-                  style={{
-                    width: "106px",
-                    textAlign: "right",
-                    padding: "6px 9px",
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid var(--border)",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "14px",
-                    fontWeight: 700,
-                  }}
-                />
+                {[1000, 5000, 10000, 20000, 50000].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className="quick-cash-btn"
+                    onClick={() =>
+                      setPaymentRiel(String((Number(paymentRiel) || 0) + v))
+                    }
+                  >
+                    {v.toLocaleString("en-US")}៛
+                  </button>
+                ))}
               </div>
             )}
             {paymentMethod !== "khqr" && total > 0 && (
@@ -10698,7 +10828,7 @@ function POSTab(props) {
                   display: "grid",
                   gridTemplateColumns: "repeat(5, 1fr)",
                   gap: "5px",
-                  marginBottom: "9px",
+                  marginBottom: "6px",
                 }}
               >
                 <button
@@ -10739,8 +10869,8 @@ function POSTab(props) {
               onClick={completeSale}
               style={{
                 width: "100%",
-                marginTop: "14px",
-                padding: "14px",
+                marginTop: "10px",
+                padding: "12px",
                 borderRadius: "var(--radius-md)",
                 border: "none",
                 background: "var(--primary)",
