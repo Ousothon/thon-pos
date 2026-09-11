@@ -138,6 +138,40 @@ import {
 //        with check (shop_id = auth_shop_id() or is_super_admin());
 //    Then Database > Replication — turn on realtime for `open_tabs` too
 //    (optional but recommended, same as `online_orders` in step 4).
+// 10. Promotion System — discount %, discount $, Buy-1-Get-1, product
+//    promotion, category promotion, happy hour, coupon code, and
+//    minimum-purchase discount, managed from the new Promotions tab and
+//    applied automatically (or by code) at checkout. Run once in the SQL
+//    editor:
+//      create table if not exists promotions (
+//        id text primary key,
+//        shop_id uuid not null references shops(id),
+//        type text not null,
+//        name text not null default '',
+//        active boolean not null default true,
+//        discount_mode text default 'percent',
+//        discount_value numeric default 0,
+//        min_purchase numeric,
+//        product_id text,
+//        category text,
+//        coupon_code text,
+//        usage_limit numeric,
+//        used_count numeric default 0,
+//        expires_at text,
+//        bogo_buy_qty numeric,
+//        bogo_get_qty numeric,
+//        bogo_get_discount numeric,
+//        happy_start text,
+//        happy_end text,
+//        happy_days jsonb,
+//        updated_at bigint
+//      );
+//      alter table promotions enable row level security;
+//      create policy "shop can manage its own promotions" on promotions
+//        for all using (shop_id = auth_shop_id() or is_super_admin())
+//        with check (shop_id = auth_shop_id() or is_super_admin());
+//    Then Database > Replication — turn on realtime for `promotions` too
+//    (optional but recommended, same as `open_tabs` in step 9).
 const SUPABASE_URL = "https://zkstajqlucnvpqxwpuxo.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_jucFEQ_c8EVFcwPkfhWMoQ_K-sSNyzm";
 const supabase =
@@ -371,6 +405,7 @@ const seedRoles = [
       "customers",
       "onlineOrders",
       "expenses",
+      "promotions",
     ],
     shiftEdit: true,
     shiftDelete: false,
@@ -469,6 +504,196 @@ const sessionKeyFor = (shopId) =>
 
 const genId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+// ---- Promotion engine (pure helpers, no component state) ----
+// A happy-hour promotion is only "live" during its configured days/time
+// window; every other promotion type is live whenever it's toggled active.
+// Handles an overnight window (e.g. 22:00–02:00) by treating "start > end"
+// as wrapping past midnight.
+function isHappyHourActive(promo, now = new Date()) {
+  if (promo.type !== "happy_hour") return true;
+  const days = promo.happyDays || [];
+  if (days.length && !days.includes(now.getDay())) return false;
+  const [sh, sm] = (promo.happyStart || "00:00").split(":").map(Number);
+  const [eh, em] = (promo.happyEnd || "23:59").split(":").map(Number);
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const start = (sh || 0) * 60 + (sm || 0);
+  const end = (eh || 0) * 60 + (em || 0);
+  return start <= end ? cur >= start && cur <= end : cur >= start || cur <= end;
+}
+
+// Discount amount for a percent-or-amount promo against a given base total,
+// never exceeding the base (so a $50-off promo on a $10 item discounts $10,
+// not $50).
+function promoAmountFor(promo, base) {
+  if (base <= 0) return 0;
+  const v = Number(promo.discountValue) || 0;
+  return promo.discountMode === "percent"
+    ? (base * v) / 100
+    : Math.min(v, base);
+}
+
+// Sums every *automatic* promotion (product / category / minimum-purchase /
+// Buy-1-Get-1) that currently applies to the cart — coupon codes are
+// deliberately excluded here since those only apply when the cashier
+// types one in, not automatically. `products` resolves each cart line's
+// category since the cart line itself only stores the product id.
+function computeAutoPromotions(cart, promotions, subtotal, products) {
+  let discount = 0;
+  const names = [];
+  const categoryOf = (productId) => {
+    const p = products.find((x) => x.id === productId);
+    return p ? p.category : null;
+  };
+  (promotions || [])
+    .filter((p) => p.active && p.type !== "coupon" && isHappyHourActive(p))
+    .forEach((p) => {
+      if (p.type === "product") {
+        const line = cart.find((c) => c.id === p.productId);
+        if (line) {
+          const d = promoAmountFor(p, line.price * line.qty);
+          if (d > 0) {
+            discount += d;
+            names.push(p.name);
+          }
+        }
+      } else if (p.type === "category") {
+        const base = cart
+          .filter((c) => categoryOf(c.id) === p.category)
+          .reduce((s, c) => s + c.price * c.qty, 0);
+        const d = promoAmountFor(p, base);
+        if (d > 0) {
+          discount += d;
+          names.push(p.name);
+        }
+      } else if (p.type === "min_purchase") {
+        const min = Number(p.minPurchase) || 0;
+        if (min > 0 && subtotal >= min) {
+          const d = promoAmountFor(p, subtotal);
+          if (d > 0) {
+            discount += d;
+            names.push(p.name);
+          }
+        }
+      } else if (p.type === "bogo") {
+        const line = cart.find((c) => c.id === p.productId);
+        if (line) {
+          // The cart line already carries the free units physically (see
+          // applyBogoAdjustmentToLine) with the count in `bogoGifted` — use
+          // that directly so this doesn't re-derive (and potentially
+          // double-count) the free quantity. Older lines from before this
+          // tracking existed (e.g. a tab held pre-upgrade) fall back to
+          // deriving it from qty the old way.
+          const freeUnits =
+            line.bogoGifted != null
+              ? line.bogoGifted
+              : (() => {
+                  const buyQty = Math.max(1, Number(p.bogoBuyQty) || 1);
+                  const getQty = Math.max(1, Number(p.bogoGetQty) || 1);
+                  return Math.floor(line.qty / (buyQty + getQty)) * getQty;
+                })();
+          if (freeUnits > 0) {
+            const pct = Math.min(100, Number(p.bogoGetDiscount) || 100);
+            const d = freeUnits * line.price * (pct / 100);
+            if (d > 0) {
+              discount += d;
+              names.push(p.name);
+            }
+          }
+        }
+      }
+    });
+  return { discount, names };
+}
+
+// Every active, automatically-applied promotion that touches this specific
+// product — product-type promos matched by productId, category-type promos
+// matched by the product's category, and BOGO promos matched by productId.
+// Deliberately excludes min_purchase / coupon / happy_hour, since those are
+// cart-wide or code-based rather than attached to one product. Used to show
+// a "this item has a live promotion" badge on the product card in the POS
+// grid, so staff can see at a glance which products are on promotion.
+function productPromotions(product, promotions) {
+  return (promotions || []).filter(
+    (p) =>
+      p.active &&
+      ((p.type === "product" && p.productId === product.id) ||
+        (p.type === "category" && p.category === product.category) ||
+        (p.type === "bogo" && p.productId === product.id)),
+  );
+}
+
+// Validates a typed-in coupon code against the live promotions list —
+// active, type "coupon", code matches (case/space-insensitive), not past
+// its expiry date, and (if it has a usage limit) not yet exhausted.
+function findValidCoupon(code, promotions) {
+  const clean = (code || "").trim().toLowerCase();
+  if (!clean) return { promo: null, error: null };
+  const promo = (promotions || []).find(
+    (p) =>
+      p.type === "coupon" &&
+      p.active &&
+      (p.couponCode || "").trim().toLowerCase() === clean,
+  );
+  if (!promo) return { promo: null, error: "invalid" };
+  if (promo.expiresAt) {
+    const exp = new Date(promo.expiresAt + "T23:59:59");
+    if (!isNaN(exp) && exp < new Date())
+      return { promo: null, error: "expired" };
+  }
+  if (
+    promo.usageLimit != null &&
+    promo.usageLimit !== "" &&
+    Number(promo.usedCount || 0) >= Number(promo.usageLimit)
+  ) {
+    return { promo: null, error: "limit" };
+  }
+  return { promo, error: null };
+}
+
+// "Buy 1 Get 1" (and any Buy-X-Get-Y promo) doesn't discount money off the
+// receipt — it hands over extra stock for free. So instead of silently
+// shaving the total, the cart line itself grows: adding 1 unit of a BOGO
+// product tops the line up to the full bundle (paid + free) right away.
+// `bogoGifted` on the line remembers how many of its units are the free
+// portion, so later adjustments don't re-gift units that are already
+// accounted for, and `stockAvailable` (this product's stock minus what's
+// already committed to *other* cart lines) caps how many free units can
+// actually be handed out.
+function applyBogoAdjustmentToLine(line, promotions, stockAvailable) {
+  const promo = (promotions || []).find(
+    (p) => p.active && p.type === "bogo" && p.productId === line.id,
+  );
+  if (!promo) return line;
+  const buyQty = Math.max(1, Number(promo.bogoBuyQty) || 1);
+  const getQty = Math.max(1, Number(promo.bogoGetQty) || 1);
+  const currentGifted = line.bogoGifted || 0;
+  const paidQty = Math.max(0, line.qty - currentGifted);
+  const targetGifted = Math.floor(paidQty / buyQty) * getQty;
+  const delta = targetGifted - currentGifted;
+  if (delta === 0)
+    return currentGifted === line.bogoGifted
+      ? line
+      : { ...line, bogoGifted: currentGifted };
+  if (delta > 0) {
+    const maxAdd = Math.max(0, (stockAvailable ?? Infinity) - line.qty);
+    const actualDelta = Math.min(delta, maxAdd);
+    if (actualDelta <= 0) return { ...line, bogoGifted: currentGifted };
+    return {
+      ...line,
+      qty: line.qty + actualDelta,
+      bogoGifted: currentGifted + actualDelta,
+    };
+  }
+  // Dropped below the threshold for this many free units — the free units
+  // are tied to the purchase that earned them, so they come off together.
+  return {
+    ...line,
+    qty: Math.max(0, line.qty + delta),
+    bogoGifted: Math.max(0, targetGifted),
+  };
+}
+
 // Resolves a role's display name for the current language, with graceful
 // fallbacks: the other language's name, then the raw role id (covers the
 // rare case a user's role was deleted out from under them).
@@ -1599,6 +1824,112 @@ const STRINGS = {
     km: "បញ្ចុះតម្លៃ ({percent}%)",
     en: "Discount_Item({percent}%)",
   },
+  // ---- Promotion System ----
+  nav_promotions: { km: "ការផ្សព្វផ្សាយ", en: "Promotions" },
+  promo_subtitle: {
+    km: "គ្រប់គ្រងការបញ្ចុះតម្លៃស្វ័យប្រវត្តិ និងកូដប្រូម៉ូសិន",
+    en: "Manage automatic discounts and coupon codes",
+  },
+  promo_addBtn: { km: "បង្កើតប្រូម៉ូសិន", en: "New Promotion" },
+  promo_addTitle: { km: "ប្រូម៉ូសិនថ្មី", en: "New Promotion" },
+  promo_editTitle: { km: "កែប្រូម៉ូសិន", en: "Edit Promotion" },
+  promo_empty: {
+    km: "មិនទាន់មានប្រូម៉ូសិននៅឡើយ",
+    en: "No promotions yet",
+  },
+  promo_deleteConfirm: {
+    km: "លុបប្រូម៉ូសិននេះឬ?",
+    en: "Delete this promotion?",
+  },
+  promo_name: { km: "ឈ្មោះប្រូម៉ូសិន", en: "Promotion name" },
+  promo_type: { km: "ប្រភេទ", en: "Type" },
+  promo_type_min_purchase: {
+    km: "បញ្ចុះតម្លៃតាមការទិញអប្បបរមា",
+    en: "Minimum purchase discount",
+  },
+  promo_type_product: { km: "ប្រូម៉ូសិនទំនិញ", en: "Product promotion" },
+  promo_type_category: {
+    km: "ប្រូម៉ូសិនប្រភេទទំនិញ",
+    en: "Category promotion",
+  },
+  promo_type_coupon: { km: "កូដប្រូម៉ូសិន", en: "Coupon code" },
+  promo_type_bogo: { km: "ទិញ 1 ឲ្យ 1", en: "Buy 1 Get 1" },
+  promo_type_happy_hour: { km: "Happy Hour", en: "Happy Hour" },
+  promo_active: { km: "កំពុងដំណើរការ", en: "Active" },
+  promo_statusActive: { km: "កំពុងដំណើរការ", en: "Active" },
+  promo_statusInactive: { km: "បិទ", en: "Inactive" },
+  promo_discountMode: { km: "ប្រភេទបញ្ចុះតម្លៃ", en: "Discount type" },
+  promo_discountMode_percent: { km: "ភាគរយ (%)", en: "Percent (%)" },
+  promo_discountMode_amount: { km: "ចំនួនទឹកប្រាក់ ($)", en: "Amount ($)" },
+  promo_discountValue: { km: "តម្លៃបញ្ចុះ", en: "Discount value" },
+  promo_minPurchase: {
+    km: "ទឹកប្រាក់ទិញអប្បបរមា ($)",
+    en: "Minimum purchase ($)",
+  },
+  promo_product: { km: "ទំនិញ", en: "Product" },
+  promo_category: { km: "ប្រភេទទំនិញ", en: "Category" },
+  promo_couponCode: { km: "កូដប្រូម៉ូសិន", en: "Coupon code" },
+  promo_usageLimit: {
+    km: "ចំនួនដងប្រើប្រាស់អតិបរមា",
+    en: "Usage limit",
+  },
+  promo_usageLimitPlaceholder: { km: "គ្មានដែនកំណត់", en: "Unlimited" },
+  promo_usedCount: { km: "បានប្រើ", en: "Used" },
+  promo_expiresAt: { km: "ផុតកំណត់នៅ", en: "Expires on" },
+  promo_expiresAtPlaceholder: {
+    km: "គ្មានកាលបរិច្ឆេទផុតកំណត់",
+    en: "No expiry",
+  },
+  promo_bogoBuyQty: { km: "ទិញចំនួន", en: "Buy quantity" },
+  promo_bogoGetQty: { km: "ទទួលបានចំនួន", en: "Get quantity" },
+  promo_bogoGetDiscount: {
+    km: "% បញ្ចុះលើទំនិញដែលទទួលបាន",
+    en: "% off the free item(s)",
+  },
+  promo_happyStart: { km: "ម៉ោងចាប់ផ្តើម", en: "Start time" },
+  promo_happyEnd: { km: "ម៉ោងបញ្ចប់", en: "End time" },
+  promo_happyDays: { km: "ថ្ងៃដែលអនុវត្ត", en: "Active days" },
+  promo_day_0: { km: "អា.", en: "Sun" },
+  promo_day_1: { km: "ច.", en: "Mon" },
+  promo_day_2: { km: "អ.", en: "Tue" },
+  promo_day_3: { km: "ព.", en: "Wed" },
+  promo_day_4: { km: "ព្រ.", en: "Thu" },
+  promo_day_5: { km: "សុ.", en: "Fri" },
+  promo_day_6: { km: "ស.", en: "Sat" },
+  promo_added: { km: "បានបង្កើតប្រូម៉ូសិន", en: "Promotion created" },
+  promo_updated: { km: "បានកែប្រូម៉ូសិន", en: "Promotion updated" },
+  promo_deleted: { km: "បានលុបប្រូម៉ូសិន", en: "Promotion deleted" },
+  promo_requireFields: {
+    km: "សូមបំពេញព័ត៌មានឲ្យគ្រប់",
+    en: "Please fill in the required fields",
+  },
+  promoDiscountLine: { km: "ប្រូម៉ូសិន", en: "Promotion" },
+  promoBadgeLabel: { km: "ប្រូម៉ូសិន", en: "Promo" },
+  // Small corner badge on the POS product card shows the *concrete* deal
+  // instead of a generic "Promo" word or a type name — a percent/amount
+  // promo shows its actual discount ("-20%", "-$5.00"), and a BOGO promo
+  // shows its actual buy/get quantities via this template.
+  promoBadge_bogo: { km: "ទិញ {buy} ឲ្យ {get}", en: "Buy {buy} Get {get}" },
+  off_: { km: "បញ្ចុះ", en: "off" },
+  couponCodeLabel: { km: "កូដប្រូម៉ូសិន", en: "Coupon code" },
+  couponCodePlaceholder: { km: "បញ្ចូលកូដ...", en: "Enter code..." },
+  couponApplyBtn: { km: "អនុវត្ត", en: "Apply" },
+  couponRemoveBtn: { km: "ដក", en: "Remove" },
+  couponInvalid: {
+    km: "កូដមិនត្រឹមត្រូវ ឬអស់សុពលភាព",
+    en: "Invalid or inactive code",
+  },
+  couponExpired: { km: "កូដនេះផុតកំណត់ហើយ", en: "This code has expired" },
+  couponLimitReached: {
+    km: "កូដនេះត្រូវបានប្រើអស់ចំនួនកំណត់ហើយ",
+    en: "This code has reached its usage limit",
+  },
+  couponApplied: { km: "អនុវត្តកូដបានជោគជ័យ", en: "Coupon applied" },
+  toast_bogoGift: {
+    km: "🎁 បានថែម {count} ឥតគិតថ្លៃ!",
+    en: "🎁 +{count} free added!",
+  },
+  bogoFreeBadge: { km: "({count} ឥតគិតថ្លៃ)", en: "({count} free)" },
   splitLine: { km: "ញែកជាបន្ទាត់ថ្មី", en: "Split line" },
   openTabsLabel: { km: "Order កំពុងបើក", en: "Open Tabs" },
   tableLabel_field: { km: "លេខ/ឈ្មោះតុ", en: "Table" },
@@ -1707,6 +2038,9 @@ const STRINGS = {
   stat_todayTx: { km: "ចំនួនប្រតិបត្តិការថ្ងៃនេះ", en: "Today's transactions" },
   stat_totalRevenue: { km: "ចំណូលសរុប", en: "Total revenue" },
   stat_stockValue: { km: "តម្លៃស្តុកសរុប", en: "Total stock value" },
+  stat_todayProfit: { km: "ចំណេញថ្ងៃនេះ", en: "Today's profit" },
+  stat_totalCustomers: { km: "អតិថិជនសរុប", en: "Total customers" },
+  vsYesterday: { km: "ធៀបនឹងម្សិលមិញ", en: "vs yesterday" },
   dash_salesTrend: {
     km: "និន្នាការលក់ ៧ថ្ងៃចុងក្រោយ",
     en: "Sales trend (last 7 days)",
@@ -3043,6 +3377,7 @@ const NAV = [
   { id: "customers", key: "nav_customers", icon: Users },
   { id: "onlineOrders", key: "nav_onlineOrders", icon: Store },
   { id: "expenses", key: "nav_expenses", icon: Wallet },
+  { id: "promotions", key: "nav_promotions", icon: Percent },
   { id: "shift", key: "nav_shift", icon: Banknote },
   { id: "users", key: "nav_users", icon: UserCog },
   { id: "auditLog", key: "nav_auditLog", icon: History },
@@ -3080,6 +3415,7 @@ function POSApp() {
   const [sales, setSales] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [promotions, setPromotions] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [shopName, setShopName] = useState("");
   const [shopLogo, setShopLogo] = useState(null);
@@ -3173,6 +3509,9 @@ function POSApp() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [discount, setDiscount] = useState("");
   const [discountMode, setDiscountMode] = useState("amount"); // 'amount' ($) or 'percent' (%)
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCouponId, setAppliedCouponId] = useState(null);
+  const [couponError, setCouponError] = useState("");
   const [redeemPoints, setRedeemPoints] = useState("");
   const [payment, setPayment] = useState("");
   const [paymentRiel, setPaymentRiel] = useState("");
@@ -3195,6 +3534,7 @@ function POSApp() {
   const [categoryModal, setCategoryModal] = useState(false);
   const [customerModal, setCustomerModal] = useState(null);
   const [expenseModal, setExpenseModal] = useState(null);
+  const [promotionModal, setPromotionModal] = useState(null);
 
   const [reportRange, setReportRange] = useState("today");
   const [expandedSale, setExpandedSale] = useState(null);
@@ -3502,6 +3842,7 @@ function POSApp() {
         setSales(parsed.sales || []);
         setCustomers(parsed.customers || []);
         setExpenses(parsed.expenses || []);
+        setPromotions(parsed.promotions || []);
         setShifts(parsed.shifts || []);
         setOpenTabs(parsed.openTabs || []);
         if (parsed.categories && parsed.categories.length) {
@@ -3573,6 +3914,7 @@ function POSApp() {
             sales,
             customers,
             expenses,
+            promotions,
             shifts,
             openTabs,
             categories,
@@ -3614,6 +3956,7 @@ function POSApp() {
     sales,
     customers,
     expenses,
+    promotions,
     shifts,
     openTabs,
     categories,
@@ -3981,15 +4324,29 @@ function POSApp() {
       );
       return;
     }
+    // Room left for this line's own units after what other lines of the
+    // same product already hold — caps how many "free" BOGO units can be
+    // topped up below.
+    const stockForLine = inCart
+      ? product.stock - qtyInCartForProduct(product.id, inCart.lineId)
+      : product.stock;
     if (inCart) {
-      setCart(
-        cart.map((c) =>
-          c.lineId === inCart.lineId ? { ...c, qty: c.qty + 1 } : c,
-        ),
+      const adjusted = applyBogoAdjustmentToLine(
+        { ...inCart, qty: inCart.qty + 1 },
+        promotions,
+        stockForLine,
       );
+      if (adjusted.bogoGifted > (inCart.bogoGifted || 0)) {
+        showToast(
+          t("toast_bogoGift", {
+            count: adjusted.bogoGifted - (inCart.bogoGifted || 0),
+          }),
+          "ok",
+        );
+      }
+      setCart(cart.map((c) => (c.lineId === inCart.lineId ? adjusted : c)));
     } else {
-      setCart([
-        ...cart,
+      const newLine = applyBogoAdjustmentToLine(
         {
           lineId: genId(),
           id: product.id,
@@ -4000,8 +4357,15 @@ function POSApp() {
           qty: 1,
           image: product.image,
           discountPercent: 0,
+          bogoGifted: 0,
         },
-      ]);
+        promotions,
+        stockForLine,
+      );
+      if (newLine.bogoGifted > 0) {
+        showToast(t("toast_bogoGift", { count: newLine.bogoGifted }), "ok");
+      }
+      setCart([...cart, newLine]);
     }
   };
 
@@ -4013,13 +4377,20 @@ function POSApp() {
     setCart((prev) => {
       const line = prev.find((c) => c.lineId === lineId);
       if (!line || line.qty < 2) return prev;
+      // A manual split hands direct pricing control of that unit to the
+      // cashier, so it steps outside the automatic BOGO bookkeeping —
+      // reset bogoGifted on both halves rather than carry over a stale
+      // count that no longer matches either line's real qty.
       return prev
-        .map((c) => (c.lineId === lineId ? { ...c, qty: c.qty - 1 } : c))
+        .map((c) =>
+          c.lineId === lineId ? { ...c, qty: c.qty - 1, bogoGifted: 0 } : c,
+        )
         .concat({
           ...line,
           lineId: genId(),
           qty: 1,
           discountPercent: 0,
+          bogoGifted: 0,
         });
     });
   };
@@ -4072,7 +4443,23 @@ function POSApp() {
             );
             return c;
           }
-          return { ...c, qty: newQty };
+          const stockForLine = product
+            ? product.stock - qtyInCartForProduct(product.id, lineId)
+            : undefined;
+          const adjusted = applyBogoAdjustmentToLine(
+            { ...c, qty: newQty },
+            promotions,
+            stockForLine,
+          );
+          if (adjusted.bogoGifted > (c.bogoGifted || 0)) {
+            showToast(
+              t("toast_bogoGift", {
+                count: adjusted.bogoGifted - (c.bogoGifted || 0),
+              }),
+              "ok",
+            );
+          }
+          return adjusted;
         })
         .filter((c) => c.qty > 0),
     );
@@ -4097,6 +4484,24 @@ function POSApp() {
         )
       : Math.min(Number(discount) || 0, subtotalAfterItemDiscount);
 
+  const afterDiscount = Math.max(subtotalAfterItemDiscount - discountAmt, 0);
+
+  // Automatic promotions (product / category / minimum-purchase / BOGO)
+  // apply on top of the manual discounts above; a coupon code, if applied,
+  // stacks on top of those. Both are recomputed on every render — cheap for
+  // a cart-sized array — so toggling a promotion off in the Promotions tab
+  // takes effect on the very next keystroke with no cache to invalidate.
+  const autoPromo = computeAutoPromotions(cart, promotions, subtotal, products);
+  const autoPromoDiscount = Math.min(autoPromo.discount, afterDiscount);
+  const appliedCoupon = appliedCouponId
+    ? promotions.find((p) => p.id === appliedCouponId) || null
+    : null;
+  const afterAutoPromo = Math.max(afterDiscount - autoPromoDiscount, 0);
+  const couponDiscount = appliedCoupon
+    ? Math.min(promoAmountFor(appliedCoupon, afterAutoPromo), afterAutoPromo)
+    : 0;
+  const afterPromo = Math.max(afterAutoPromo - couponDiscount, 0);
+
   const selectedCustomer =
     customers.find((c) => c.id === selectedCustomerId) || null;
   const customerDiscountPercent = selectedCustomer
@@ -4105,17 +4510,16 @@ function POSApp() {
   const availablePoints = selectedCustomer
     ? Math.floor(selectedCustomer.points || 0)
     : 0;
-  const afterDiscount = Math.max(subtotalAfterItemDiscount - discountAmt, 0);
   const maxRedeemablePoints = Math.min(
     availablePoints,
-    Math.floor(afterDiscount * POINTS_PER_DOLLAR),
+    Math.floor(afterPromo * POINTS_PER_DOLLAR),
   );
   const redeemPointsNum = Math.max(
     0,
     Math.min(Math.floor(Number(redeemPoints) || 0), maxRedeemablePoints),
   );
   const pointsDiscount = redeemPointsNum / POINTS_PER_DOLLAR;
-  const total = afterDiscount - pointsDiscount;
+  const total = afterPromo - pointsDiscount;
   const paymentRielNum = Number(paymentRiel) || 0;
   // Riel cash received converts to its USD equivalent at the shop's KHR
   // rate so it can combine with USD cash received into one "amount
@@ -4250,6 +4654,29 @@ function POSApp() {
     }
   };
 
+  const applyCoupon = () => {
+    const { promo, error } = findValidCoupon(couponCode, promotions);
+    if (!promo) {
+      setAppliedCouponId(null);
+      setCouponError(
+        error === "expired"
+          ? "couponExpired"
+          : error === "limit"
+            ? "couponLimitReached"
+            : "couponInvalid",
+      );
+      return;
+    }
+    setAppliedCouponId(promo.id);
+    setCouponError("");
+    showToast(t("couponApplied"), "ok");
+  };
+  const removeCoupon = () => {
+    setAppliedCouponId(null);
+    setCouponCode("");
+    setCouponError("");
+  };
+
   const clearSale = () => {
     setCart([]);
     setDiscount("");
@@ -4261,6 +4688,9 @@ function POSApp() {
     setSelectedCustomerId("");
     setTableLabel("");
     setEditingTabId(null);
+    setCouponCode("");
+    setAppliedCouponId(null);
+    setCouponError("");
   };
 
   // Saves the current cart as an open tab (unpaid) under a table/customer
@@ -4312,7 +4742,8 @@ function POSApp() {
           (c.price * c.qty * (Number(c.discountPercent) || 0)) / 100,
       })),
       subtotal,
-      discount: discountAmt + itemDiscountTotal,
+      discount:
+        discountAmt + itemDiscountTotal + autoPromoDiscount + couponDiscount,
       total,
       table: label,
       unpaid: true,
@@ -4363,11 +4794,17 @@ function POSApp() {
           (c.price * c.qty * (Number(c.discountPercent) || 0)) / 100,
       })),
       subtotal,
-      // Combined total discount (per-item + order-level) so existing
-      // profit/report math that reads sale.discount keeps working as-is.
-      discount: discountAmt + itemDiscountTotal,
+      // Combined total discount (per-item + order-level + automatic
+      // promotions + coupon) so existing profit/report math that reads
+      // sale.discount keeps working as-is.
+      discount:
+        discountAmt + itemDiscountTotal + autoPromoDiscount + couponDiscount,
       itemDiscount: itemDiscountTotal,
       orderDiscount: discountAmt,
+      promoDiscount: autoPromoDiscount,
+      appliedPromotions: autoPromo.names,
+      couponDiscount,
+      couponCode: appliedCoupon ? appliedCoupon.couponCode : null,
       total,
       paid: paymentMethod === "khqr" ? total : paymentNum,
       change: paymentMethod === "khqr" ? 0 : change,
@@ -4394,6 +4831,17 @@ function POSApp() {
       const p = updatedProducts.find((x) => x.id === c.id);
       if (p) pushProductRow(p);
     });
+    if (appliedCoupon) {
+      const updatedCoupon = {
+        ...appliedCoupon,
+        usedCount: Number(appliedCoupon.usedCount || 0) + 1,
+        updatedAt: Date.now(),
+      };
+      setPromotions(
+        promotions.map((p) => (p.id === updatedCoupon.id ? updatedCoupon : p)),
+      );
+      pushPromotionRow(updatedCoupon);
+    }
     if (customer) {
       const updatedCustomer = {
         ...customer,
@@ -4676,6 +5124,56 @@ function POSApp() {
       if (error) {
         showToast(t("toast_supabaseError"), "error");
         console.error("deleteExpenseRow failed:", error);
+      }
+    } catch {
+      /* offline */
+    }
+  };
+  const pushPromotionRow = async (p) => {
+    if (!supabase || !shopId) return;
+    try {
+      const { error } = await supabase.from("promotions").upsert(
+        {
+          id: p.id,
+          shop_id: shopId,
+          type: p.type,
+          name: p.name || "",
+          active: !!p.active,
+          discount_mode: p.discountMode || "percent",
+          discount_value: Number(p.discountValue) || 0,
+          min_purchase: p.minPurchase != null ? Number(p.minPurchase) : null,
+          product_id: p.productId || null,
+          category: p.category || null,
+          coupon_code: p.couponCode || null,
+          usage_limit: p.usageLimit != null ? Number(p.usageLimit) : null,
+          used_count: Number(p.usedCount) || 0,
+          expires_at: p.expiresAt || null,
+          bogo_buy_qty: p.bogoBuyQty != null ? Number(p.bogoBuyQty) : null,
+          bogo_get_qty: p.bogoGetQty != null ? Number(p.bogoGetQty) : null,
+          bogo_get_discount:
+            p.bogoGetDiscount != null ? Number(p.bogoGetDiscount) : null,
+          happy_start: p.happyStart || null,
+          happy_end: p.happyEnd || null,
+          happy_days: p.happyDays || null,
+          updated_at: p.updatedAt || Date.now(),
+        },
+        { onConflict: "id" },
+      );
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("pushPromotionRow failed:", error);
+      }
+    } catch {
+      /* offline */
+    }
+  };
+  const deletePromotionRow = async (id) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.from("promotions").delete().eq("id", id);
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("deletePromotionRow failed:", error);
       }
     } catch {
       /* offline */
@@ -5069,6 +5567,42 @@ function POSApp() {
     }
   };
 
+  const fetchCloudPromotions = async () => {
+    if (!supabase || !shopId) return;
+    try {
+      const { data, error } = await supabase
+        .from("promotions")
+        .select("*")
+        .eq("shop_id", shopId);
+      if (error) throw error;
+      const mapped = (data || []).map((r) => ({
+        id: r.id,
+        type: r.type,
+        name: r.name || "",
+        active: !!r.active,
+        discountMode: r.discount_mode || "percent",
+        discountValue: r.discount_value || 0,
+        minPurchase: r.min_purchase,
+        productId: r.product_id || "",
+        category: r.category || "",
+        couponCode: r.coupon_code || "",
+        usageLimit: r.usage_limit,
+        usedCount: r.used_count || 0,
+        expiresAt: r.expires_at || "",
+        bogoBuyQty: r.bogo_buy_qty,
+        bogoGetQty: r.bogo_get_qty,
+        bogoGetDiscount: r.bogo_get_discount,
+        happyStart: r.happy_start || "",
+        happyEnd: r.happy_end || "",
+        happyDays: r.happy_days || [],
+        updatedAt: r.updated_at || 0,
+      }));
+      setPromotions((prev) => mergeById(prev, mapped));
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
   const fetchCloudCategories = async () => {
     if (!supabase || !shopId) return;
     try {
@@ -5372,6 +5906,7 @@ function POSApp() {
     fetchCloudCategories();
     fetchCloudShifts();
     fetchCloudTabs();
+    fetchCloudPromotions();
     const poll = setInterval(() => {
       fetchCloudSales();
       fetchCloudCustomers();
@@ -5382,6 +5917,7 @@ function POSApp() {
       fetchCloudCategories();
       fetchCloudShifts();
       fetchCloudTabs();
+      fetchCloudPromotions();
     }, 15000);
     let channel;
     try {
@@ -5466,6 +6002,16 @@ function POSApp() {
             filter: `shop_id=eq.${shopId}`,
           },
           fetchCloudTabs,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "promotions",
+            filter: `shop_id=eq.${shopId}`,
+          },
+          fetchCloudPromotions,
         )
         .subscribe();
     } catch {
@@ -6145,6 +6691,67 @@ function POSApp() {
     );
   };
 
+  // ---------- Promotions ----------
+  const savePromotion = (form) => {
+    if (!form.type || !form.name) {
+      showToast(t("promo_requireFields"), "error");
+      return;
+    }
+    // Fields that don't apply to the chosen type are stored as-is (usually
+    // blank/undefined) rather than stripped — harmless, since the promotion
+    // engine only ever reads the fields relevant to `form.type`.
+    const clean = {
+      type: form.type,
+      name: form.name,
+      active: form.active !== false,
+      discountMode: form.discountMode || "percent",
+      discountValue: Number(form.discountValue) || 0,
+      minPurchase: form.minPurchase === "" ? null : Number(form.minPurchase),
+      productId: form.productId || "",
+      category: form.category || "",
+      couponCode: form.couponCode || "",
+      usageLimit: form.usageLimit === "" ? null : Number(form.usageLimit),
+      usedCount: Number(form.usedCount) || 0,
+      expiresAt: form.expiresAt || "",
+      bogoBuyQty: form.bogoBuyQty === "" ? null : Number(form.bogoBuyQty),
+      bogoGetQty: form.bogoGetQty === "" ? null : Number(form.bogoGetQty),
+      bogoGetDiscount:
+        form.bogoGetDiscount === "" ? null : Number(form.bogoGetDiscount),
+      happyStart: form.happyStart || "",
+      happyEnd: form.happyEnd || "",
+      happyDays: form.happyDays || [],
+    };
+    if (form.id) {
+      const updated = {
+        ...promotions.find((p) => p.id === form.id),
+        ...clean,
+        updatedAt: Date.now(),
+      };
+      setPromotions(promotions.map((p) => (p.id === form.id ? updated : p)));
+      showToast(t("promo_updated"));
+      pushPromotionRow(updated);
+      logAudit("edit", "promotion", clean.name);
+    } else {
+      const created = { ...clean, id: genId(), updatedAt: Date.now() };
+      setPromotions([created, ...promotions]);
+      showToast(t("promo_added"));
+      pushPromotionRow(created);
+      logAudit("add", "promotion", clean.name);
+    }
+    setPromotionModal(null);
+  };
+  const deletePromotion = (id) => {
+    const target = promotions.find((p) => p.id === id);
+    setPromotions(promotions.filter((p) => p.id !== id));
+    if (appliedCouponId === id) {
+      setAppliedCouponId(null);
+      setCouponCode("");
+    }
+    showToast(t("promo_deleted"));
+    deletePromotionRow(id);
+    logAudit("delete", "promotion", target ? target.name : id);
+  };
+
   // ---------- Shift / cash-drawer reconciliation ----------
   // Every in-person sale rung up on this screen has no separate payment
   // method today (unlike online orders, which can be cash or KHQR) — so
@@ -6699,6 +7306,49 @@ function POSApp() {
   const todayRevenue = todaySales.reduce((s, sale) => s + sale.total, 0);
   const lowStock = products.filter((p) => p.stock <= 5);
 
+  // Dashboard-only comparisons: yesterday's sales are pulled separately (not
+  // part of `rangedSales`, which follows the Reports tab's own date-range
+  // picker) so the Dashboard's "vs yesterday" deltas stay independent of
+  // whatever range the user last chose in Reports.
+  const yesterdaySales = useMemo(() => {
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yKey = y.toDateString();
+    return sales.filter(
+      (s) => !s.refunded && new Date(s.date).toDateString() === yKey,
+    );
+  }, [sales]);
+
+  // Same profit formula as `reportSummary.profit` above (line-item margin
+  // minus the sale's order-level discount) — kept in sync manually since
+  // this one runs over `todaySales`/`yesterdaySales` instead of `rangedSales`.
+  const calcProfit = (salesArr) =>
+    salesArr.reduce((s, sale) => {
+      const itemProfit = sale.items.reduce(
+        (a, i) => a + i.qty * (i.price - (i.cost || 0)),
+        0,
+      );
+      return s + itemProfit - (sale.discount || 0);
+    }, 0);
+  const todayProfit = calcProfit(todaySales);
+  const yesterdayRevenue = yesterdaySales.reduce(
+    (s, sale) => s + sale.total,
+    0,
+  );
+  const yesterdayProfit = calcProfit(yesterdaySales);
+
+  const todayTopProducts = useMemo(() => {
+    const productMap = {};
+    todaySales.forEach((sale) =>
+      sale.items.forEach((i) => {
+        productMap[i.name] = (productMap[i.name] || 0) + i.qty;
+      }),
+    );
+    return Object.entries(productMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [todaySales]);
+
   if (loading) {
     return (
       <div
@@ -7099,6 +7749,16 @@ function POSApp() {
               setItemDiscount={setItemDiscount}
               splitCartLine={splitCartLine}
               itemDiscountTotal={itemDiscountTotal}
+              couponCode={couponCode}
+              setCouponCode={setCouponCode}
+              applyCoupon={applyCoupon}
+              removeCoupon={removeCoupon}
+              appliedCoupon={appliedCoupon}
+              couponError={couponError}
+              couponDiscount={couponDiscount}
+              autoPromoDiscount={autoPromoDiscount}
+              appliedPromoNames={autoPromo.names}
+              promotions={promotions}
               openTabs={openTabs}
               tableLabel={tableLabel}
               setTableLabel={setTableLabel}
@@ -7163,6 +7823,11 @@ function POSApp() {
             <DashboardTab
               todayRevenue={todayRevenue}
               todayCount={todaySales.length}
+              todayProfit={todayProfit}
+              yesterdayRevenue={yesterdayRevenue}
+              yesterdayProfit={yesterdayProfit}
+              customersCount={customers.length}
+              topProducts={todayTopProducts}
               lowStock={lowStock}
               products={products}
               sales={sales}
@@ -7223,6 +7888,18 @@ function POSApp() {
               openAdd={() => setExpenseModal({ mode: "add" })}
               openEdit={(e) => setExpenseModal({ mode: "edit", expense: e })}
               deleteExpense={deleteExpense}
+            />
+          )}
+          {activeTab === "promotions" && allowedTabs.includes("promotions") && (
+            <PromotionsTab
+              promotions={promotions}
+              products={products}
+              prodName={prodName}
+              openAdd={() => setPromotionModal({ mode: "add" })}
+              openEdit={(p) =>
+                setPromotionModal({ mode: "edit", promotion: p })
+              }
+              deletePromotion={deletePromotion}
             />
           )}
           {activeTab === "shift" && allowedTabs.includes("shift") && (
@@ -7427,6 +8104,15 @@ function POSApp() {
             data={expenseModal}
             onClose={() => setExpenseModal(null)}
             onSave={saveExpense}
+          />
+        )}
+        {promotionModal && (
+          <PromotionModal
+            data={promotionModal}
+            products={products}
+            prodName={prodName}
+            onClose={() => setPromotionModal(null)}
+            onSave={savePromotion}
           />
         )}
         {categoryModal && (
@@ -7798,24 +8484,31 @@ function FontStyles() {
         .pos-products {
           border-right: none !important;
           border-bottom: 1px solid var(--border);
-          flex: 1.1 1 0 !important;
-          min-height: 0;
+          flex: 1.2 1 0 !important;
+          min-height: 260px;
           overflow-y: auto;
         }
         .pos-invoice {
           width: 100% !important;
           flex: 1 1 0 !important;
-          min-height: 0;
-          max-height: 58vh;
+          min-height: 280px;
+          max-height: 50vh;
         }
 
         .responsive-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
         .responsive-grid-2 { grid-template-columns: 1fr !important; }
+        .responsive-grid-3 { grid-template-columns: repeat(2, 1fr) !important; }
+        /* Only force multi-column sizing in grid view — list view (.pos-product-grid--list)
+           keeps its single-column rows so the toggle actually works on tablet/mobile. */
+        .pos-product-grid--grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important; }
       }
 
       @media (max-width: 520px) {
         .responsive-grid-4 { grid-template-columns: 1fr !important; }
-        .pos-invoice { overflow-x: hidden; }
+        .responsive-grid-3 { grid-template-columns: 1fr !important; }
+        .pos-product-grid--grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important; }
+        .pos-products { min-height: 220px; }
+        .pos-invoice { overflow-x: hidden; min-height: 260px; max-height: 48vh; }
         .invoice-header-row { gap: 6px !important; }
         .invoice-table-row button { flex: 1 1 100%; justify-content: center; }
       }
@@ -9161,6 +9854,16 @@ function POSTab(props) {
     setItemDiscount,
     splitCartLine,
     itemDiscountTotal,
+    couponCode,
+    setCouponCode,
+    applyCoupon,
+    removeCoupon,
+    appliedCoupon,
+    couponError,
+    couponDiscount,
+    autoPromoDiscount,
+    appliedPromoNames,
+    promotions,
     openTabs,
     tableLabel,
     setTableLabel,
@@ -9749,6 +10452,12 @@ function POSTab(props) {
             </span>
           </div>
           <div
+            className={
+              "pos-product-grid " +
+              (viewMode === "list"
+                ? "pos-product-grid--list"
+                : "pos-product-grid--grid")
+            }
             style={{
               flex: 1,
               overflowY: "auto",
@@ -9756,9 +10465,9 @@ function POSTab(props) {
               display: "grid",
               gridTemplateColumns:
                 viewMode === "grid"
-                  ? "repeat(auto-fill, minmax(160px, 1fr))"
+                  ? "repeat(auto-fill, minmax(185px, 1fr))"
                   : "1fr",
-              gap: "12px",
+              gap: viewMode === "list" ? "8px" : "14px",
               alignContent: "start",
             }}
           >
@@ -9775,6 +10484,30 @@ function POSTab(props) {
               const inCartQty = cartLine?.qty || 0;
               const badge = categoryBadgeColor(p.category);
               const outOfStock = p.stock === 0;
+              const productPromos = productPromotions(p, promotions);
+              const hasPromo = productPromos.length > 0;
+              // The badge shows the *actual deal*, not just that a promo
+              // exists: a BOGO promo shows its real buy/get quantities
+              // ("Buy 1 Get 1"), and a percent/amount promo shows its real
+              // discount ("-20%" / "-$5.00") — so staff see at a glance
+              // what the product gets without opening the Promotions tab.
+              const promoDealLabel = (pr) =>
+                pr.type === "bogo"
+                  ? t("promoBadge_bogo", {
+                      buy: Number(pr.bogoBuyQty) || 1,
+                      get: Number(pr.bogoGetQty) || 1,
+                    })
+                  : pr.discountMode === "percent"
+                    ? `-${Number(pr.discountValue) || 0}%`
+                    : `-${fmt(Number(pr.discountValue) || 0)}`;
+              const promoTypeLabels = [
+                ...new Set(productPromos.map(promoDealLabel)),
+              ];
+              const promoBadgeText =
+                promoTypeLabels.join(" · ") || t("promoBadgeLabel");
+              const promoTooltip = productPromos
+                .map((pr) => `${pr.name} — ${promoDealLabel(pr)}`)
+                .join(", ");
               if (viewMode === "list") {
                 return (
                   <div
@@ -9788,7 +10521,11 @@ function POSTab(props) {
                       borderRadius: "var(--radius-lg)",
                       border:
                         "1px solid " +
-                        (inCartQty > 0 ? "var(--primary)" : "var(--border)"),
+                        (inCartQty > 0
+                          ? "var(--primary)"
+                          : hasPromo
+                            ? "var(--accent)"
+                            : "var(--border)"),
                       background: outOfStock
                         ? "var(--surface-alt)"
                         : "var(--surface)",
@@ -9846,6 +10583,30 @@ function POSTab(props) {
                             ? t("outOfStock")
                             : `${p.stock} ${prodUnit(p)}`}
                         </span>
+                        {hasPromo && (
+                          <span
+                            title={promoTooltip}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "3px",
+                              fontSize: "10.5px",
+                              fontWeight: 700,
+                              padding: "1px 6px 1px 5px",
+                              borderRadius: "var(--radius-pill)",
+                              background:
+                                "color-mix(in srgb, var(--accent) 18%, transparent)",
+                              color: "var(--accent)",
+                              maxWidth: "160px",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <Percent size={9} style={{ flexShrink: 0 }} />
+                            {promoBadgeText}
+                          </span>
+                        )}
                       </div>
                     </div>
                     {inCartQty > 0 ? (
@@ -9905,7 +10666,11 @@ function POSTab(props) {
                     borderRadius: "var(--radius-lg)",
                     border:
                       "1px solid " +
-                      (inCartQty > 0 ? "var(--primary)" : "var(--border)"),
+                      (inCartQty > 0
+                        ? "var(--primary)"
+                        : hasPromo
+                          ? "var(--accent)"
+                          : "var(--border)"),
                     background: outOfStock
                       ? "var(--surface-alt)"
                       : "var(--surface)",
@@ -9959,8 +10724,9 @@ function POSTab(props) {
                   )}
                   <div
                     style={{
+                      position: "relative",
                       width: "100%",
-                      aspectRatio: "1/1",
+                      height: "150px",
                       borderRadius: "var(--radius-md)",
                       overflow: "hidden",
                       background: "var(--surface-alt)",
@@ -9969,6 +10735,35 @@ function POSTab(props) {
                       justifyContent: "center",
                     }}
                   >
+                    {hasPromo && (
+                      <span
+                        title={promoTooltip}
+                        style={{
+                          position: "absolute",
+                          bottom: "4px",
+                          right: "4px",
+                          left: "4px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "2px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "2px 7px",
+                          borderRadius: "var(--radius-pill)",
+                          background: "var(--accent)",
+                          color: "#fff",
+                          boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+                          zIndex: 1,
+                          justifyContent: "center",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <Percent size={10} style={{ flexShrink: 0 }} />
+                        {promoBadgeText}
+                      </span>
+                    )}
                     {p.image ? (
                       <img
                         src={p.image}
@@ -9989,6 +10784,10 @@ function POSTab(props) {
                       fontWeight: 600,
                       lineHeight: 1.35,
                       minHeight: "36px",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
                     }}
                   >
                     {prodName(p)}
@@ -10005,7 +10804,7 @@ function POSTab(props) {
                         style={{
                           fontFamily: "var(--font-mono)",
                           fontWeight: 700,
-                          fontSize: "15px",
+                          fontSize: "17px",
                           color: "var(--primary)",
                         }}
                       >
@@ -10013,6 +10812,9 @@ function POSTab(props) {
                       </div>
                       <div
                         style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "3px",
                           fontSize: "10.5px",
                           fontWeight: 600,
                           color: outOfStock
@@ -10020,6 +10822,7 @@ function POSTab(props) {
                             : "var(--text-muted)",
                         }}
                       >
+                        <Package size={10} style={{ flexShrink: 0 }} />
                         {outOfStock
                           ? t("outOfStock")
                           : `${p.stock} ${prodUnit(p)}`}
@@ -10053,8 +10856,8 @@ function POSTab(props) {
                         }}
                         disabled={outOfStock}
                         style={{
-                          width: "30px",
-                          height: "30px",
+                          width: "38px",
+                          height: "38px",
                           borderRadius: "50%",
                           border: "none",
                           background: outOfStock
@@ -10069,7 +10872,7 @@ function POSTab(props) {
                           flexShrink: 0,
                         }}
                       >
-                        <Plus size={16} />
+                        <Plus size={18} />
                       </button>
                     )}
                   </div>
@@ -10082,7 +10885,7 @@ function POSTab(props) {
         <div
           className="pos-invoice"
           style={{
-            width: "360px",
+            width: "340px",
             flexShrink: 0,
             display: "flex",
             flexDirection: "column",
@@ -10259,9 +11062,31 @@ function POSTab(props) {
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
                         }}
                       >
-                        {c.name}
+                        <span
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {c.name}
+                        </span>
+                        {c.bogoGifted > 0 && (
+                          <span
+                            style={{
+                              fontSize: "10.5px",
+                              fontWeight: 700,
+                              color: "var(--success, #1a9c6a)",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {t("bogoFreeBadge", { count: c.bogoGifted })}
+                          </span>
+                        )}
                       </div>
                       <button
                         className="cart-line-remove"
@@ -10539,6 +11364,104 @@ function POSTab(props) {
                 }}
               />
             </div>
+
+            {autoPromoDiscount > 0 && (
+              <Row
+                label={
+                  appliedPromoNames && appliedPromoNames.length
+                    ? `${t("promoDiscountLine")} (${appliedPromoNames.join(", ")})`
+                    : t("promoDiscountLine")
+                }
+                value={`-${fmt(autoPromoDiscount)}`}
+              />
+            )}
+
+            <div style={{ margin: "6px 0 2px" }}>
+              {appliedCoupon ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    background:
+                      "color-mix(in srgb, var(--primary) 10%, transparent)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "5px 9px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "var(--primary)",
+                    }}
+                  >
+                    {appliedCoupon.couponCode} · -{fmt(couponDiscount)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={removeCoupon}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--danger)",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      padding: 0,
+                    }}
+                  >
+                    {t("couponRemoveBtn")}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <input
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value)}
+                    placeholder={t("couponCodePlaceholder")}
+                    style={{
+                      flex: 1,
+                      padding: "6px 9px",
+                      borderRadius: "var(--radius-sm)",
+                      border: "1px solid var(--border)",
+                      fontSize: "12.5px",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={applyCoupon}
+                    disabled={!couponCode}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "var(--radius-sm)",
+                      border: "none",
+                      background: "var(--primary)",
+                      color: "#fff",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: couponCode ? "pointer" : "default",
+                      opacity: couponCode ? 1 : 0.5,
+                    }}
+                  >
+                    {t("couponApplyBtn")}
+                  </button>
+                </div>
+              )}
+              {couponError && (
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--danger)",
+                    marginTop: "3px",
+                  }}
+                >
+                  {t(couponError)}
+                </div>
+              )}
+            </div>
+
             <Row
               label={t("total")}
               value={fmt(total)}
@@ -11260,6 +12183,11 @@ function Row({ label, value, subValue, bold, big, accent }) {
 function DashboardTab({
   todayRevenue,
   todayCount,
+  todayProfit,
+  yesterdayRevenue,
+  yesterdayProfit,
+  customersCount,
+  topProducts,
   lowStock,
   products,
   sales,
@@ -11273,6 +12201,13 @@ function DashboardTab({
     (s, sale) => (sale.refunded ? s : s + sale.total),
     0,
   );
+  // % change vs yesterday. When yesterday was $0 there's no meaningful ratio
+  // (division by zero) — treat any revenue/profit today as "new", not a
+  // percentage, so the card just hides the delta rather than showing +Infinity%.
+  const pctDelta = (today, yesterday) =>
+    yesterday > 0 ? ((today - yesterday) / yesterday) * 100 : undefined;
+  const revenueDelta = pctDelta(todayRevenue, yesterdayRevenue);
+  const profitDelta = pctDelta(todayProfit, yesterdayProfit);
 
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
@@ -11291,12 +12226,22 @@ function DashboardTab({
           value={fmt(todayRevenue)}
           icon={TrendingUp}
           tone="primary"
+          delta={revenueDelta}
+          deltaLabel={t("vsYesterday")}
         />
         <StatCard
           label={t("stat_todayTx")}
           value={todayCount}
           icon={Receipt}
           tone="accent"
+        />
+        <StatCard
+          label={t("stat_todayProfit")}
+          value={fmt(todayProfit)}
+          icon={TrendingUp}
+          tone="primary"
+          delta={profitDelta}
+          deltaLabel={t("vsYesterday")}
         />
         <StatCard
           label={t("stat_totalRevenue")}
@@ -11308,6 +12253,12 @@ function DashboardTab({
           label={t("stat_stockValue")}
           value={fmt(totalStockValue)}
           icon={Package}
+          tone="accent"
+        />
+        <StatCard
+          label={t("stat_totalCustomers")}
+          value={customersCount}
+          icon={Users}
           tone="accent"
         />
       </div>
@@ -11339,14 +12290,97 @@ function DashboardTab({
       </div>
 
       <div
-        className="responsive-grid-2"
+        className="responsive-grid-3"
         style={{
           padding: "4px 26px 26px",
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
+          gridTemplateColumns: "1fr 1fr 1fr",
           gap: "16px",
         }}
       >
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-lg)",
+            padding: "18px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "9px",
+              marginBottom: "12px",
+            }}
+          >
+            <TrendingUp size={17} color="var(--primary)" />
+            <span style={{ fontWeight: 700, fontSize: "14.5px" }}>
+              {t("topProducts")}
+            </span>
+          </div>
+          {topProducts.length === 0 ? (
+            <div style={{ fontSize: "13.5px", color: "var(--text-muted)" }}>
+              {t("noSalesYet")}
+            </div>
+          ) : (
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "2px" }}
+            >
+              {topProducts.map(([name, qty], i) => (
+                <div
+                  key={name}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "9px",
+                    padding: "7px 0",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      borderRadius: "var(--radius-sm)",
+                      background: "var(--surface-alt)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "var(--primary)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: "13.5px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {name}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                      fontSize: "13.5px",
+                    }}
+                  >
+                    ×{qty}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div
           style={{
             background: "var(--surface)",
@@ -11507,8 +12541,28 @@ function DashboardTab({
   );
 }
 
-function StatCard({ label, value, icon: Icon, tone = "primary" }) {
+// `delta` is an optional percent-change number (e.g. 12.4 or -8) shown under
+// the value with a small up/down arrow — used on the Dashboard to compare
+// today against yesterday. `deltaLabel` is the trailing caption (e.g. "vs
+// yesterday"). Omit `delta` for cards that don't have a same-period baseline
+// to compare against (e.g. Total stock value, Total customers).
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  tone = "primary",
+  delta,
+  deltaLabel,
+}) {
   const toneColor = tone === "accent" ? "var(--accent)" : "var(--primary)";
+  const hasDelta = typeof delta === "number" && isFinite(delta);
+  const deltaColor = !hasDelta
+    ? "var(--text-muted)"
+    : delta > 0
+      ? "var(--success, #1a9c6a)"
+      : delta < 0
+        ? "var(--danger)"
+        : "var(--text-muted)";
   return (
     <div
       className="stat-card"
@@ -11560,6 +12614,29 @@ function StatCard({ label, value, icon: Icon, tone = "primary" }) {
       >
         {value}
       </div>
+      {hasDelta && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "3px",
+            marginTop: "5px",
+            fontSize: "11.5px",
+            fontWeight: 700,
+            color: deltaColor,
+          }}
+        >
+          {delta > 0 ? "▲" : delta < 0 ? "▼" : "–"}
+          <span>
+            {delta === 0 ? "0%" : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}%`}
+          </span>
+          {deltaLabel && (
+            <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>
+              {deltaLabel}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -13056,6 +14133,184 @@ function ExpensesTab({ expenses, openAdd, openEdit, deleteExpense }) {
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => {
             deleteExpense(deleteTarget);
+            setDeleteTarget(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ================= Promotions =================
+
+// One-line human summary of what a promotion actually does — shown in the
+// list table instead of separate columns, since each of the 6 types uses a
+// different mix of fields.
+function promoDetailText(p, t, products, prodName) {
+  const val =
+    p.discountMode === "percent"
+      ? `${p.discountValue || 0}%`
+      : fmt(p.discountValue || 0);
+  switch (p.type) {
+    case "min_purchase":
+      return `${t("promo_minPurchase")} ${fmt(p.minPurchase || 0)} → ${val} ${t("off_")}`;
+    case "product": {
+      const prod = products.find((x) => x.id === p.productId);
+      return `${prod ? prodName(prod) : "—"} → ${val} ${t("off_")}`;
+    }
+    case "category":
+      return `${t("cat_" + p.category) || p.category} → ${val} ${t("off_")}`;
+    case "coupon":
+      return `"${p.couponCode || "—"}" → ${val} ${t("off_")} ${
+        p.usageLimit ? `(${p.usedCount || 0}/${p.usageLimit})` : ""
+      }`;
+    case "bogo": {
+      const prod = products.find((x) => x.id === p.productId);
+      return `${prod ? prodName(prod) : "—"}: ${t("promo_bogoBuyQty")} ${
+        p.bogoBuyQty || 1
+      } → ${t("promo_bogoGetQty")} ${p.bogoGetQty || 1} (${
+        p.bogoGetDiscount || 100
+      }%)`;
+    }
+    case "happy_hour":
+      return `${p.happyStart || "--:--"} - ${p.happyEnd || "--:--"} → ${val} ${t("off_")}`;
+    default:
+      return "";
+  }
+}
+
+function PromotionsTab({
+  promotions,
+  products,
+  prodName,
+  openAdd,
+  openEdit,
+  deletePromotion,
+}) {
+  const { t } = useT();
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const sorted = [...promotions].sort(
+    (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
+  );
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto" }}>
+      <TopBar
+        title={t("nav_promotions")}
+        subtitle={t("promo_subtitle")}
+        action={
+          <button onClick={openAdd} style={primaryBtnStyle}>
+            <Plus size={16} /> {t("promo_addBtn")}
+          </button>
+        }
+      />
+      <div style={{ padding: "18px 26px" }}>
+        {sorted.length === 0 && (
+          <EmptyState
+            icon={Percent}
+            title={t("promo_empty")}
+            actionLabel={t("promo_addBtn")}
+            onAction={openAdd}
+          />
+        )}
+        {sorted.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+            }}
+          >
+            {sorted.map((p) => (
+              <div
+                key={p.id}
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "14px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                }}
+              >
+                <div
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "var(--radius-md)",
+                    background: "var(--surface-alt)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Percent size={16} color="var(--primary)" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      marginBottom: "3px",
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, fontSize: "14px" }}>
+                      {p.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "10.5px",
+                        fontWeight: 700,
+                        padding: "1px 7px",
+                        borderRadius: "999px",
+                        background: p.active
+                          ? "color-mix(in srgb, var(--success, #1a9c6a) 15%, transparent)"
+                          : "var(--surface-alt)",
+                        color: p.active
+                          ? "var(--success, #1a9c6a)"
+                          : "var(--text-muted)",
+                      }}
+                    >
+                      {p.active
+                        ? t("promo_statusActive")
+                        : t("promo_statusInactive")}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "12.5px",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {t("promo_type_" + p.type)} ·{" "}
+                    {promoDetailText(p, t, products, prodName)}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "5px", flexShrink: 0 }}>
+                  <button onClick={() => openEdit(p)} style={iconBtnStyle}>
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    onClick={() => setDeleteTarget(p.id)}
+                    style={{ ...iconBtnStyle, color: "var(--danger)" }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t("promo_deleteConfirm")}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            deletePromotion(deleteTarget);
             setDeleteTarget(null);
           }}
         />
@@ -18524,6 +19779,298 @@ function ExpenseModal({ data, onClose, onSave }) {
       <button
         onClick={() => onSave(form)}
         style={{ ...primaryBtnStyle, width: "100%", justifyContent: "center" }}
+      >
+        {t("save")}
+      </button>
+    </ModalShell>
+  );
+}
+
+const PROMO_TYPES = [
+  "min_purchase",
+  "product",
+  "category",
+  "coupon",
+  "bogo",
+  "happy_hour",
+];
+
+function PromotionModal({ data, products, prodName, onClose, onSave }) {
+  const { t, catLabel, categories } = useT();
+  const editing = data.mode === "edit";
+  const p = editing
+    ? data.promotion
+    : {
+        type: "min_purchase",
+        name: "",
+        active: true,
+        discountMode: "percent",
+        discountValue: "",
+        minPurchase: "",
+        productId: products[0] ? products[0].id : "",
+        category: categories[0] ? categories[0].key : "",
+        couponCode: "",
+        usageLimit: "",
+        usedCount: 0,
+        expiresAt: "",
+        bogoBuyQty: 1,
+        bogoGetQty: 1,
+        bogoGetDiscount: 100,
+        happyStart: "17:00",
+        happyEnd: "19:00",
+        happyDays: [1, 2, 3, 4, 5],
+      };
+  const [form, setForm] = useState(p);
+  const set = (patch) => setForm({ ...form, ...patch });
+  const toggleDay = (d) => {
+    const days = form.happyDays || [];
+    set({
+      happyDays: days.includes(d)
+        ? days.filter((x) => x !== d)
+        : [...days, d].sort(),
+    });
+  };
+
+  return (
+    <ModalShell
+      title={editing ? t("promo_editTitle") : t("promo_addTitle")}
+      onClose={onClose}
+      width="440px"
+    >
+      <label style={fieldLabel}>{t("promo_name")}</label>
+      <input
+        style={fieldInput}
+        value={form.name}
+        onChange={(ev) => set({ name: ev.target.value })}
+      />
+
+      <label style={fieldLabel}>{t("promo_type")}</label>
+      <select
+        style={fieldInput}
+        value={form.type}
+        onChange={(ev) => set({ type: ev.target.value })}
+      >
+        {PROMO_TYPES.map((ty) => (
+          <option key={ty} value={ty}>
+            {t("promo_type_" + ty)}
+          </option>
+        ))}
+      </select>
+
+      <label
+        style={{
+          ...fieldLabel,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          marginBottom: "14px",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={form.active !== false}
+          onChange={(ev) => set({ active: ev.target.checked })}
+        />
+        {t("promo_active")}
+      </label>
+
+      {/* discount value applies to every type except plain coupon-usage-only
+          config — coupon still uses it as the code's own discount */}
+      {form.type !== "bogo" && (
+        <>
+          <label style={fieldLabel}>{t("promo_discountMode")}</label>
+          <select
+            style={fieldInput}
+            value={form.discountMode}
+            onChange={(ev) => set({ discountMode: ev.target.value })}
+          >
+            <option value="percent">{t("promo_discountMode_percent")}</option>
+            <option value="amount">{t("promo_discountMode_amount")}</option>
+          </select>
+          <label style={fieldLabel}>{t("promo_discountValue")}</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            style={fieldInput}
+            value={form.discountValue}
+            onChange={(ev) => set({ discountValue: ev.target.value })}
+            placeholder="0"
+          />
+        </>
+      )}
+
+      {form.type === "min_purchase" && (
+        <>
+          <label style={fieldLabel}>{t("promo_minPurchase")}</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            style={fieldInput}
+            value={form.minPurchase}
+            onChange={(ev) => set({ minPurchase: ev.target.value })}
+            placeholder="0.00"
+          />
+        </>
+      )}
+
+      {(form.type === "product" || form.type === "bogo") && (
+        <>
+          <label style={fieldLabel}>{t("promo_product")}</label>
+          <select
+            style={fieldInput}
+            value={form.productId}
+            onChange={(ev) => set({ productId: ev.target.value })}
+          >
+            {products.map((pr) => (
+              <option key={pr.id} value={pr.id}>
+                {prodName(pr)}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+
+      {form.type === "category" && (
+        <>
+          <label style={fieldLabel}>{t("promo_category")}</label>
+          <select
+            style={fieldInput}
+            value={form.category}
+            onChange={(ev) => set({ category: ev.target.value })}
+          >
+            {categories.map((c) => (
+              <option key={c.key} value={c.key}>
+                {catLabel(c.key)}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+
+      {form.type === "coupon" && (
+        <>
+          <label style={fieldLabel}>{t("promo_couponCode")}</label>
+          <input
+            style={{ ...fieldInput, textTransform: "uppercase" }}
+            value={form.couponCode}
+            onChange={(ev) => set({ couponCode: ev.target.value })}
+            placeholder="SAVE10"
+          />
+          <label style={fieldLabel}>{t("promo_usageLimit")}</label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            style={fieldInput}
+            value={form.usageLimit}
+            onChange={(ev) => set({ usageLimit: ev.target.value })}
+            placeholder={t("promo_usageLimitPlaceholder")}
+          />
+          <label style={fieldLabel}>{t("promo_expiresAt")}</label>
+          <input
+            type="date"
+            style={fieldInput}
+            value={form.expiresAt || ""}
+            onChange={(ev) => set({ expiresAt: ev.target.value })}
+          />
+        </>
+      )}
+
+      {form.type === "bogo" && (
+        <>
+          <label style={fieldLabel}>{t("promo_bogoBuyQty")}</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            style={fieldInput}
+            value={form.bogoBuyQty}
+            onChange={(ev) => set({ bogoBuyQty: ev.target.value })}
+          />
+          <label style={fieldLabel}>{t("promo_bogoGetQty")}</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            style={fieldInput}
+            value={form.bogoGetQty}
+            onChange={(ev) => set({ bogoGetQty: ev.target.value })}
+          />
+          <label style={fieldLabel}>{t("promo_bogoGetDiscount")}</label>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+            style={fieldInput}
+            value={form.bogoGetDiscount}
+            onChange={(ev) => set({ bogoGetDiscount: ev.target.value })}
+          />
+        </>
+      )}
+
+      {form.type === "happy_hour" && (
+        <>
+          <label style={fieldLabel}>{t("promo_happyStart")}</label>
+          <input
+            type="time"
+            style={fieldInput}
+            value={form.happyStart}
+            onChange={(ev) => set({ happyStart: ev.target.value })}
+          />
+          <label style={fieldLabel}>{t("promo_happyEnd")}</label>
+          <input
+            type="time"
+            style={fieldInput}
+            value={form.happyEnd}
+            onChange={(ev) => set({ happyEnd: ev.target.value })}
+          />
+          <label style={fieldLabel}>{t("promo_happyDays")}</label>
+          <div
+            style={{
+              display: "flex",
+              gap: "6px",
+              flexWrap: "wrap",
+              marginBottom: "14px",
+            }}
+          >
+            {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => toggleDay(d)}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--border)",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  background: (form.happyDays || []).includes(d)
+                    ? "var(--primary)"
+                    : "var(--surface)",
+                  color: (form.happyDays || []).includes(d)
+                    ? "#fff"
+                    : "var(--text)",
+                }}
+              >
+                {t("promo_day_" + d)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <button
+        onClick={() => onSave(form)}
+        style={{
+          ...primaryBtnStyle,
+          width: "100%",
+          justifyContent: "center",
+          marginTop: "4px",
+        }}
       >
         {t("save")}
       </button>
