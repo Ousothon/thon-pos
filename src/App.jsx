@@ -67,6 +67,10 @@ import {
   MoreVertical,
   Banknote,
   Percent,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  PackagePlus,
+  Truck,
 } from "lucide-react";
 
 // ================= Supabase (online ordering) =================
@@ -505,6 +509,51 @@ const sessionKeyFor = (shopId) =>
 const genId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+// Minimal RFC4180-ish CSV parser: handles quoted fields (with embedded
+// commas/newlines) and "" escaped quotes. Returns an array of rows, each
+// row an array of string cells. Good enough for product import/export —
+// not meant to handle every CSV dialect in the wild.
+const parseCsv = (text) => {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  const clean = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (clean[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(field);
+      field = "";
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && clean[i + 1] === "\n") i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += ch;
+    }
+  }
+  if (field !== "" || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((c) => c.trim() !== ""));
+};
+
 // ---- Promotion engine (pure helpers, no component state) ----
 // A happy-hour promotion is only "live" during its configured days/time
 // window; every other promotion type is live whenever it's toggled active.
@@ -574,6 +623,12 @@ function computeAutoPromotions(cart, promotions, subtotal, products) {
             discount += d;
             names.push(p.name);
           }
+        }
+      } else if (p.type === "happy_hour") {
+        const d = promoAmountFor(p, subtotal);
+        if (d > 0) {
+          discount += d;
+          names.push(p.name);
         }
       } else if (p.type === "bogo") {
         const line = cart.find((c) => c.id === p.productId);
@@ -1804,6 +1859,33 @@ const STRINGS = {
   toast_categoryAdded: { km: "បានបន្ថែមប្រភេទ", en: "Category added" },
   toast_categoryDeleted: { km: "បានលុបប្រភេទ", en: "Category deleted" },
 
+  manageSuppliers: { km: "គ្រប់គ្រងអ្នកផ្គត់ផ្គង់", en: "Manage suppliers" },
+  manageSuppliers_subtitle: {
+    km: "បន្ថែម ឬលុបអ្នកផ្គត់ផ្គង់ទំនិញរបស់អ្នក",
+    en: "Add or remove suppliers you buy stock from",
+  },
+  supplier_addBtn: { km: "បន្ថែមអ្នកផ្គត់ផ្គង់ថ្មី", en: "Add supplier" },
+  supplier_name: { km: "ឈ្មោះអ្នកផ្គត់ផ្គង់", en: "Supplier name" },
+  supplier_phone: { km: "លេខទូរស័ព្ទ (ស្រេចចិត្ត)", en: "Phone (optional)" },
+  supplier_note: { km: "កំណត់ចំណាំ (ស្រេចចិត្ត)", en: "Note (optional)" },
+  supplier_nameRequired: {
+    km: "សូមបញ្ចូលឈ្មោះអ្នកផ្គត់ផ្គង់",
+    en: "Please enter a supplier name",
+  },
+  supplier_deleteConfirm: {
+    km: "តើអ្នកចង់លុបអ្នកផ្គត់ផ្គង់នេះមែនទេ?",
+    en: "Delete this supplier?",
+  },
+  supplier_none: { km: "គ្មានអ្នកផ្គត់ផ្គង់", en: "No supplier" },
+  toast_supplierAdded: { km: "បានបន្ថែមអ្នកផ្គត់ផ្គង់", en: "Supplier added" },
+  toast_supplierDeleted: { km: "បានលុបអ្នកផ្គត់ផ្គង់", en: "Supplier deleted" },
+  stock_supplier: {
+    km: "អ្នកផ្គត់ផ្គង់ (ស្រេចចិត្ត)",
+    en: "Supplier (optional)",
+  },
+  stock_purchasesOnly: { km: "តែការទិញចូល", en: "Purchases only" },
+  stock_allMovements: { km: "ទាំងអស់", en: "All movements" },
+
   searchProducts: { km: "ស្វែងរកទំនិញ...", en: "Search products..." },
   noProductsFound: { km: "រកមិនឃើញទំនិញ", en: "No products found" },
   clearSearch: { km: "សម្អាតការស្វែងរក", en: "Clear search" },
@@ -1855,6 +1937,11 @@ const STRINGS = {
   promo_type_coupon: { km: "កូដប្រូម៉ូសិន", en: "Coupon code" },
   promo_type_bogo: { km: "ទិញ 1 ឲ្យ 1", en: "Buy 1 Get 1" },
   promo_type_happy_hour: { km: "Happy Hour", en: "Happy Hour" },
+  happyHourActiveBanner: {
+    km: "កំពុងសកម្ម Happy Hour",
+    en: "Happy Hour active now",
+  },
+  happyHourActiveUntil: { km: "រហូតដល់", en: "until" },
   promo_active: { km: "កំពុងដំណើរការ", en: "Active" },
   promo_statusActive: { km: "កំពុងដំណើរការ", en: "Active" },
   promo_statusInactive: { km: "បិទ", en: "Inactive" },
@@ -2039,6 +2126,8 @@ const STRINGS = {
   stat_totalRevenue: { km: "ចំណូលសរុប", en: "Total revenue" },
   stat_stockValue: { km: "តម្លៃស្តុកសរុប", en: "Total stock value" },
   stat_todayProfit: { km: "ចំណេញថ្ងៃនេះ", en: "Today's profit" },
+  stat_todayExpense: { km: "ចំណាយថ្ងៃនេះ", en: "Today's expense" },
+  stat_todayNetProfit: { km: "ចំណេញសុទ្ធថ្ងៃនេះ", en: "Today's net profit" },
   stat_totalCustomers: { km: "អតិថិជនសរុប", en: "Total customers" },
   vsYesterday: { km: "ធៀបនឹងម្សិលមិញ", en: "vs yesterday" },
   dash_salesTrend: {
@@ -2051,6 +2140,17 @@ const STRINGS = {
     en: "No products running low 🎉",
   },
   manageStock: { km: "គ្រប់គ្រងស្តុក →", en: "Manage inventory →" },
+  expiringSoonTitle: { km: "ជិតផុតកំណត់", en: "Expiring soon" },
+  noExpiringSoon: {
+    km: "គ្មានទំនិញជិតផុតកំណត់ទេ 🎉",
+    en: "Nothing expiring soon 🎉",
+  },
+  expiredLabel: { km: "ផុតកំណត់ហើយ", en: "Expired" },
+  daysLeftSuffix: { km: "ថ្ងៃទៀត", en: "d left" },
+  fieldExpiryDate: {
+    km: "កាលបរិច្ឆេទផុតកំណត់ (ស្រេចចិត្ត)",
+    en: "Expiry date (optional)",
+  },
   recentSales: { km: "ការលក់ថ្មីៗ", en: "Recent sales" },
   noSalesYet: { km: "មិនទាន់មានប្រតិបត្តិការទេ", en: "No transactions yet" },
   viewReports: { km: "មើលរបាយការណ៍ →", en: "View reports →" },
@@ -2068,6 +2168,49 @@ const STRINGS = {
 
   editProduct: { km: "កែប្រែទំនិញ", en: "Edit product" },
   deleteProduct: { km: "លុបទំនិញ", en: "Delete" },
+  stock_adjustMenu: { km: "កែសម្រួលស្តុក", en: "Adjust stock" },
+  stock_inBtn: { km: "ស្តុកចូល / ទិញចូល", en: "Stock In / Purchase" },
+  stock_outBtn: { km: "ស្តុកចេញ", en: "Stock Out" },
+  stock_adjustBtn: { km: "កែតម្រូវស្តុក", en: "Stock Adjustment" },
+  stock_modalTitle: {
+    km: "កែសម្រួលស្តុក",
+    en: "Adjust stock",
+  },
+  stock_currentStock: { km: "ស្តុកបច្ចុប្បន្ន", en: "Current stock" },
+  stock_qty: { km: "ចំនួន", en: "Quantity" },
+  stock_newStockCount: {
+    km: "ចំនួនស្តុកពិតប្រាកដ (បន្ទាប់ពីរាប់)",
+    en: "Actual stock count (after counting)",
+  },
+  stock_unitCost: {
+    km: "តម្លៃដើម/ឯកតា (ស្រេចចិត្ត)",
+    en: "Unit cost (optional)",
+  },
+  stock_unitCostHint: {
+    km: "បើបំពេញ នឹងកែប្រែតម្លៃដើមទំនិញនេះសម្រាប់លើកក្រោយ",
+    en: "If filled, updates this product's cost price going forward",
+  },
+  stock_note: { km: "កំណត់ចំណាំ (ស្រេចចិត្ត)", en: "Note (optional)" },
+  stock_notePlaceholder: {
+    km: "ឧ. ទិញពីអ្នកផ្គត់ផ្គង់, ខូច, បាត់...",
+    en: "e.g. purchased from supplier, damaged, lost...",
+  },
+  stock_movementSaved: {
+    km: "បានកត់ត្រាការផ្លាស់ប្តូរស្តុក",
+    en: "Stock movement saved",
+  },
+  stock_historyBtn: { km: "ប្រវត្តិស្តុក", en: "Stock history" },
+  stock_historyTitle: {
+    km: "ប្រវត្តិចលនាស្តុក",
+    en: "Stock movement history",
+  },
+  stock_historyEmpty: {
+    km: "មិនទាន់មានចលនាស្តុកនៅឡើយទេ",
+    en: "No stock movements yet",
+  },
+  stock_typeIn: { km: "ស្តុកចូល", en: "In" },
+  stock_typeOut: { km: "ស្តុកចេញ", en: "Out" },
+  stock_typeAdjust: { km: "កែតម្រូវ", en: "Adjust" },
   addProductTitle: { km: "បន្ថែមទំនិញថ្មី", en: "Add new product" },
   fieldName: { km: "ឈ្មោះទំនិញ", en: "Product name" },
   fieldNamePlaceholder: { km: "ឧ. ទឹកសុទ្ធ 500ml", en: "e.g. Water 500ml" },
@@ -2105,6 +2248,11 @@ const STRINGS = {
   stat_profit: { km: "ចំណេញដុល", en: "Gross profit" },
   stat_netProfit: { km: "ចំណេញសុទ្ធ", en: "Net profit" },
   topProducts: { km: "ទំនិញលក់ដាច់បំផុត", en: "Best-selling products" },
+  profitByProduct: { km: "ចំណេញតាមទំនិញ", en: "Profit by product" },
+  th_qtySold: { km: "ចំនួនលក់", en: "Qty sold" },
+  th_revenue: { km: "ចំណូល", en: "Revenue" },
+  th_profit: { km: "ចំណេញ", en: "Profit" },
+  th_marginPct: { km: "% ចំណេញ", en: "Margin %" },
   noData: { km: "មិនមានទិន្នន័យ", en: "No data yet" },
   transactions: { km: "ប្រតិបត្តិការ ({count})", en: "Transactions ({count})" },
   noTransactions: { km: "មិនមានប្រតិបត្តិការ", en: "No transactions" },
@@ -2160,6 +2308,20 @@ const STRINGS = {
   toast_importFailed: {
     km: "នាំចូលបរាជ័យ — file មិនត្រឹមត្រូវ",
     en: "Import failed — invalid file",
+  },
+  toast_importedProducts: {
+    km: "នាំចូលបានជោគជ័យ — ថ្មី {created} / កែប្រែ {updated}",
+    en: "Import complete — {created} new / {updated} updated",
+  },
+  stock_csvImported: {
+    km: "នាំចូលទំនិញពី CSV",
+    en: "Imported products from CSV",
+  },
+  inv_importCsv: { km: "នាំចូល CSV", en: "Import CSV" },
+  inv_exportCsv: { km: "នាំចេញ CSV", en: "Export CSV" },
+  inv_importHint: {
+    km: "លំដាប់ជួរឈរ: name_km, name_en, category, price, cost, stock, unit_km, unit_en, barcode, expiry_date",
+    en: "Column order: name_km, name_en, category, price, cost, stock, unit_km, unit_en, barcode, expiry_date",
   },
   archive_finishedBtn: {
     km: "Archive ការបញ្ជាទិញរួចរាល់",
@@ -2453,6 +2615,22 @@ const STRINGS = {
   shift_endBtn: { km: "បិទបញ្ជីវេន", en: "End shift" },
   shift_cashSales: { km: "លក់សាច់ប្រាក់", en: "Cash sales" },
   shift_cashRefunds: { km: "សងប្រាក់វិញ", en: "Cash refunds" },
+  shift_cashIn: { km: "លុយចូល", en: "Cash in" },
+  shift_cashOut: { km: "លុយចេញ", en: "Cash out" },
+  shift_cashInBtn: { km: "កត់ត្រាលុយចូល", en: "Log cash in" },
+  shift_cashOutBtn: { km: "កត់ត្រាលុយចេញ", en: "Log cash out" },
+  shift_cashMovements: { km: "លុយចូល / លុយចេញ", en: "Cash in / out" },
+  shift_noCashMovements: {
+    km: "មិនទាន់មានកំណត់ត្រាលុយចូល-ចេញនៅឡើយទេ",
+    en: "No cash in/out logged yet",
+  },
+  shift_voidMovement: { km: "លុបកំណត់ត្រា", en: "Void entry" },
+  shift_cashAmount: { km: "ចំនួនទឹកប្រាក់", en: "Amount" },
+  shift_cashReason: { km: "មូលហេតុ", en: "Reason" },
+  shift_cashReasonPlaceholder: {
+    km: "ឧ. ទិញទឹកកក, ដាក់លុយបន្ថែមចូលថត...",
+    en: "e.g. bought ice, added float to drawer...",
+  },
   shift_expectedCash: { km: "លុយដែលគួរមាន", en: "Expected cash" },
   shift_countedCash: { km: "លុយរាប់បានពិត", en: "Counted cash" },
   shift_adjustments: {
@@ -2460,8 +2638,8 @@ const STRINGS = {
     en: "Other adjustments (optional)",
   },
   shift_adjustmentsHint: {
-    km: "ឧ. លុយបានយកចេញទិញអីវ៉ាន់ ឬចំណាយសាច់ប្រាក់ផ្សេងទៀត (កាត់ចេញពីលុយគួរមាន)",
-    en: "e.g. cash taken out for supplies or other petty cash paid out (subtracted from expected)",
+    km: 'សម្រាប់តែករណីមិនទាន់បានកត់ត្រាតាម​ "លុយចូល/លុយចេញ" ខាងលើ (កាត់ចេញពីលុយគួរមាន)',
+    en: "Only for anything not already logged via Cash in/out above (subtracted from expected)",
   },
   shift_diff: { km: "ភាពខុសគ្នា", en: "Difference" },
   shift_note: { km: "កំណត់ចំណាំ (ស្រេចចិត្ត)", en: "Note (optional)" },
@@ -3417,6 +3595,8 @@ function POSApp() {
   const [expenses, setExpenses] = useState([]);
   const [promotions, setPromotions] = useState([]);
   const [shifts, setShifts] = useState([]);
+  const [stockMovements, setStockMovements] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [shopName, setShopName] = useState("");
   const [shopLogo, setShopLogo] = useState(null);
   const [khrRate, setKhrRate] = useState(KHR_PER_USD_DEFAULT);
@@ -3531,7 +3711,10 @@ function POSApp() {
   const [invSearch, setInvSearch] = useState("");
   const [invCategory, setInvCategory] = useState("all");
   const [productModal, setProductModal] = useState(null);
+  const [stockModal, setStockModal] = useState(null);
+  const [stockHistoryOpen, setStockHistoryOpen] = useState(false);
   const [categoryModal, setCategoryModal] = useState(false);
+  const [supplierModal, setSupplierModal] = useState(false);
   const [customerModal, setCustomerModal] = useState(null);
   const [expenseModal, setExpenseModal] = useState(null);
   const [promotionModal, setPromotionModal] = useState(null);
@@ -3844,6 +4027,8 @@ function POSApp() {
         setExpenses(parsed.expenses || []);
         setPromotions(parsed.promotions || []);
         setShifts(parsed.shifts || []);
+        setStockMovements(parsed.stockMovements || []);
+        setSuppliers(parsed.suppliers || []);
         setOpenTabs(parsed.openTabs || []);
         if (parsed.categories && parsed.categories.length) {
           setCategories(parsed.categories);
@@ -3916,6 +4101,8 @@ function POSApp() {
             expenses,
             promotions,
             shifts,
+            stockMovements,
+            suppliers,
             openTabs,
             categories,
             shopName,
@@ -3958,6 +4145,8 @@ function POSApp() {
     expenses,
     promotions,
     shifts,
+    stockMovements,
+    suppliers,
     openTabs,
     categories,
     shopName,
@@ -4920,6 +5109,216 @@ function POSApp() {
     logAudit("delete", "product", target ? prodName(target) : id);
   };
 
+  const csvCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+
+  // Exports the full product catalog as a CSV the shop owner can edit in
+  // Excel/Sheets and re-import later via importProductsCsv. Column order
+  // must stay in sync with the import parser below.
+  const exportInventoryCsv = () => {
+    const header = [
+      "name_km",
+      "name_en",
+      "category",
+      "price",
+      "cost",
+      "stock",
+      "unit_km",
+      "unit_en",
+      "barcode",
+      "expiry_date",
+    ];
+    const rows = products.map((p) => [
+      p.name_km || "",
+      p.name_en || "",
+      p.category || "",
+      p.price ?? 0,
+      p.cost ?? 0,
+      p.stock ?? 0,
+      p.unit_km || "",
+      p.unit_en || "",
+      p.barcode || "",
+      p.expiryDate || "",
+    ]);
+    const csv = [header, ...rows]
+      .map((r) => r.map(csvCell).join(","))
+      .join("\n");
+    const blob = new Blob(["\uFEFF" + csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `products-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Imports products from a CSV matching the column order exportInventoryCsv
+  // writes (name_km, name_en, category, price, cost, stock, unit_km,
+  // unit_en, barcode, expiry_date). Rows are matched to existing products
+  // by barcode first, then exact Khmer name, so re-importing an edited
+  // export updates existing rows instead of duplicating them. Unknown
+  // categories fall back to the shop's first category so a typo doesn't
+  // silently drop the row.
+  const importProductsCsv = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const allRows = parseCsv(String(e.target.result));
+        if (allRows.length < 2) {
+          showToast(t("toast_importFailed"), "error");
+          return;
+        }
+        const dataRows = allRows.slice(1);
+        const categoryKeys = new Set(categories.map((c) => c.key));
+        const fallbackCategory = categories[0] ? categories[0].key : "";
+        let created = 0;
+        let updated = 0;
+        let nextProducts = [...products];
+        const toPush = [];
+        dataRows.forEach((cols) => {
+          const [
+            name_km,
+            name_en,
+            category,
+            price,
+            cost,
+            stock,
+            unit_km,
+            unit_en,
+            barcode,
+            expiry_date,
+          ] = cols;
+          if (!name_km || !String(name_km).trim()) return;
+          const cat = categoryKeys.has(category) ? category : fallbackCategory;
+          const existing = nextProducts.find(
+            (p) =>
+              (barcode && p.barcode && p.barcode === barcode) ||
+              p.name_km === name_km,
+          );
+          if (existing) {
+            const merged = {
+              ...existing,
+              name_km,
+              name_en: name_en || existing.name_en,
+              category: cat,
+              price: Number(price) || 0,
+              cost: Number(cost) || 0,
+              stock: Number(stock) || 0,
+              unit_km: unit_km || existing.unit_km,
+              unit_en: unit_en || existing.unit_en,
+              barcode: barcode || existing.barcode || "",
+              expiryDate: expiry_date || existing.expiryDate || "",
+              updatedAt: Date.now(),
+            };
+            nextProducts = nextProducts.map((p) =>
+              p.id === existing.id ? merged : p,
+            );
+            toPush.push(merged);
+            updated++;
+          } else {
+            const createdProduct = {
+              id: genId(),
+              name_km,
+              name_en: name_en || "",
+              category: cat,
+              price: Number(price) || 0,
+              cost: Number(cost) || 0,
+              stock: Number(stock) || 0,
+              unit_km: unit_km || "",
+              unit_en: unit_en || "",
+              barcode: barcode || "",
+              expiryDate: expiry_date || "",
+              image: null,
+              updatedAt: Date.now(),
+            };
+            nextProducts = [...nextProducts, createdProduct];
+            toPush.push(createdProduct);
+            created++;
+          }
+        });
+        setProducts(nextProducts);
+        toPush.forEach((p) => pushProductRow(p));
+        logAudit(
+          "add",
+          "product",
+          `${t("stock_csvImported")} — +${created} / ~${updated}`,
+        );
+        showToast(t("toast_importedProducts", { created, updated }));
+      } catch {
+        showToast(t("toast_importFailed"), "error");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Applies a manual stock movement (Stock In / Stock Out / Adjustment) to
+  // a product, updates its stock count, and logs an entry to the shared
+  // stock-movement ledger so it shows up in stock history / reports.
+  // - "in": qty is added (e.g. a purchase/restock), optional unit cost
+  //   updates the product's cost price going forward.
+  // - "out": qty is subtracted (e.g. damage, spoilage, personal use).
+  // - "adjust": newStock is the corrected absolute count after a physical
+  //   count; the logged qty is the signed delta so history stays readable.
+  const adjustStock = ({
+    productId,
+    type,
+    qty,
+    newStock,
+    cost,
+    supplierId,
+    supplierName,
+    note,
+  }) => {
+    const target = products.find((p) => p.id === productId);
+    if (!target) return;
+    const currentStock = Number(target.stock) || 0;
+    let delta = 0;
+    if (type === "in") delta = Math.abs(Number(qty) || 0);
+    else if (type === "out") delta = -Math.abs(Number(qty) || 0);
+    else delta = (Number(newStock) || 0) - currentStock;
+    if (delta === 0) return;
+    const updatedProduct = {
+      ...target,
+      stock: currentStock + delta,
+      ...(type === "in" && cost !== "" && cost != null
+        ? { cost: Number(cost) || 0 }
+        : {}),
+      updatedAt: Date.now(),
+    };
+    setProducts((prev) =>
+      prev.map((p) => (p.id === productId ? updatedProduct : p)),
+    );
+    pushProductRow(updatedProduct);
+    const movement = {
+      id: genId(),
+      productId,
+      productName: prodName(target),
+      type,
+      qty: delta,
+      cost: type === "in" ? Number(cost) || 0 : null,
+      supplierId: type === "in" ? supplierId || null : null,
+      supplierName: type === "in" ? supplierName || "" : "",
+      note: (note || "").trim(),
+      by: displayName(currentUser),
+      at: Date.now(),
+    };
+    setStockMovements((prev) => [movement, ...prev]);
+    pushStockMovementRow(movement);
+    const labelKey =
+      type === "in"
+        ? "stock_inBtn"
+        : type === "out"
+          ? "stock_outBtn"
+          : "stock_adjustBtn";
+    logAudit(
+      "edit",
+      "product",
+      `${t(labelKey)} — ${prodName(target)}: ${delta > 0 ? "+" : ""}${delta}`,
+    );
+    showToast(t("stock_movementSaved"));
+  };
+
   // ---------- Online ordering (Supabase) ----------
   // Push only the ONE row that actually changed, right when it changed —
   // no debounce, no full-table SELECT diff. This is far lighter than
@@ -4943,6 +5342,7 @@ function POSApp() {
           unit_en: p.unit_en || "",
           image: p.image || null,
           barcode: p.barcode || null,
+          expiry_date: p.expiryDate || null,
           updated_at: p.updatedAt || Date.now(),
         },
         { onConflict: "id" },
@@ -5062,6 +5462,7 @@ function POSApp() {
           closed_at: s.closedAt || null,
           cash_sales: s.cashSales ?? null,
           cash_refunds: s.cashRefunds ?? null,
+          cash_movements: JSON.stringify(s.cashMovements || []),
           adjustments: s.adjustments ?? 0,
           expected_cash: s.expectedCash ?? null,
           counted_cash: s.countedCash ?? null,
@@ -5086,6 +5487,35 @@ function POSApp() {
       if (error) {
         showToast(t("toast_supabaseError"), "error");
         console.error("deleteShiftRow failed:", error);
+      }
+    } catch {
+      /* offline */
+    }
+  };
+
+  const pushStockMovementRow = async (m) => {
+    if (!supabase || !shopId) return;
+    try {
+      const { error } = await supabase.from("stock_movements").upsert(
+        {
+          id: m.id,
+          shop_id: shopId,
+          product_id: m.productId,
+          product_name: m.productName || "",
+          type: m.type,
+          qty: m.qty,
+          cost: m.cost ?? null,
+          supplier_id: m.supplierId || null,
+          supplier_name: m.supplierName || "",
+          note: m.note || "",
+          by: m.by || "",
+          at: m.at,
+        },
+        { onConflict: "id" },
+      );
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("pushStockMovementRow failed:", error);
       }
     } catch {
       /* offline */
@@ -5210,6 +5640,41 @@ function POSApp() {
       if (error) {
         showToast(t("toast_supabaseError"), "error");
         console.error("deleteCategoryRow failed:", error);
+      }
+    } catch {
+      /* offline */
+    }
+  };
+
+  const pushSupplierRow = async (s) => {
+    if (!supabase || !shopId) return;
+    try {
+      const { error } = await supabase.from("suppliers").upsert(
+        {
+          id: s.id,
+          shop_id: shopId,
+          name: s.name || "",
+          phone: s.phone || "",
+          note: s.note || "",
+          updated_at: s.updatedAt || Date.now(),
+        },
+        { onConflict: "id" },
+      );
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("pushSupplierRow failed:", error);
+      }
+    } catch {
+      /* offline */
+    }
+  };
+  const deleteSupplierRow = async (id) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.from("suppliers").delete().eq("id", id);
+      if (error) {
+        showToast(t("toast_supabaseError"), "error");
+        console.error("deleteSupplierRow failed:", error);
       }
     } catch {
       /* offline */
@@ -5530,6 +5995,13 @@ function POSApp() {
         closedAt: r.closed_at || null,
         cashSales: r.cash_sales,
         cashRefunds: r.cash_refunds,
+        cashMovements: (() => {
+          try {
+            return r.cash_movements ? JSON.parse(r.cash_movements) : [];
+          } catch {
+            return [];
+          }
+        })(),
         adjustments: r.adjustments || 0,
         expectedCash: r.expected_cash,
         countedCash: r.counted_cash,
@@ -5538,6 +6010,54 @@ function POSApp() {
         updatedAt: r.updated_at || 0,
       }));
       setShifts((prev) => mergeById(prev, mapped));
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
+  const fetchCloudStockMovements = async () => {
+    if (!supabase || !shopId) return;
+    try {
+      const { data, error } = await supabase
+        .from("stock_movements")
+        .select("*")
+        .eq("shop_id", shopId);
+      if (error) throw error;
+      const mapped = (data || []).map((r) => ({
+        id: r.id,
+        productId: r.product_id,
+        productName: r.product_name || "",
+        type: r.type,
+        qty: r.qty,
+        cost: r.cost ?? null,
+        supplierId: r.supplier_id || null,
+        supplierName: r.supplier_name || "",
+        note: r.note || "",
+        by: r.by || "",
+        at: r.at,
+      }));
+      setStockMovements((prev) => mergeById(prev, mapped));
+    } catch {
+      /* ignore, local cache still works */
+    }
+  };
+
+  const fetchCloudSuppliers = async () => {
+    if (!supabase || !shopId) return;
+    try {
+      const { data, error } = await supabase
+        .from("suppliers")
+        .select("*")
+        .eq("shop_id", shopId);
+      if (error) throw error;
+      const mapped = (data || []).map((r) => ({
+        id: r.id,
+        name: r.name || "",
+        phone: r.phone || "",
+        note: r.note || "",
+        updatedAt: r.updated_at || 0,
+      }));
+      setSuppliers((prev) => mergeById(prev, mapped));
     } catch {
       /* ignore, local cache still works */
     }
@@ -5677,6 +6197,7 @@ function POSApp() {
           unit_en: r.unit_en || "",
           image: r.image || null,
           barcode: r.barcode || "",
+          expiryDate: r.expiry_date || "",
           updatedAt: r.updated_at || 0,
         }));
         setProducts((prev) => mergeById(prev, mapped));
@@ -5905,6 +6426,8 @@ function POSApp() {
     fetchCloudExpenses();
     fetchCloudCategories();
     fetchCloudShifts();
+    fetchCloudStockMovements();
+    fetchCloudSuppliers();
     fetchCloudTabs();
     fetchCloudPromotions();
     const poll = setInterval(() => {
@@ -5916,6 +6439,8 @@ function POSApp() {
       fetchCloudExpenses();
       fetchCloudCategories();
       fetchCloudShifts();
+      fetchCloudStockMovements();
+      fetchCloudSuppliers();
       fetchCloudTabs();
       fetchCloudPromotions();
     }, 15000);
@@ -6775,6 +7300,7 @@ function POSApp() {
       closedAt: null,
       cashSales: null,
       cashRefunds: null,
+      cashMovements: [],
       adjustments: 0,
       expectedCash: null,
       countedCash: null,
@@ -6790,6 +7316,59 @@ function POSApp() {
       `${t("shift_started")} — ${fmt(shift.openingCash)}`,
     );
     showToast(t("shift_startedToast"));
+  };
+
+  // Net effect of a shift's logged cash-in/cash-out entries: positive
+  // entries (cash added to the drawer) minus negative ones (cash taken
+  // out) — used to fold manual movements into the expected-cash math.
+  const cashMovementsNet = (movements) =>
+    (movements || []).reduce((s, m) => {
+      const amt = Number(m.amount) || 0;
+      return s + (m.type === "in" ? amt : -amt);
+    }, 0);
+
+  // Logs a single cash-in or cash-out entry against the currently open
+  // shift (e.g. cash taken out to buy supplies, or float added to the
+  // drawer). Kept separate from the end-of-shift "adjustments" field so
+  // each movement has its own timestamp/reason and shows up live.
+  const addCashMovement = (shiftId, { type, amount, reason }) => {
+    const target = shifts.find((s) => s.id === shiftId);
+    if (!target) return;
+    const movement = {
+      id: genId(),
+      type,
+      amount: Number(amount) || 0,
+      reason: (reason || "").trim(),
+      at: Date.now(),
+      by: displayName(currentUser),
+    };
+    const updated = {
+      ...target,
+      cashMovements: [...(target.cashMovements || []), movement],
+      updatedAt: Date.now(),
+    };
+    setShifts((prev) => prev.map((s) => (s.id === shiftId ? updated : s)));
+    pushShiftRow(updated);
+    logAudit(
+      "add",
+      "shift",
+      `${type === "in" ? t("shift_cashInBtn") : t("shift_cashOutBtn")} — ${fmt(movement.amount)}`,
+    );
+  };
+
+  // Removes a mis-entered cash movement from the currently open shift.
+  const deleteCashMovement = (shiftId, movementId) => {
+    const target = shifts.find((s) => s.id === shiftId);
+    if (!target) return;
+    const updated = {
+      ...target,
+      cashMovements: (target.cashMovements || []).filter(
+        (m) => m.id !== movementId,
+      ),
+      updatedAt: Date.now(),
+    };
+    setShifts((prev) => prev.map((s) => (s.id === shiftId ? updated : s)));
+    pushShiftRow(updated);
   };
 
   // Cash sales/refunds rung up between openedAt and now — used both for
@@ -6821,8 +7400,9 @@ function POSApp() {
       closedAt,
     );
     const adj = Number(adjustments) || 0;
+    const movementsNet = cashMovementsNet(currentShift.cashMovements);
     const expectedCash =
-      currentShift.openingCash + cashSales - cashRefunds - adj;
+      currentShift.openingCash + cashSales - cashRefunds + movementsNet - adj;
     const counted = Number(countedCash) || 0;
     const updated = {
       ...currentShift,
@@ -6859,10 +7439,12 @@ function POSApp() {
     if (!target) return;
     const adj = Number(adjustments) || 0;
     const counted = Number(countedCash) || 0;
+    const movementsNet = cashMovementsNet(target.cashMovements);
     const expectedCash =
       target.openingCash +
       (target.cashSales || 0) -
-      (target.cashRefunds || 0) -
+      (target.cashRefunds || 0) +
+      movementsNet -
       adj;
     const updated = {
       ...target,
@@ -6931,6 +7513,32 @@ function POSApp() {
       "category",
       target ? target.label_km || target.label_en : key,
     );
+  };
+
+  const saveSupplier = (form) => {
+    const name = (form.name || "").trim();
+    if (!name) {
+      showToast(t("supplier_nameRequired"), "error");
+      return;
+    }
+    const created = {
+      id: genId(),
+      name,
+      phone: (form.phone || "").trim(),
+      note: (form.note || "").trim(),
+      updatedAt: Date.now(),
+    };
+    setSuppliers((prev) => [...prev, created]);
+    showToast(t("toast_supplierAdded"));
+    pushSupplierRow(created);
+    logAudit("add", "supplier", name);
+  };
+  const deleteSupplier = (id) => {
+    const target = suppliers.find((s) => s.id === id);
+    setSuppliers((prev) => prev.filter((s) => s.id !== id));
+    showToast(t("toast_supplierDeleted"));
+    deleteSupplierRow(id);
+    logAudit("delete", "supplier", target ? target.name : id);
   };
 
   // ---------- Reports ----------
@@ -7146,6 +7754,21 @@ function POSApp() {
     const topProducts = Object.entries(productMap)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
+    const profitMap = {};
+    activeSales.forEach((sale) =>
+      sale.items.forEach((i) => {
+        const key = i.name;
+        if (!profitMap[key]) {
+          profitMap[key] = { name: key, qty: 0, revenue: 0, profit: 0 };
+        }
+        profitMap[key].qty += i.qty;
+        profitMap[key].revenue += i.qty * i.price;
+        profitMap[key].profit += i.qty * (i.price - (i.cost || 0));
+      }),
+    );
+    const profitByProduct = Object.values(profitMap).sort(
+      (a, b) => b.profit - a.profit,
+    );
     const expensesTotal = rangedExpenses.reduce(
       (s, e) => s + (Number(e.amount) || 0),
       0,
@@ -7160,6 +7783,7 @@ function POSApp() {
       expensesTotal,
       netProfit,
       topProducts,
+      profitByProduct,
     };
   }, [rangedSales, rangedExpenses]);
 
@@ -7331,6 +7955,13 @@ function POSApp() {
       return s + itemProfit - (sale.discount || 0);
     }, 0);
   const todayProfit = calcProfit(todaySales);
+  const todayExpense = useMemo(() => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    return expenses
+      .filter((e) => e.date === todayKey)
+      .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  }, [expenses]);
+  const todayNetProfit = todayProfit - todayExpense;
   const yesterdayRevenue = yesterdaySales.reduce(
     (s, sale) => s + sale.total,
     0,
@@ -7824,6 +8455,8 @@ function POSApp() {
               todayRevenue={todayRevenue}
               todayCount={todaySales.length}
               todayProfit={todayProfit}
+              todayExpense={todayExpense}
+              todayNetProfit={todayNetProfit}
               yesterdayRevenue={yesterdayRevenue}
               yesterdayProfit={yesterdayProfit}
               customersCount={customers.length}
@@ -7850,6 +8483,11 @@ function POSApp() {
               openEdit={(p) => setProductModal({ mode: "edit", product: p })}
               deleteProduct={deleteProduct}
               openManageCategories={() => setCategoryModal(true)}
+              openManageSuppliers={() => setSupplierModal(true)}
+              openAdjustStock={(p) => setStockModal({ product: p })}
+              openStockHistory={() => setStockHistoryOpen(true)}
+              onImportCsv={importProductsCsv}
+              onExportCsv={exportInventoryCsv}
             />
           )}
           {activeTab === "reports" && (
@@ -7914,6 +8552,8 @@ function POSApp() {
               canDelete={canDeleteShift}
               onEdit={editShift}
               onDelete={deleteShift}
+              onAddCashMovement={addCashMovement}
+              onDeleteCashMovement={deleteCashMovement}
             />
           )}
           {activeTab === "onlineOrders" &&
@@ -8092,6 +8732,25 @@ function POSApp() {
             onSave={saveProduct}
           />
         )}
+        {stockModal && (
+          <StockAdjustModal
+            product={stockModal.product}
+            prodName={prodName}
+            prodUnit={prodUnit}
+            suppliers={suppliers}
+            onClose={() => setStockModal(null)}
+            onConfirm={(vals) => {
+              adjustStock({ productId: stockModal.product.id, ...vals });
+              setStockModal(null);
+            }}
+          />
+        )}
+        {stockHistoryOpen && (
+          <StockHistoryModal
+            movements={stockMovements}
+            onClose={() => setStockHistoryOpen(false)}
+          />
+        )}
         {customerModal && (
           <CustomerModal
             data={customerModal}
@@ -8122,6 +8781,14 @@ function POSApp() {
             onClose={() => setCategoryModal(false)}
             onAdd={saveCategory}
             onDelete={deleteCategory}
+          />
+        )}
+        {supplierModal && (
+          <SuppliersModal
+            suppliers={suppliers}
+            onClose={() => setSupplierModal(false)}
+            onAdd={saveSupplier}
+            onDelete={deleteSupplier}
           />
         )}
         {userModal && (
@@ -9956,6 +10623,17 @@ function POSTab(props) {
   const [khqrCurrency, setKhqrCurrency] = useState("usd");
   const [viewMode, setViewMode] = useState("grid");
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  // Recompute "is it happy hour right now" once a minute, so the banner
+  // below appears/disappears on its own as the clock crosses the
+  // configured start/end time — no page refresh needed.
+  const [nowTick, setNowTick] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(new Date()), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  const activeHappyHours = (promotions || []).filter(
+    (p) => p.active && p.type === "happy_hour" && isHappyHourActive(p, nowTick),
+  );
   const khqrDynamicReady =
     khqrDynamicEnabled && khqrAccountId && khqrMerchantName && khqrMerchantCity;
   const khqrPollAmount =
@@ -10482,6 +11160,44 @@ function POSTab(props) {
               ({products.length})
             </span>
           </div>
+          {activeHappyHours.length > 0 && (
+            <div
+              style={{
+                margin: "6px 22px 0",
+                padding: "8px 14px",
+                borderRadius: "10px",
+                background: "var(--accent-soft, #fff3cd)",
+                border: "1px solid var(--accent, #f0b429)",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                flexWrap: "wrap",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#92600a",
+              }}
+            >
+              <Percent size={14} />
+              <span>{t("happyHourActiveBanner")}:</span>
+              {activeHappyHours.map((p) => (
+                <span
+                  key={p.id}
+                  style={{
+                    fontWeight: 500,
+                    background: "rgba(255,255,255,0.6)",
+                    borderRadius: "6px",
+                    padding: "2px 8px",
+                  }}
+                >
+                  {p.name} —{" "}
+                  {p.discountMode === "percent"
+                    ? `${p.discountValue || 0}%`
+                    : fmt(p.discountValue || 0)}{" "}
+                  {t("off_")} ({t("happyHourActiveUntil")} {p.happyEnd})
+                </span>
+              ))}
+            </div>
+          )}
           <div
             className={
               "pos-product-grid " +
@@ -12258,6 +12974,8 @@ function DashboardTab({
   todayRevenue,
   todayCount,
   todayProfit,
+  todayExpense,
+  todayNetProfit,
   yesterdayRevenue,
   yesterdayProfit,
   customersCount,
@@ -12271,6 +12989,16 @@ function DashboardTab({
 }) {
   const { t, lang } = useT();
   const totalStockValue = products.reduce((s, p) => s + p.price * p.stock, 0);
+  const expiringSoon = products
+    .filter((p) => p.expiryDate)
+    .map((p) => ({
+      ...p,
+      daysLeft: Math.ceil(
+        (new Date(p.expiryDate).getTime() - Date.now()) / 86400000,
+      ),
+    }))
+    .filter((p) => p.daysLeft <= 7)
+    .sort((a, b) => a.daysLeft - b.daysLeft);
   const totalRevenue = sales.reduce(
     (s, sale) => (sale.refunded ? s : s + sale.total),
     0,
@@ -12316,6 +13044,18 @@ function DashboardTab({
           tone="primary"
           delta={profitDelta}
           deltaLabel={t("vsYesterday")}
+        />
+        <StatCard
+          label={t("stat_todayExpense")}
+          value={fmt(todayExpense)}
+          icon={Wallet}
+          tone="accent"
+        />
+        <StatCard
+          label={t("stat_todayNetProfit")}
+          value={fmt(todayNetProfit)}
+          icon={TrendingUp}
+          tone={todayNetProfit >= 0 ? "primary" : "accent"}
         />
         <StatCard
           label={t("stat_totalRevenue")}
@@ -12549,6 +13289,87 @@ function DashboardTab({
               marginBottom: "12px",
             }}
           >
+            <Clock3 size={17} color="var(--danger)" />
+            <span style={{ fontWeight: 700, fontSize: "14.5px" }}>
+              {t("expiringSoonTitle")}
+            </span>
+          </div>
+          {expiringSoon.length === 0 ? (
+            <div style={{ fontSize: "13.5px", color: "var(--text-muted)" }}>
+              {t("noExpiringSoon")}
+            </div>
+          ) : (
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "7px" }}
+            >
+              {expiringSoon.map((p) => (
+                <div
+                  key={p.id}
+                  className="dash-row"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontSize: "13.5px",
+                    padding: "6px",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <ProductThumb image={p.image} size={28} />
+                  <span style={{ flex: 1 }}>{prodName(p)}</span>
+                  <span
+                    style={{
+                      color:
+                        p.daysLeft < 0 ? "var(--danger)" : "var(--text-muted)",
+                      fontWeight: 700,
+                      fontSize: "12px",
+                    }}
+                  >
+                    {p.daysLeft < 0
+                      ? t("expiredLabel")
+                      : `${p.daysLeft}${t("daysLeftSuffix")}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={() => setActiveTab("inventory")}
+            style={{
+              marginTop: "12px",
+              fontSize: "13px",
+              color: "var(--primary)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 600,
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+            }}
+          >
+            {t("manageStock")}
+            <ChevronDown size={13} style={{ transform: "rotate(-90deg)" }} />
+          </button>
+        </div>
+
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-lg)",
+            padding: "18px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "9px",
+              marginBottom: "12px",
+            }}
+          >
             <Receipt size={17} color="var(--primary)" />
             <span style={{ fontWeight: 700, fontSize: "14.5px" }}>
               {t("recentSales")}
@@ -12719,7 +13540,7 @@ function StatCard({
 
 // Same "⋮ Actions" dropdown as Users — Edit / Delete in one button instead
 // of two separate icon buttons in the row.
-function ProductActionMenu({ t, onEdit, onDelete }) {
+function ProductActionMenu({ t, onEdit, onAdjustStock, onDelete }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
   useEffect(() => {
@@ -12792,6 +13613,17 @@ function ProductActionMenu({ t, onEdit, onDelete }) {
             onClick={(e) => {
               e.stopPropagation();
               setOpen(false);
+              onAdjustStock();
+            }}
+            style={menuItemStyle}
+          >
+            <PackagePlus size={14} /> {t("stock_adjustMenu")}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
               onDelete();
             }}
             style={{ ...menuItemStyle, color: "var(--danger)" }}
@@ -12817,18 +13649,51 @@ function InventoryTab({
   openEdit,
   deleteProduct,
   openManageCategories,
+  openManageSuppliers,
+  openAdjustStock,
+  openStockHistory,
+  onImportCsv,
+  onExportCsv,
 }) {
   const { t, categories } = useT();
   const [expandedId, setExpandedId] = useState(null);
+  const csvFileRef = useRef(null);
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <TopBar
         title={t("nav_inventory")}
         subtitle={t("inv_subtitle", { count: products.length })}
         action={
-          <button onClick={openAdd} style={primaryBtnStyle}>
-            <Plus size={16} /> {t("addProduct")}
-          </button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <input
+              ref={csvFileRef}
+              type="file"
+              accept=".csv,text/csv"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files[0];
+                if (file) onImportCsv(file);
+                e.target.value = "";
+              }}
+            />
+            <button
+              onClick={() => csvFileRef.current.click()}
+              style={secondaryBtnStyle}
+              title={t("inv_importHint")}
+            >
+              <Download size={16} style={{ transform: "rotate(180deg)" }} />{" "}
+              {t("inv_importCsv")}
+            </button>
+            <button onClick={onExportCsv} style={secondaryBtnStyle}>
+              <Download size={16} /> {t("inv_exportCsv")}
+            </button>
+            <button onClick={openStockHistory} style={secondaryBtnStyle}>
+              <History size={16} /> {t("stock_historyBtn")}
+            </button>
+            <button onClick={openAdd} style={primaryBtnStyle}>
+              <Plus size={16} /> {t("addProduct")}
+            </button>
+          </div>
         }
       />
       <div style={{ padding: "16px 26px 0", display: "flex", gap: "12px" }}>
@@ -12875,6 +13740,9 @@ function InventoryTab({
         </select>
         <button onClick={openManageCategories} style={secondaryBtnStyle}>
           <Package size={15} /> {t("manageCategories")}
+        </button>
+        <button onClick={openManageSuppliers} style={secondaryBtnStyle}>
+          <Truck size={15} /> {t("manageSuppliers")}
         </button>
       </div>
 
@@ -12964,6 +13832,7 @@ function InventoryTab({
                 <ProductActionMenu
                   t={t}
                   onEdit={() => openEdit(p)}
+                  onAdjustStock={() => openAdjustStock(p)}
                   onDelete={() => deleteProduct(p.id)}
                 />
                 <ChevronDown
@@ -12999,6 +13868,24 @@ function InventoryTab({
                         : "—"}
                     </span>
                   </div>
+                  {p.expiryDate && (
+                    <div
+                      style={{ fontSize: "12.5px", color: "var(--text-muted)" }}
+                    >
+                      {t("fieldExpiryDate")}:{" "}
+                      <span
+                        style={{
+                          color:
+                            new Date(p.expiryDate).getTime() < Date.now()
+                              ? "var(--danger)"
+                              : "var(--text)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {p.expiryDate}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -13713,6 +14600,110 @@ function ReportsTab({
           ))}
         </div>
       </div>
+
+      <div style={{ padding: "0 26px 26px" }}>
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-lg)",
+            padding: "18px",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: "14.5px",
+              marginBottom: "12px",
+            }}
+          >
+            {t("profitByProduct")}
+          </div>
+          {summary.profitByProduct.length === 0 ? (
+            <div style={{ fontSize: "13.5px", color: "var(--text-muted)" }}>
+              {t("noData")}
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "13px",
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      textAlign: "start",
+                      fontSize: "12px",
+                      color: "var(--text-muted)",
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    <th style={thStyle}>{t("th_product")}</th>
+                    <th style={{ ...thStyle, textAlign: "end" }}>
+                      {t("th_qtySold")}
+                    </th>
+                    <th style={{ ...thStyle, textAlign: "end" }}>
+                      {t("th_revenue")}
+                    </th>
+                    <th style={{ ...thStyle, textAlign: "end" }}>
+                      {t("th_profit")}
+                    </th>
+                    <th style={{ ...thStyle, textAlign: "end" }}>
+                      {t("th_marginPct")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.profitByProduct.map((p) => (
+                    <tr
+                      key={p.name}
+                      style={{ borderBottom: "1px solid var(--border)" }}
+                    >
+                      <td style={tdStyle}>{p.name}</td>
+                      <td style={{ ...tdStyle, textAlign: "end" }}>×{p.qty}</td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "end",
+                          fontFamily: "var(--font-mono)",
+                        }}
+                      >
+                        {fmt(p.revenue)}
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "end",
+                          fontFamily: "var(--font-mono)",
+                          fontWeight: 700,
+                          color:
+                            p.profit >= 0 ? "var(--success)" : "var(--danger)",
+                        }}
+                      >
+                        {fmt(p.profit)}
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "end",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        {p.revenue > 0
+                          ? `${Math.round((p.profit / p.revenue) * 100)}%`
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
       {refundTarget && (
         <ConfirmDialog
           title={t("refund_confirmTitle")}
@@ -14406,12 +15397,15 @@ function ShiftTab({
   canDelete,
   onEdit,
   onDelete,
+  onAddCashMovement,
+  onDeleteCashMovement,
 }) {
   const { t } = useT();
   const [openingInput, setOpeningInput] = useState("");
   const [endOpen, setEndOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [cashMovementType, setCashMovementType] = useState(null); // null | 'in' | 'out'
   const showActions = canEdit || canDelete;
 
   const fmtTime = (ms) => {
@@ -14438,8 +15432,19 @@ function ShiftTab({
       }
     });
   }
+  const cashMovements = (currentShift && currentShift.cashMovements) || [];
+  const liveCashIn = cashMovements
+    .filter((m) => m.type === "in")
+    .reduce((s, m) => s + (Number(m.amount) || 0), 0);
+  const liveCashOut = cashMovements
+    .filter((m) => m.type === "out")
+    .reduce((s, m) => s + (Number(m.amount) || 0), 0);
   const liveExpected = currentShift
-    ? currentShift.openingCash + liveCashSales - liveCashRefunds
+    ? currentShift.openingCash +
+      liveCashSales -
+      liveCashRefunds +
+      liveCashIn -
+      liveCashOut
     : 0;
 
   const closedShifts = [...shifts]
@@ -14560,11 +15565,175 @@ function ShiftTab({
                 icon={RotateCcw}
               />
               <StatCard
+                label={t("shift_cashIn")}
+                value={fmt(liveCashIn)}
+                icon={ArrowDownCircle}
+              />
+              <StatCard
+                label={t("shift_cashOut")}
+                value={fmt(liveCashOut)}
+                icon={ArrowUpCircle}
+              />
+              <StatCard
                 label={t("shift_expectedCash")}
                 value={fmt(liveExpected)}
                 icon={Wallet}
                 tone="accent"
               />
+            </div>
+
+            <div
+              style={{
+                marginTop: "18px",
+                paddingTop: "16px",
+                borderTop: "1px dashed var(--border)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "10px",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                }}
+              >
+                <span style={{ fontWeight: 700, fontSize: "13.5px" }}>
+                  {t("shift_cashMovements")}
+                </span>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    onClick={() => setCashMovementType("in")}
+                    style={{
+                      ...secondaryBtnStyle,
+                      padding: "7px 12px",
+                      fontSize: "12.5px",
+                      gap: "6px",
+                    }}
+                  >
+                    <ArrowDownCircle size={14} /> {t("shift_cashInBtn")}
+                  </button>
+                  <button
+                    onClick={() => setCashMovementType("out")}
+                    style={{
+                      ...secondaryBtnStyle,
+                      padding: "7px 12px",
+                      fontSize: "12.5px",
+                      gap: "6px",
+                    }}
+                  >
+                    <ArrowUpCircle size={14} /> {t("shift_cashOutBtn")}
+                  </button>
+                </div>
+              </div>
+              {cashMovements.length === 0 ? (
+                <div style={{ fontSize: "12.5px", color: "var(--text-muted)" }}>
+                  {t("shift_noCashMovements")}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                  }}
+                >
+                  {[...cashMovements]
+                    .sort((a, b) => b.at - a.at)
+                    .map((m) => (
+                      <div
+                        key={m.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "8px",
+                          padding: "8px 10px",
+                          background: "var(--bg)",
+                          borderRadius: "var(--radius-md)",
+                          fontSize: "12.5px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            minWidth: 0,
+                          }}
+                        >
+                          {m.type === "in" ? (
+                            <ArrowDownCircle
+                              size={14}
+                              color="var(--success)"
+                              style={{ flexShrink: 0 }}
+                            />
+                          ) : (
+                            <ArrowUpCircle
+                              size={14}
+                              color="var(--danger)"
+                              style={{ flexShrink: 0 }}
+                            />
+                          )}
+                          <span
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {m.reason || t("shift_cashMovements")}
+                          </span>
+                          <span
+                            style={{
+                              color: "var(--text-muted)",
+                              flexShrink: 0,
+                            }}
+                          >
+                            · {fmtTime(m.at)}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              color:
+                                m.type === "in"
+                                  ? "var(--success)"
+                                  : "var(--danger)",
+                            }}
+                          >
+                            {m.type === "in" ? "+" : "-"}
+                            {fmt(m.amount)}
+                          </span>
+                          {canEdit && (
+                            <button
+                              onClick={() =>
+                                onDeleteCashMovement(currentShift.id, m.id)
+                              }
+                              style={{
+                                ...iconBtnStyle,
+                                width: "22px",
+                                height: "22px",
+                              }}
+                              title={t("shift_voidMovement")}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -14708,6 +15877,20 @@ function ShiftTab({
         />
       )}
 
+      {cashMovementType && currentShift && (
+        <CashMovementModal
+          type={cashMovementType}
+          onClose={() => setCashMovementType(null)}
+          onConfirm={(vals) => {
+            onAddCashMovement(currentShift.id, {
+              type: cashMovementType,
+              ...vals,
+            });
+            setCashMovementType(null);
+          }}
+        />
+      )}
+
       {editTarget && (
         <EditShiftModal
           shift={editTarget}
@@ -14730,6 +15913,104 @@ function ShiftTab({
           }}
         />
       )}
+    </div>
+  );
+}
+
+function CashMovementModal({ type, onClose, onConfirm }) {
+  const { t } = useT();
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const isIn = type === "in";
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 200,
+        padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-xl)",
+          padding: "22px",
+          width: "360px",
+          maxWidth: "100%",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 700,
+            fontSize: "16px",
+            marginBottom: "14px",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          {isIn ? (
+            <ArrowDownCircle size={18} color="var(--success)" />
+          ) : (
+            <ArrowUpCircle size={18} color="var(--danger)" />
+          )}
+          {isIn ? t("shift_cashInBtn") : t("shift_cashOutBtn")}
+        </div>
+
+        <label style={fieldLabel}>{t("shift_cashAmount")}</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          style={fieldInput}
+          placeholder="0.00"
+          autoFocus
+        />
+
+        <label style={fieldLabel}>{t("shift_cashReason")}</label>
+        <input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          style={fieldInput}
+          placeholder={t("shift_cashReasonPlaceholder")}
+        />
+
+        <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
+          <button
+            onClick={onClose}
+            style={{
+              ...secondaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+            }}
+          >
+            {t("cancel")}
+          </button>
+          <button
+            onClick={() => onConfirm({ amount, reason })}
+            disabled={!amount || Number(amount) <= 0}
+            style={{
+              ...primaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+              opacity: !amount || Number(amount) <= 0 ? 0.5 : 1,
+            }}
+          >
+            {t("save")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -19238,6 +20519,417 @@ const fieldInput = {
   marginBottom: "14px",
 };
 
+function StockAdjustModal({
+  product,
+  prodName,
+  prodUnit,
+  suppliers,
+  onClose,
+  onConfirm,
+}) {
+  const { t } = useT();
+  const [type, setType] = useState("in");
+  const [qty, setQty] = useState("");
+  const [newStock, setNewStock] = useState("");
+  const [cost, setCost] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [note, setNote] = useState("");
+
+  const currentStock = Number(product.stock) || 0;
+  const canSave =
+    type === "adjust"
+      ? newStock !== "" && Number(newStock) !== currentStock
+      : Number(qty) > 0;
+
+  const typeTabs = [
+    { key: "in", label: t("stock_inBtn"), icon: ArrowDownCircle },
+    { key: "out", label: t("stock_outBtn"), icon: ArrowUpCircle },
+    { key: "adjust", label: t("stock_adjustBtn"), icon: Pencil },
+  ];
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 200,
+        padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-xl)",
+          padding: "22px",
+          width: "380px",
+          maxWidth: "100%",
+        }}
+      >
+        <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "4px" }}>
+          {t("stock_modalTitle")}
+        </div>
+        <div
+          style={{
+            fontSize: "12.5px",
+            color: "var(--text-muted)",
+            marginBottom: "14px",
+          }}
+        >
+          {prodName(product)} · {t("stock_currentStock")}: {currentStock}{" "}
+          {prodUnit(product)}
+        </div>
+
+        <div style={{ display: "flex", gap: "6px", marginBottom: "14px" }}>
+          {typeTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setType(tab.key)}
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "4px",
+                padding: "8px 4px",
+                borderRadius: "var(--radius-md)",
+                border:
+                  type === tab.key
+                    ? "1.5px solid var(--primary)"
+                    : "1px solid var(--border)",
+                background:
+                  type === tab.key
+                    ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                    : "none",
+                color: type === tab.key ? "var(--primary)" : "var(--text)",
+                fontSize: "11.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <tab.icon size={16} />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {type === "adjust" ? (
+          <>
+            <label style={fieldLabel}>{t("stock_newStockCount")}</label>
+            <input
+              type="number"
+              min="0"
+              value={newStock}
+              onChange={(e) => setNewStock(e.target.value)}
+              style={fieldInput}
+              placeholder="0"
+              autoFocus
+            />
+          </>
+        ) : (
+          <>
+            <label style={fieldLabel}>{t("stock_qty")}</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              style={fieldInput}
+              placeholder="0"
+              autoFocus
+            />
+          </>
+        )}
+
+        {type === "in" && (
+          <>
+            <label style={fieldLabel}>{t("stock_unitCost")}</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              style={fieldInput}
+              placeholder="0.00"
+            />
+            <div
+              style={{
+                fontSize: "12px",
+                color: "var(--text-muted)",
+                marginTop: "-8px",
+                marginBottom: "12px",
+              }}
+            >
+              {t("stock_unitCostHint")}
+            </div>
+            {suppliers && suppliers.length > 0 && (
+              <>
+                <label style={fieldLabel}>{t("stock_supplier")}</label>
+                <select
+                  value={supplierId}
+                  onChange={(e) => setSupplierId(e.target.value)}
+                  style={fieldInput}
+                >
+                  <option value="">{t("supplier_none")}</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+          </>
+        )}
+
+        <label style={fieldLabel}>{t("stock_note")}</label>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          style={{ ...fieldInput, minHeight: "60px", resize: "vertical" }}
+          placeholder={t("stock_notePlaceholder")}
+        />
+
+        <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
+          <button
+            onClick={onClose}
+            style={{
+              ...secondaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+            }}
+          >
+            {t("cancel")}
+          </button>
+          <button
+            onClick={() =>
+              onConfirm({
+                type,
+                qty,
+                newStock,
+                cost,
+                supplierId,
+                supplierName:
+                  (suppliers || []).find((s) => s.id === supplierId)?.name ||
+                  "",
+                note,
+              })
+            }
+            disabled={!canSave}
+            style={{
+              ...primaryBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+              opacity: canSave ? 1 : 0.5,
+            }}
+          >
+            {t("save")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StockHistoryModal({ movements, onClose }) {
+  const { t } = useT();
+  const [purchasesOnly, setPurchasesOnly] = useState(false);
+  const filtered = purchasesOnly
+    ? movements.filter((m) => m.type === "in")
+    : movements;
+  const sorted = [...filtered].sort((a, b) => b.at - a.at);
+  const fmtDT = (ms) => {
+    const d = new Date(ms);
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+  const typeInfo = {
+    in: {
+      label: t("stock_typeIn"),
+      color: "var(--success)",
+      icon: ArrowDownCircle,
+    },
+    out: {
+      label: t("stock_typeOut"),
+      color: "var(--danger)",
+      icon: ArrowUpCircle,
+    },
+    adjust: {
+      label: t("stock_typeAdjust"),
+      color: "var(--text-muted)",
+      icon: Pencil,
+    },
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 200,
+        padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-xl)",
+          padding: "20px",
+          width: "480px",
+          maxWidth: "100%",
+          maxHeight: "80vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "14px",
+          }}
+        >
+          <span style={{ fontWeight: 700, fontSize: "16px" }}>
+            {t("stock_historyTitle")}
+          </span>
+          <button onClick={onClose} style={iconBtnStyle}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div style={{ display: "flex", gap: "6px", marginBottom: "12px" }}>
+          <button
+            onClick={() => setPurchasesOnly(false)}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "var(--radius-pill)",
+              fontSize: "12px",
+              fontWeight: 600,
+              border: !purchasesOnly
+                ? "1.5px solid var(--primary)"
+                : "1px solid var(--border)",
+              background: !purchasesOnly
+                ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                : "none",
+              color: !purchasesOnly ? "var(--primary)" : "var(--text)",
+              cursor: "pointer",
+            }}
+          >
+            {t("stock_allMovements")}
+          </button>
+          <button
+            onClick={() => setPurchasesOnly(true)}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "var(--radius-pill)",
+              fontSize: "12px",
+              fontWeight: 600,
+              border: purchasesOnly
+                ? "1.5px solid var(--primary)"
+                : "1px solid var(--border)",
+              background: purchasesOnly
+                ? "color-mix(in srgb, var(--primary) 10%, transparent)"
+                : "none",
+              color: purchasesOnly ? "var(--primary)" : "var(--text)",
+              cursor: "pointer",
+            }}
+          >
+            {t("stock_purchasesOnly")}
+          </button>
+        </div>
+
+        {sorted.length === 0 ? (
+          <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+            {t("stock_historyEmpty")}
+          </div>
+        ) : (
+          <div
+            style={{
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+            }}
+          >
+            {sorted.map((m) => {
+              const info = typeInfo[m.type] || typeInfo.adjust;
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "9px 10px",
+                    background: "var(--bg)",
+                    borderRadius: "var(--radius-md)",
+                    fontSize: "12.5px",
+                  }}
+                >
+                  <info.icon
+                    size={15}
+                    color={info.color}
+                    style={{ flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {m.productName}
+                    </div>
+                    <div
+                      style={{ color: "var(--text-muted)", marginTop: "2px" }}
+                    >
+                      {info.label} · {fmtDT(m.at)}
+                      {m.supplierName ? ` · ${m.supplierName}` : ""}
+                      {m.note ? ` · ${m.note}` : ""}
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color: m.qty >= 0 ? "var(--success)" : "var(--danger)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {m.qty > 0 ? "+" : ""}
+                    {m.qty}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ProductModal({ data, onClose, onSave }) {
   const { t, catLabel, categories } = useT();
   const editing = data.mode === "edit";
@@ -19254,6 +20946,7 @@ function ProductModal({ data, onClose, onSave }) {
         unit_en: "",
         image: null,
         barcode: "",
+        expiryDate: "",
       };
   const [form, setForm] = useState(p);
   const [scanOpen, setScanOpen] = useState(false);
@@ -19467,6 +21160,14 @@ function ProductModal({ data, onClose, onSave }) {
           <Camera size={16} />
         </button>
       </div>
+
+      <label style={fieldLabel}>{t("fieldExpiryDate")}</label>
+      <input
+        style={{ ...fieldInput, marginBottom: "14px" }}
+        type="date"
+        value={form.expiryDate || ""}
+        onChange={(e) => setForm({ ...form, expiryDate: e.target.value })}
+      />
 
       <button
         onClick={() => onSave(form)}
@@ -20149,6 +21850,131 @@ function PromotionModal({ data, products, prodName, onClose, onSave }) {
         {t("save")}
       </button>
     </ModalShell>
+  );
+}
+
+function SuppliersModal({ suppliers, onClose, onAdd, onDelete }) {
+  const { t } = useT();
+  const [form, setForm] = useState({ name: "", phone: "", note: "" });
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const handleAdd = () => {
+    onAdd(form);
+    setForm({ name: "", phone: "", note: "" });
+  };
+
+  return (
+    <>
+      <ModalShell title={t("manageSuppliers")} onClose={onClose} width="440px">
+        <div
+          style={{
+            fontSize: "13px",
+            color: "var(--text-muted)",
+            marginBottom: "14px",
+          }}
+        >
+          {t("manageSuppliers_subtitle")}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            marginBottom: "18px",
+            maxHeight: "260px",
+            overflowY: "auto",
+          }}
+        >
+          {suppliers.length === 0 && (
+            <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+              {t("noData")}
+            </div>
+          )}
+          {suppliers.map((s) => (
+            <div
+              key={s.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 12px",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border)",
+                background: "var(--surface-alt)",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "14px", fontWeight: 600 }}>
+                  {s.name}
+                </div>
+                {(s.phone || s.note) && (
+                  <div
+                    style={{ fontSize: "11.5px", color: "var(--text-muted)" }}
+                  >
+                    {[s.phone, s.note].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setDeleteTarget(s.id)}
+                style={{ ...iconBtnStyle, color: "var(--danger)" }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div
+          style={{
+            borderTop: "1px solid var(--border)",
+            paddingTop: "14px",
+          }}
+        >
+          <label style={fieldLabel}>{t("supplier_name")}</label>
+          <input
+            style={fieldInput}
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+          <label style={fieldLabel}>{t("supplier_phone")}</label>
+          <input
+            style={fieldInput}
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+          <label style={fieldLabel}>{t("supplier_note")}</label>
+          <input
+            style={fieldInput}
+            value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+          />
+          <button
+            onClick={handleAdd}
+            style={{
+              ...primaryBtnStyle,
+              width: "100%",
+              justifyContent: "center",
+              marginTop: "4px",
+            }}
+          >
+            <Plus size={15} /> {t("supplier_addBtn")}
+          </button>
+        </div>
+      </ModalShell>
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t("supplier_deleteConfirm")}
+          danger
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            onDelete(deleteTarget);
+            setDeleteTarget(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 
