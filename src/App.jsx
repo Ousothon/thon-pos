@@ -30,6 +30,7 @@ import {
   ImagePlus,
   Printer,
   Download,
+  Share2,
   Globe,
   ImageOff,
   LogOut,
@@ -2440,6 +2441,26 @@ const STRINGS = {
   close: { km: "បិទ", en: "Close" },
   cancel: { km: "បោះបង់", en: "Cancel" },
   print: { km: "បោះពុម្ព", en: "Print" },
+  receiptModeThermal: { km: "បង្កាន់ដៃកាំរស្មី", en: "Thermal" },
+  receiptModeA4: { km: "វិក្កយបត្រ A4", en: "A4 Invoice" },
+  receiptDownloadPdf: { km: "ទាញយក PDF", en: "Download PDF" },
+  receiptShare: { km: "ចែករំលែក", en: "Share" },
+  receiptCustomerLabel: { km: "អតិថិជន", en: "Customer" },
+  receiptInvoiceTitle: { km: "វិក្កយបត្រ", en: "INVOICE" },
+  receiptRefLabel: { km: "លេខយោង", en: "Ref" },
+  toast_pdfGenerating: { km: "កំពុងបង្កើត PDF...", en: "Generating PDF…" },
+  toast_pdfFailed: {
+    km: "បង្កើត PDF មិនបានសម្រេច សូមសាកល្បង Print វិញ",
+    en: "Couldn't generate the PDF — try Print instead",
+  },
+  toast_shareFailed: {
+    km: "ចែករំលែកមិនបានសម្រេចទេ",
+    en: "Sharing isn't supported on this device",
+  },
+  toast_shareCopied: {
+    km: "បានចម្លងព័ត៌មានវិក្កយបត្រ",
+    en: "Receipt details copied to clipboard",
+  },
 
   login_title: { km: "ចូលប្រើប្រព័ន្ធ", en: "Sign in" },
   login_subtitle: {
@@ -2785,6 +2806,39 @@ const STRINGS = {
     en: "Change the logo and name shown in the sidebar and on receipts",
   },
   settings_shopNameLabel: { km: "ឈ្មោះហាង", en: "Shop name" },
+  settings_companyAddressLabel: { km: "អាសយដ្ឋានហាង", en: "Company address" },
+  settings_companyAddressPlaceholder: {
+    km: "ឧ. ផ្ទះលេខ..., ផ្លូវ..., ភ្នំពេញ",
+    en: "e.g. Street 123, Phnom Penh",
+  },
+  settings_companyPhoneLabel: { km: "លេខទូរស័ព្ទហាង", en: "Company phone" },
+  settings_companyPhonePlaceholder: {
+    km: "ឧ. 012 345 678",
+    en: "e.g. 012 345 678",
+  },
+  settings_receiptQrLabel: {
+    km: "QR លើបង្កាន់ដៃ ចង្អុលទៅ",
+    en: "Receipt QR links to",
+  },
+  settings_receiptQrHint: {
+    km: "កំណត់ថាតើ QR code នៅលើបង្កាន់ដៃទូទាត់ (Receipt) ត្រូវនាំអតិថិជនទៅណា ពេលស្កេន — ទូរស័ព្ទហៅផ្ទាល់ ឬ Telegram។ បើមិនកំណត់ QR នឹងបង្ហាញត្រឹមតែសង្ខេបព័ត៌មានវិក្កយបត្រ",
+    en: 'Choose what scanning the receipt\'s QR code opens for the customer — a phone call or Telegram chat. Leave as "None" to keep it a plain receipt summary',
+  },
+  settings_receiptQrNone: { km: "គ្មាន", en: "None" },
+  settings_receiptQrTypePhone: { km: "ទូរស័ព្ទ", en: "Phone" },
+  settings_receiptQrTypeTelegram: { km: "Telegram", en: "Telegram" },
+  settings_receiptQrTelegramPlaceholder: {
+    km: "ឧ. @thonone_shop ឬ https://t.me/thonone_shop",
+    en: "e.g. @thonone_shop or https://t.me/thonone_shop",
+  },
+  receiptQrCaptionPhone: {
+    km: "ស្កេនដើម្បីទូរស័ព្ទមកហាង",
+    en: "Scan to call us",
+  },
+  receiptQrCaptionTelegram: {
+    km: "ស្កេនដើម្បីជជែកតាម Telegram",
+    en: "Scan to chat on Telegram",
+  },
   settings_shopLogoLabel: { km: "រូបភាពហាង (Logo)", en: "Shop logo" },
   uploadLogo: { km: "ផ្ទុករូបភាព", en: "Upload logo" },
   changeLogo: { km: "ប្តូររូបភាព", en: "Change logo" },
@@ -3599,6 +3653,22 @@ function POSApp() {
   const [suppliers, setSuppliers] = useState([]);
   const [shopName, setShopName] = useState("");
   const [shopLogo, setShopLogo] = useState(null);
+  // Company address/phone shown on receipts (both thermal + A4 invoice
+  // mode) and, optionally, customer-facing surfaces. Synced to the cloud
+  // via shop_settings, same as shopName/shopLogo.
+  const [shopAddress, setShopAddress] = useState("");
+  const [shopPhone, setShopPhone] = useState("");
+  // What the receipt's QR code links to for "contact us instantly" — either
+  // a phone number (tel: link) or a Telegram username (t.me link). Empty
+  // type means the QR keeps falling back to a plain-text receipt summary.
+  // What the receipt's QR code links to for "contact us instantly" — either
+  // a phone number (tel: link) or a Telegram username (t.me link). Kept as
+  // two separate values (not one shared field) so switching the active type
+  // in Settings never overwrites/loses the other one — both are remembered,
+  // only qrContactType decides which is actually used on the receipt.
+  const [qrContactType, setQrContactType] = useState("none");
+  const [qrContactPhone, setQrContactPhone] = useState("");
+  const [qrContactTelegram, setQrContactTelegram] = useState("");
   const [khrRate, setKhrRate] = useState(KHR_PER_USD_DEFAULT);
   const [payCashEnabled, setPayCashEnabled] = useState(true);
   const [payKhqrEnabled, setPayKhqrEnabled] = useState(false);
@@ -4035,6 +4105,11 @@ function POSApp() {
         }
         setShopName(parsed.shopName || "");
         setShopLogo(parsed.shopLogo || null);
+        setShopAddress(parsed.shopAddress || "");
+        setShopPhone(parsed.shopPhone || "");
+        setQrContactType(parsed.qrContactType || "none");
+        setQrContactPhone(parsed.qrContactPhone || "");
+        setQrContactTelegram(parsed.qrContactTelegram || "");
         setKhrRate(parsed.khrRate || KHR_PER_USD_DEFAULT);
         setPayCashEnabled(
           typeof parsed.payCashEnabled === "boolean"
@@ -4107,6 +4182,11 @@ function POSApp() {
             categories,
             shopName,
             shopLogo,
+            shopAddress,
+            shopPhone,
+            qrContactType,
+            qrContactPhone,
+            qrContactTelegram,
             khrRate,
             payCashEnabled,
             payKhqrEnabled,
@@ -4151,6 +4231,11 @@ function POSApp() {
     categories,
     shopName,
     shopLogo,
+    shopAddress,
+    shopPhone,
+    qrContactType,
+    qrContactPhone,
+    qrContactTelegram,
     khrRate,
     payCashEnabled,
     payKhqrEnabled,
@@ -6248,6 +6333,34 @@ function POSApp() {
         setShopName(data.shop_name);
       if (data && typeof data.shop_logo === "string")
         setShopLogo(data.shop_logo);
+      if (data && typeof data.shop_address === "string")
+        setShopAddress(data.shop_address);
+      if (data && typeof data.shop_phone === "string")
+        setShopPhone(data.shop_phone);
+      if (data && typeof data.qr_contact_type === "string")
+        setQrContactType(data.qr_contact_type);
+      // qr_contact_value stores both phone + telegram together as JSON
+      // (`{"phone":"...","telegram":"..."}`) so switching the active type
+      // never has to throw away the other one — see the note by the
+      // qrContactPhone/qrContactTelegram state above. A plain string here
+      // (from before this split) is treated as whichever field matched the
+      // type it was saved under, so older saves keep working.
+      if (data && typeof data.qr_contact_value === "string") {
+        try {
+          const parsedQr = JSON.parse(data.qr_contact_value);
+          if (parsedQr && typeof parsedQr === "object") {
+            if (typeof parsedQr.phone === "string")
+              setQrContactPhone(parsedQr.phone);
+            if (typeof parsedQr.telegram === "string")
+              setQrContactTelegram(parsedQr.telegram);
+          }
+        } catch {
+          // legacy plain-string value from before phone/telegram were split
+          if (data.qr_contact_type === "telegram")
+            setQrContactTelegram(data.qr_contact_value);
+          else setQrContactPhone(data.qr_contact_value);
+        }
+      }
       if (data && typeof data.pay_cash_enabled === "boolean")
         setPayCashEnabled(data.pay_cash_enabled);
       if (data && typeof data.pay_khqr_enabled === "boolean")
@@ -6351,7 +6464,15 @@ function POSApp() {
     }
   };
 
-  const pushShopInfo = async (name, logo) => {
+  const pushShopInfo = async (
+    name,
+    logo,
+    address,
+    phone,
+    qrType,
+    qrPhone,
+    qrTelegram,
+  ) => {
     if (!supabase || !shopId) return;
     try {
       await supabase.from("shop_settings").upsert(
@@ -6360,6 +6481,13 @@ function POSApp() {
           shop_id: shopId,
           shop_name: name || null,
           shop_logo: logo || null,
+          shop_address: address || null,
+          shop_phone: phone || null,
+          qr_contact_type: qrType || "none",
+          qr_contact_value: JSON.stringify({
+            phone: qrPhone || "",
+            telegram: qrTelegram || "",
+          }),
           updated_at: Date.now(),
         },
         { onConflict: "id" },
@@ -8608,6 +8736,16 @@ function POSApp() {
               setShopName={setShopName}
               shopLogo={shopLogo}
               setShopLogo={setShopLogo}
+              shopAddress={shopAddress}
+              setShopAddress={setShopAddress}
+              shopPhone={shopPhone}
+              setShopPhone={setShopPhone}
+              qrContactType={qrContactType}
+              setQrContactType={setQrContactType}
+              qrContactPhone={qrContactPhone}
+              setQrContactPhone={setQrContactPhone}
+              qrContactTelegram={qrContactTelegram}
+              setQrContactTelegram={setQrContactTelegram}
               onSaveShopInfo={pushShopInfo}
               notifySoundOn={notifySoundOn}
               setNotifySoundOn={setNotifySoundOn}
@@ -8817,6 +8955,12 @@ function POSApp() {
             sale={receipt}
             shopName={shopName || t("shopNameDefault")}
             shopLogo={shopLogo}
+            shopAddress={shopAddress}
+            shopPhone={shopPhone}
+            qrContactType={qrContactType}
+            qrContactPhone={qrContactPhone}
+            qrContactTelegram={qrContactTelegram}
+            customers={customers}
             khrRate={khrRate}
             receiptWidth={receiptWidth}
             onClose={() => setReceipt(null)}
@@ -18187,6 +18331,16 @@ function SettingsTab({
   setShopName,
   shopLogo,
   setShopLogo,
+  shopAddress,
+  setShopAddress,
+  shopPhone,
+  setShopPhone,
+  qrContactType,
+  setQrContactType,
+  qrContactPhone,
+  setQrContactPhone,
+  qrContactTelegram,
+  setQrContactTelegram,
   onSaveShopInfo,
   notifySoundOn,
   setNotifySoundOn,
@@ -18242,6 +18396,17 @@ function SettingsTab({
   const [saved, setSaved] = useState(false);
   const [nameDraft, setNameDraft] = useState(shopName);
   const [logoDraft, setLogoDraft] = useState(shopLogo);
+  const [addressDraft, setAddressDraft] = useState(shopAddress || "");
+  const [phoneDraft, setPhoneDraft] = useState(shopPhone || "");
+  const [qrContactTypeDraft, setQrContactTypeDraft] = useState(
+    qrContactType || "none",
+  );
+  const [qrContactPhoneDraft, setQrContactPhoneDraft] = useState(
+    qrContactPhone || "",
+  );
+  const [qrContactTelegramDraft, setQrContactTelegramDraft] = useState(
+    qrContactTelegram || "",
+  );
   const [shopSaved, setShopSaved] = useState(false);
   const fileRef = useRef(null);
 
@@ -18379,7 +18544,20 @@ function SettingsTab({
   useEffect(() => {
     setNameDraft(shopName);
     setLogoDraft(shopLogo);
-  }, [shopName, shopLogo]);
+    setAddressDraft(shopAddress || "");
+    setPhoneDraft(shopPhone || "");
+    setQrContactTypeDraft(qrContactType || "none");
+    setQrContactPhoneDraft(qrContactPhone || "");
+    setQrContactTelegramDraft(qrContactTelegram || "");
+  }, [
+    shopName,
+    shopLogo,
+    shopAddress,
+    shopPhone,
+    qrContactType,
+    qrContactPhone,
+    qrContactTelegram,
+  ]);
 
   const save = () => {
     const n = Number(draft);
@@ -18400,7 +18578,21 @@ function SettingsTab({
   const saveShopInfo = () => {
     setShopName(nameDraft);
     setShopLogo(logoDraft);
-    if (onSaveShopInfo) onSaveShopInfo(nameDraft, logoDraft);
+    setShopAddress(addressDraft);
+    setShopPhone(phoneDraft);
+    setQrContactType(qrContactTypeDraft);
+    setQrContactPhone(qrContactPhoneDraft);
+    setQrContactTelegram(qrContactTelegramDraft);
+    if (onSaveShopInfo)
+      onSaveShopInfo(
+        nameDraft,
+        logoDraft,
+        addressDraft,
+        phoneDraft,
+        qrContactTypeDraft,
+        qrContactPhoneDraft,
+        qrContactTelegramDraft,
+      );
     setShopSaved(true);
     setTimeout(() => setShopSaved(false), 1800);
   };
@@ -18655,6 +18847,100 @@ function SettingsTab({
                   placeholder={t("shopNameDefault")}
                   style={{ ...fieldInput, marginBottom: "6px" }}
                 />
+
+                <label style={fieldLabel}>
+                  {t("settings_companyAddressLabel")}
+                </label>
+                <input
+                  value={addressDraft}
+                  onChange={(e) => setAddressDraft(e.target.value)}
+                  placeholder={t("settings_companyAddressPlaceholder")}
+                  style={{ ...fieldInput, marginBottom: "6px" }}
+                />
+
+                <label style={fieldLabel}>
+                  {t("settings_companyPhoneLabel")}
+                </label>
+                <input
+                  value={phoneDraft}
+                  onChange={(e) => setPhoneDraft(e.target.value)}
+                  placeholder={t("settings_companyPhonePlaceholder")}
+                  style={{ ...fieldInput, marginBottom: "6px" }}
+                />
+
+                <label style={{ ...fieldLabel, marginTop: "10px" }}>
+                  {t("settings_receiptQrLabel")}
+                </label>
+                <div
+                  style={{
+                    fontSize: "11.5px",
+                    color: "var(--text-muted)",
+                    marginBottom: "8px",
+                  }}
+                >
+                  {t("settings_receiptQrHint")}
+                </div>
+                <div
+                  style={{ display: "flex", gap: "6px", marginBottom: "6px" }}
+                >
+                  {[
+                    { id: "none", label: t("settings_receiptQrNone") },
+                    { id: "phone", label: t("settings_receiptQrTypePhone") },
+                    {
+                      id: "telegram",
+                      label: t("settings_receiptQrTypeTelegram"),
+                    },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setQrContactTypeDraft(opt.id)}
+                      style={{
+                        flex: 1,
+                        padding: "7px 8px",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        border: "1px solid var(--border)",
+                        background:
+                          qrContactTypeDraft === opt.id
+                            ? "var(--primary)"
+                            : "var(--surface-alt)",
+                        color:
+                          qrContactTypeDraft === opt.id
+                            ? "#fff"
+                            : "var(--text-muted)",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {qrContactTypeDraft !== "none" && (
+                  <input
+                    // Each type keeps its own field (phone vs. Telegram) so
+                    // switching the tab above never overwrites/clears the
+                    // other one — whichever is active here is only what
+                    // gets used on the actual receipt QR.
+                    value={
+                      qrContactTypeDraft === "phone"
+                        ? qrContactPhoneDraft
+                        : qrContactTelegramDraft
+                    }
+                    onChange={(e) =>
+                      qrContactTypeDraft === "phone"
+                        ? setQrContactPhoneDraft(e.target.value)
+                        : setQrContactTelegramDraft(e.target.value)
+                    }
+                    placeholder={
+                      qrContactTypeDraft === "phone"
+                        ? t("settings_companyPhonePlaceholder")
+                        : t("settings_receiptQrTelegramPlaceholder")
+                    }
+                    style={{ ...fieldInput, marginBottom: "6px" }}
+                  />
+                )}
 
                 <div
                   style={{
@@ -20038,6 +20324,37 @@ const loadHtml5Qrcode = () => {
     document.head.appendChild(script);
   });
   return html5QrcodeLoadPromise;
+};
+
+// Loads html2canvas + jsPDF from a CDN the first time a receipt is
+// downloaded/shared as a PDF, same lazy-load pattern as html5-qrcode above —
+// most shops never touch this, so it shouldn't cost anyone else a byte.
+let pdfLibsLoadPromise = null;
+const loadReceiptPdfLibs = () => {
+  if (window.html2canvas && window.jspdf) return Promise.resolve();
+  if (pdfLibsLoadPromise) return pdfLibsLoadPromise;
+  const loadScript = (src) =>
+    new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("failed to load " + src));
+      document.head.appendChild(script);
+    });
+  pdfLibsLoadPromise = Promise.all([
+    window.html2canvas
+      ? Promise.resolve()
+      : loadScript(
+          "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js",
+        ),
+    window.jspdf
+      ? Promise.resolve()
+      : loadScript("https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"),
+  ]).catch((err) => {
+    pdfLibsLoadPromise = null;
+    throw err;
+  });
+  return pdfLibsLoadPromise;
 };
 
 // Renders a payload string (e.g. a dynamic KHQR string) as a scannable QR
@@ -22385,20 +22702,38 @@ function ReceiptModal({
   sale,
   shopName,
   shopLogo,
+  shopAddress,
+  shopPhone,
+  qrContactType,
+  qrContactPhone,
+  qrContactTelegram,
+  customers,
   khrRate,
   receiptWidth,
   onClose,
 }) {
   const { t, lang } = useT();
-  const isNarrow = receiptWidth === "58mm";
-  const areaWidthPx = isNarrow ? "220px" : "300px";
+  // "thermal" mirrors the device's configured receipt-printer width; "a4"
+  // renders the same sale as a full-page invoice. Switching is local to
+  // this modal (doesn't touch the device-wide Settings printer width) so
+  // staff can print a one-off A4 copy without changing their default.
+  const [printMode, setPrintMode] = useState("thermal");
+  const isA4 = printMode === "a4";
+  const isNarrow = !isA4 && receiptWidth === "58mm";
+  const areaWidthPx = isA4 ? "420px" : isNarrow ? "220px" : "300px";
+  const resolvedCustomer =
+    sale.customerId && customers
+      ? customers.find((c) => c.id === sale.customerId) || null
+      : null;
+  const [pdfStatus, setPdfStatus] = useState("");
   // The @page `size` CSS property has no real "auto height" — a length can't
   // be mixed with the `auto` keyword (that combination is invalid and gets
   // the whole @page rule dropped, which is why printing used to fall back to
   // full Letter/A4 paper). And a single fixed mm height (e.g. 1200mm) "works"
   // but leaves a long blank strip below short receipts. So instead we measure
   // the actual rendered receipt height in pixels and convert that to mm for
-  // the page size, re-measuring whenever the content changes.
+  // the page size, re-measuring whenever the content changes. (A4 mode skips
+  // this and just uses the real A4 page size below.)
   const printAreaRef = useRef(null);
   const [printHeightMm, setPrintHeightMm] = useState(297);
   useEffect(() => {
@@ -22415,7 +22750,7 @@ function ReceiptModal({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [sale]);
+  }, [sale, printMode]);
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
@@ -22423,6 +22758,143 @@ function ReceiptModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // Plain-text summary used as a Share-sheet fallback (and clipboard copy)
+  // when the browser can't share files or has no share sheet at all.
+  const buildTextSummary = () => {
+    const lines = [
+      shopName,
+      shopAddress || "",
+      shopPhone || "",
+      "",
+      new Date(sale.date).toLocaleString(lang === "en" ? "en-US" : "km-KH"),
+      resolvedCustomer
+        ? `${t("receiptCustomerLabel")}: ${resolvedCustomer.name}`
+        : "",
+      "",
+      ...sale.items.map(
+        (it) => `${it.name} ×${it.qty}  ${fmt(it.price * it.qty)}`,
+      ),
+      "",
+      `${t("total")}: ${fmt(sale.total)}`,
+    ].filter(Boolean);
+    return lines.join("\n");
+  };
+
+  // Renders #receipt-print-area to a canvas (hiding the action-button row
+  // first so it isn't captured), used by both Download PDF and Share.
+  const captureReceiptCanvas = async () => {
+    await loadReceiptPdfLibs();
+    const el = document.getElementById("receipt-print-area");
+    const actions = document.getElementById("receipt-print-actions");
+    const modeToggle = document.getElementById("receipt-mode-toggle");
+    const status = document.getElementById("receipt-pdf-status");
+    const prevActionsDisplay = actions ? actions.style.display : "";
+    const prevToggleDisplay = modeToggle ? modeToggle.style.display : "";
+    const prevStatusDisplay = status ? status.style.display : "";
+    if (actions) actions.style.display = "none";
+    if (modeToggle) modeToggle.style.display = "none";
+    if (status) status.style.display = "none";
+    try {
+      return await window.html2canvas(el, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+      });
+    } finally {
+      if (actions) actions.style.display = prevActionsDisplay;
+      if (modeToggle) modeToggle.style.display = prevToggleDisplay;
+      if (status) status.style.display = prevStatusDisplay;
+    }
+  };
+
+  const downloadPdf = async () => {
+    setPdfStatus(t("toast_pdfGenerating"));
+    try {
+      const canvas = await captureReceiptCanvas();
+      const { jsPDF } = window.jspdf;
+      const PX_TO_MM = 25.4 / (96 * 2); // canvas was captured at scale: 2
+      const widthMm = canvas.width * PX_TO_MM;
+      const heightMm = canvas.height * PX_TO_MM;
+      const imgData = canvas.toDataURL("image/png");
+      const doc = isA4
+        ? new jsPDF({ orientation: "p", unit: "mm", format: "a4" })
+        : new jsPDF({
+            orientation: "p",
+            unit: "mm",
+            format: [widthMm, heightMm],
+          });
+      if (isA4) {
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const scaledHeight = (heightMm * pageWidth) / widthMm;
+        doc.addImage(imgData, "PNG", 0, 0, pageWidth, scaledHeight);
+      } else {
+        doc.addImage(imgData, "PNG", 0, 0, widthMm, heightMm);
+      }
+      doc.save(`receipt-${sale.id || Date.now()}.pdf`);
+      setPdfStatus("");
+    } catch {
+      setPdfStatus(t("toast_pdfFailed"));
+    }
+  };
+
+  const shareReceipt = async () => {
+    setPdfStatus("");
+    try {
+      const canvas = await captureReceiptCanvas();
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      const file =
+        blob &&
+        new File([blob], `receipt-${sale.id || Date.now()}.png`, {
+          type: "image/png",
+        });
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: shopName });
+        return;
+      }
+      if (navigator.share) {
+        await navigator.share({ title: shopName, text: buildTextSummary() });
+        return;
+      }
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(buildTextSummary());
+        setPdfStatus(t("toast_shareCopied"));
+        return;
+      }
+      setPdfStatus(t("toast_shareFailed"));
+    } catch (e) {
+      if (e && e.name === "AbortError") return; // user cancelled the share sheet
+      setPdfStatus(t("toast_shareFailed"));
+    }
+  };
+
+  // When the shop has configured a receipt-QR contact target, the QR links
+  // straight to a phone call or Telegram chat instead of a plain-text
+  // summary — see settings_receiptQrLabel in Settings > General.
+  const normalizeTelegram = (v) => {
+    const trimmed = (v || "").trim();
+    if (!trimmed) return "";
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://t.me/${trimmed.replace(/^@/, "")}`;
+  };
+  let qrPayload = [
+    shopName,
+    sale.id ? `#${sale.id}` : "",
+    new Date(sale.date).toLocaleString(lang === "en" ? "en-US" : "km-KH"),
+    fmt(sale.total),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  let qrCaption = "";
+  if (qrContactType === "phone" && qrContactPhone) {
+    qrPayload = `tel:${qrContactPhone.replace(/[^\d+]/g, "")}`;
+    qrCaption = t("receiptQrCaptionPhone");
+  } else if (qrContactType === "telegram" && qrContactTelegram) {
+    qrPayload = normalizeTelegram(qrContactTelegram);
+    qrCaption = t("receiptQrCaptionTelegram");
+  }
+
   return (
     <div
       onClick={onClose}
@@ -22441,8 +22913,14 @@ function ReceiptModal({
       <style>{`
         @media print {
           @page {
-            size: ${isNarrow ? "58mm" : "80mm"} ${printHeightMm}mm;
-            margin: 3mm;
+            size: ${isA4 ? "A4" : (isNarrow ? "58mm" : "80mm") + " " + printHeightMm + "mm"};
+            margin: ${isA4 ? "15mm" : "3mm"};
+          }
+          #receipt-mode-toggle {
+            display: none !important;
+          }
+          #receipt-pdf-status {
+            display: none !important;
           }
         }
       `}</style>
@@ -22458,6 +22936,37 @@ function ReceiptModal({
           boxShadow: "0 20px 50px rgba(0,0,0,.25)",
         }}
       >
+        <div
+          id="receipt-mode-toggle"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            display: "flex",
+            gap: "6px",
+            padding: "12px 22px 0",
+          }}
+        >
+          {["thermal", "a4"].map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setPrintMode(m)}
+              style={{
+                flex: 1,
+                padding: "6px 10px",
+                borderRadius: "8px",
+                fontSize: "11.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+                border: "1px solid var(--border)",
+                background:
+                  printMode === m ? "var(--primary)" : "var(--surface-alt)",
+                color: printMode === m ? "#fff" : "var(--text-muted)",
+              }}
+            >
+              {m === "thermal" ? t("receiptModeThermal") : t("receiptModeA4")}
+            </button>
+          ))}
+        </div>
         <div
           style={{
             padding: "22px 22px 16px",
@@ -22485,6 +22994,19 @@ function ReceiptModal({
               style={{ margin: "0 auto 9px" }}
             />
           )}
+          {isA4 && (
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                letterSpacing: "1.5px",
+                color: "var(--text-muted)",
+                marginBottom: "4px",
+              }}
+            >
+              {t("receiptInvoiceTitle")}
+            </div>
+          )}
           <div
             style={{
               fontFamily: "var(--font-display)",
@@ -22494,6 +23016,17 @@ function ReceiptModal({
           >
             {shopName}
           </div>
+          {(shopAddress || shopPhone) && (
+            <div
+              style={{
+                fontSize: "11px",
+                color: "var(--text-muted)",
+                marginTop: "2px",
+              }}
+            >
+              {[shopAddress, shopPhone].filter(Boolean).join(" · ")}
+            </div>
+          )}
           {sale.table && (
             <div
               style={{
@@ -22528,6 +23061,26 @@ function ReceiptModal({
             )}
           </div>
         </div>
+        {resolvedCustomer && (
+          <div
+            style={{
+              padding: "10px 22px",
+              fontSize: "12px",
+              borderBottom: "1px dashed var(--border)",
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "10px",
+            }}
+          >
+            <span style={{ color: "var(--text-muted)" }}>
+              {t("receiptCustomerLabel")}
+            </span>
+            <span style={{ fontWeight: 600, textAlign: "right" }}>
+              {resolvedCustomer.name}
+              {resolvedCustomer.phone ? ` · ${resolvedCustomer.phone}` : ""}
+            </span>
+          </div>
+        )}
         <div
           style={{
             padding: "16px 22px",
@@ -22688,6 +23241,22 @@ function ReceiptModal({
         </div>
         <div
           style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            padding: "8px 22px 4px",
+            gap: "4px",
+          }}
+        >
+          <DynamicQrImage payload={qrPayload} size={isA4 ? 84 : 64} />
+          {qrCaption && (
+            <div style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>
+              {qrCaption}
+            </div>
+          )}
+        </div>
+        <div
+          style={{
             textAlign: "center",
             fontSize: "10.5px",
             color: "var(--text-muted)",
@@ -22696,26 +23265,82 @@ function ReceiptModal({
         >
           Powered by Ou SoThon
         </div>
+        {pdfStatus && (
+          <div
+            id="receipt-pdf-status"
+            style={{
+              padding: "0 22px 4px",
+              textAlign: "center",
+              fontSize: "11.5px",
+              color: "var(--text-muted)",
+            }}
+          >
+            {pdfStatus}
+          </div>
+        )}
         <div
           id="receipt-print-actions"
-          style={{ padding: "0 22px 20px", display: "flex", gap: "10px" }}
+          style={{
+            padding: "0 22px 20px",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+          }}
         >
           <button
             onClick={() => window.print()}
             style={{
               ...primaryBtnStyle,
-              flex: 1,
+              flex: "1 1 40%",
               justifyContent: "center",
               background: "var(--surface-alt)",
               color: "var(--text)",
               border: "1px solid var(--border)",
+              fontSize: "13px",
+              padding: "8px 10px",
             }}
           >
-            <Printer size={16} /> {t("print")}
+            <Printer size={15} /> {t("print")}
+          </button>
+          <button
+            onClick={downloadPdf}
+            style={{
+              ...primaryBtnStyle,
+              flex: "1 1 40%",
+              justifyContent: "center",
+              background: "var(--surface-alt)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
+              fontSize: "13px",
+              padding: "8px 10px",
+            }}
+          >
+            <Download size={15} /> {t("receiptDownloadPdf")}
+          </button>
+          <button
+            onClick={shareReceipt}
+            style={{
+              ...primaryBtnStyle,
+              flex: "1 1 40%",
+              justifyContent: "center",
+              background: "var(--surface-alt)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
+              fontSize: "13px",
+              padding: "8px 10px",
+            }}
+          >
+            <Share2 size={15} /> {t("receiptShare")}
           </button>
           <button
             onClick={onClose}
-            style={{ ...primaryBtnStyle, flex: 1, justifyContent: "center" }}
+            style={{
+              ...primaryBtnStyle,
+              flex: "1 1 40%",
+              justifyContent: "center",
+              fontSize: "13px",
+              padding: "8px 10px",
+            }}
           >
             {t("close")}
           </button>
